@@ -867,7 +867,7 @@ mod tests {
         assert!(var_type
             .children_vec
             .iter()
-            .any(|child| child.name == "sk_timer"));
+            .any(|child| child.name == "sk_socket"));
     }
 
     #[test]

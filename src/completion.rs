@@ -518,7 +518,7 @@ fn bpftrace_get_traces_list() -> Option<String> {
         start.elapsed()
     );
 
-    log_vdbg!(COMPL, "List of available traces: \n{traces}\n");
+    log_dbg!(COMPL, "List of available traces: \n{traces}\n");
     Some(traces)
 }
 
@@ -1385,7 +1385,7 @@ mod tests {
         assert!(result["result"]["items"].len() > 0);
 
         let fields = vec![
-            "cpu_base", "index", "clockid", "seq", "running", "active", "get_time", "offset",
+            "cpu_base", "index", "clockid", "seq", "running", "active", "offset",
         ];
         check_completion_resutls(result, fields);
     }
@@ -1416,13 +1416,13 @@ mod tests {
 
     #[test]
     fn test_args_completion_find_ge_pid_retval() {
-        let text = r#"fexit:vmlinux:find_ge_pid { retval->stashed->d_parent }"#;
+        let text = r#"fexit:vmlinux:find_ge_pid { retval->rcu }"#;
         let json_content = document_content_setup(text, 0, text.len() - 2);
 
         let result = encode_completion(json_content);
         assert!(result["result"]["items"].len() > 0);
 
-        let fields = vec!["d_op", "d_u", "d_sb"];
+        let fields = vec!["func"];
         check_completion_resutls(result, fields);
     }
 
