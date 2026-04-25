@@ -12,6 +12,7 @@ use std::{
 };
 
 pub mod btf_mod;
+mod btf_rd;
 mod cmd_mod;
 mod completion;
 pub mod gen;
