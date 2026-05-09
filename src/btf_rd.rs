@@ -1,5 +1,6 @@
 use binrw::BinRead;
 use enum_dispatch::enum_dispatch;
+use memmap2::{Mmap, MmapOptions};
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 #[derive(Debug, BinRead)]
@@ -362,14 +363,15 @@ fn to_btf_type(btf_raw_type: BtfRawType) -> Result<BtfType, binrw::Error> {
 struct BtfSplit {
     start_id: usize,
     offsets: Vec<u32>,
-    raw_data: Vec<u8>,
+    btf_mmap: Mmap,
 }
 
 impl BtfSplit {
     fn build(base: Option<&BtfSplit>, path: &str) -> binrw::BinResult<Self> {
-        let raw_data: Vec<u8> = std::fs::read(path)?;
+        let file = std::fs::File::open(path)?;
+        let btf_mmap = unsafe { MmapOptions::new().map_copy_read_only(&file)? };
 
-        let mut reader = Cursor::new(&raw_data);
+        let mut reader = Cursor::new(&btf_mmap);
         let header = BtfHeader::read(&mut reader)?;
 
         let pos: u64 = (header.hdr_len + header.type_off) as u64;
@@ -411,7 +413,7 @@ impl BtfSplit {
         Ok(Self {
             start_id,
             offsets,
-            raw_data,
+            btf_mmap,
         })
     }
 }
@@ -434,7 +436,7 @@ impl Btf {
 
                 if idx < split.offsets.len() {
                     let off = split.offsets[idx] as u64;
-                    let mut reader = Cursor::new(&split.raw_data);
+                    let mut reader = Cursor::new(&split.btf_mmap);
                     reader.seek(SeekFrom::Start(off))?;
 
                     let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
