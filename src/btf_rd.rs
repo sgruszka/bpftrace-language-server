@@ -3,6 +3,9 @@ use enum_dispatch::enum_dispatch;
 use memmap2::{Mmap, MmapOptions};
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
+// use crate::log_mod::{self, BTFRD};
+// use crate::{log_dbg, log_err};
+
 #[derive(Debug, BinRead)]
 // #[br(magic = 0xeb9fu16)]
 struct BtfHeader {
@@ -307,7 +310,6 @@ impl BtfTypeTrait for BtfTypeEnum64 {
     }
 }
 
-// #[derive(Debug)]
 #[enum_dispatch(BtfTypeTrait)]
 enum BtfType {
     Int(BtfTypeInteger),
@@ -369,6 +371,7 @@ struct BtfSplit {
 impl BtfSplit {
     fn build(base: Option<&BtfSplit>, path: &str) -> binrw::BinResult<Self> {
         let file = std::fs::File::open(path)?;
+        // copy_read_only do PROT_READ, MAP_PRIVATE mmap
         let btf_mmap = unsafe { MmapOptions::new().map_copy_read_only(&file)? };
 
         let mut reader = Cursor::new(&btf_mmap);
@@ -376,45 +379,59 @@ impl BtfSplit {
 
         let pos: u64 = (header.hdr_len + header.type_off) as u64;
         reader.seek(SeekFrom::Start(pos))?;
-        println!("{:#?}", header);
 
         let mut offsets: Vec<u32> = Vec::new();
-
-        let start_id = match base {
-            None => 0,
-            Some(split) => split.start_id + split.offsets.len(),
-        };
-
         let mut read = 0;
-        let mut i = start_id;
 
         while read < header.type_len {
             let cur_pos = reader.stream_position()? as u32; // TODO fix usize to u32
             offsets.push(cur_pos);
 
             let btf_type = BtfRawType::read_ne(&mut reader)?;
-
-            println!(
-                "{} kind {} name_off {}",
-                i,
-                u32_get_field!(btf_type.info, 24, 28),
-                btf_type.name_off
-            );
-
             let btf_kind_type = to_btf_type(btf_type)?;
             let size = btf_kind_type.kind_specific_size();
 
             reader.seek(SeekFrom::Current(size as i64))?;
 
-            i += 1;
             read += 12 + (size as u32);
         }
+
+        let start_id = match base {
+            None => 1,
+            Some(split) => split.start_id + split.offsets.len(),
+        };
 
         Ok(Self {
             start_id,
             offsets,
             btf_mmap,
         })
+    }
+}
+
+impl BtfSplit {
+    fn raw_type_by_id(&self, id: usize) -> binrw::BinResult<BtfRawType> {
+        if id < self.start_id {
+            return Err(binrw::Error::AssertFail {
+                pos: 0,
+                message: format!("ID {id} smaller than start_id  {0}", self.start_id),
+            });
+        }
+
+        let idx = id - self.start_id;
+        if idx >= self.offsets.len() {
+            return Err(binrw::Error::AssertFail {
+                pos: 0,
+                message: format!("ID {id} too big"),
+            });
+        }
+
+        let off = self.offsets[idx] as u64;
+        let mut reader = Cursor::new(&self.btf_mmap);
+        reader.seek(SeekFrom::Start(off))?;
+
+        let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
+        Ok(btf_raw_type)
     }
 }
 
@@ -431,16 +448,13 @@ impl Btf {
                 union_size_type: 0,
             });
         } else {
-            for split in self.splits.iter_mut() {
-                let idx = id - split.start_id;
+            for split in self.splits.iter() {
+                if id < split.start_id {
+                    continue;
+                }
 
-                if idx < split.offsets.len() {
-                    let off = split.offsets[idx] as u64;
-                    let mut reader = Cursor::new(&split.btf_mmap);
-                    reader.seek(SeekFrom::Start(off))?;
-
-                    let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
-                    return Ok(btf_raw_type);
+                if (id - split.start_id) < split.offsets.len() {
+                    return split.raw_type_by_id(id);
                 }
             }
         }
@@ -451,71 +465,35 @@ impl Btf {
         })
     }
 }
-// fn offset_by_id<R>(Btf) -> (cursor: &mut Cursor<R>, u32) {
-// }
-
-// fn get_kind_specific_size<T: BtfTypeTrait>(btf_type: T) -> u64 {
-//     btf_type.kind_specific_size()
-// }
-
-// fn get_kind_specific_size(btf_type: &BtfType) -> u64 {
-//     btf_type.kind_specific_size()
-// }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        let data: Vec<u8> = std::fs::read("/sys/kernel/btf/vmlinux").unwrap();
-        let mut cursor = Cursor::new(&data);
-        // let header = BtfHeader::read(&mut cursor).unwrap();
-        //
-        // let pos = header.hdr_len + header.type_off;
-        // cursor.set_position(pos.into());
-        //
-        // println!("{:#?}", header);
-
+    fn test_vmlinux_btf_number_of_types() {
+        // TODO: copy vmlinux to asset file to make this independent of kernel version
         let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
+        assert_eq!(split.offsets.len(), 140745);
+    }
 
-        let len = split.offsets.len();
+    #[test]
+    fn test_vmlinux_btf_atomic_t() {
+        let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
+        let atomic_typedef_raw = split.raw_type_by_id(14).unwrap();
+        assert_eq!(atomic_typedef_raw.get_kind(), BTF_KIND_TYPEDEF);
 
-        let idx = split.offsets.len() - 7;
-        let _off = split.offsets[idx];
+        let atomic_typedef = to_btf_type(atomic_typedef_raw).unwrap();
+        assert_eq!(atomic_typedef.kind_specific_size(), 0);
+    }
 
-        let start_id = len as u32 + 1;
-        let mod_split = BtfSplit::build(Some(&split), "/sys/kernel/btf/iwlwifi").unwrap();
-        let _off = mod_split.offsets[0];
+    #[test]
+    fn test_vmlinux_btf_char() {
+        let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
+        let char = split.raw_type_by_id(10).unwrap();
+        assert_eq!(char.get_kind(), BTF_KIND_INT);
 
-        // let mut read = 0;
-        // let mut i = 0;
-        // while read < header.type_len {
-        //     let btf_type = BtfRawType::read_ne(&mut cursor).unwrap();
-        //     i += 1;
-        //
-        //     // println!("{:#?}", btf_type);
-        //     println!(
-        //         "{} kind {} name_off {}",
-        //         i,
-        //         u32_get_field!(btf_type.info, 24, 28),
-        //         btf_type.name_off
-        //     );
-        //     let btf_kind_type = to_btf_type(btf_type).unwrap();
-        //     // let _ = btf_kind_type.offset_cursor(&mut cursor);
-        //     let size = btf_kind_type.kind_specific_size();
-        //     let pos = cursor.position();
-        //     cursor.set_position(pos + size);
-        //
-        //     read += 12 + (size as u32);
-        // }
-
-        // println!("{:?}", BtfType::offset_cursor(&mut cursor));
-
-        // let btf_type = BtfRawType::read_ne(&mut cursor);
-        // println!("{:#?}", btf_type);
-        // println!("kind {}", u32_get_field!(btf_type.unwrap().info, 24, 28));
-        // //
-        panic!();
+        let char = to_btf_type(char).unwrap();
+        assert_eq!(char.kind_specific_size(), 4);
     }
 }
