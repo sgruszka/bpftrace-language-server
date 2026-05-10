@@ -3,6 +3,8 @@ use enum_dispatch::enum_dispatch;
 use memmap2::{Mmap, MmapOptions};
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
+use std::ffi::CStr;
+use std::os::raw::c_char;
 // use crate::log_mod::{self, BTFRD};
 // use crate::{log_dbg, log_err};
 
@@ -433,6 +435,18 @@ impl BtfSplit {
         let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
         Ok(btf_raw_type)
     }
+
+    fn name_str(&self, btf_raw_type: &BtfRawType) -> &str {
+        // TODO: remove header read
+        let mut reader = Cursor::new(&self.btf_mmap);
+        let header = BtfHeader::read(&mut reader).unwrap();
+        let pos = (header.hdr_len + header.str_off + btf_raw_type.name_off) as usize;
+
+        let ptr = self.btf_mmap.as_ptr() as *const c_char;
+        let name_str = unsafe { CStr::from_ptr(ptr.add(pos)).to_str().unwrap() };
+
+        name_str
+    }
 }
 
 struct Btf {
@@ -482,6 +496,7 @@ mod tests {
         let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
         let atomic_typedef_raw = split.raw_type_by_id(14).unwrap();
         assert_eq!(atomic_typedef_raw.get_kind(), BTF_KIND_TYPEDEF);
+        assert_eq!(split.name_str(&atomic_typedef_raw), "atomic_t");
 
         let atomic_typedef = to_btf_type(atomic_typedef_raw).unwrap();
         assert_eq!(atomic_typedef.kind_specific_size(), 0);
@@ -492,6 +507,7 @@ mod tests {
         let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
         let char = split.raw_type_by_id(10).unwrap();
         assert_eq!(char.get_kind(), BTF_KIND_INT);
+        assert_eq!(split.name_str(&char), "char");
 
         let char = to_btf_type(char).unwrap();
         assert_eq!(char.kind_specific_size(), 4);
