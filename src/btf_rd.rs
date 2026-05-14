@@ -1,6 +1,7 @@
 use binrw::BinRead;
 use enum_dispatch::enum_dispatch;
 use memmap2::{Mmap, MmapOptions};
+use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use std::ffi::CStr;
@@ -368,6 +369,7 @@ struct BtfSplit {
     start_id: usize,
     offsets: Vec<u32>,
     btf_mmap: Mmap,
+    functions: HashMap<String, u32>,
 }
 
 impl BtfSplit {
@@ -385,13 +387,25 @@ impl BtfSplit {
         let mut offsets: Vec<u32> = Vec::new();
         let mut read = 0;
 
+        let mut functions: HashMap<String, u32> = HashMap::new();
+
         while read < header.type_len {
             let cur_pos = reader.stream_position()? as u32; // TODO fix usize to u32
             offsets.push(cur_pos);
 
             let btf_type = BtfRawType::read_ne(&mut reader)?;
+            let name_off = btf_type.name_off;
             let btf_kind_type = to_btf_type(btf_type)?;
             let size = btf_kind_type.kind_specific_size();
+
+            if let BtfType::Func(_) = btf_kind_type {
+                let name_pos = (header.hdr_len + header.str_off + name_off) as usize;
+                assert!(name_pos < btf_mmap.len());
+
+                let ptr = btf_mmap.as_ptr() as *const c_char;
+                let name_str = unsafe { CStr::from_ptr(ptr.add(name_pos)).to_str().unwrap() };
+                functions.insert(name_str.to_owned(), cur_pos);
+            }
 
             reader.seek(SeekFrom::Current(size as i64))?;
 
@@ -407,6 +421,7 @@ impl BtfSplit {
             start_id,
             offsets,
             btf_mmap,
+            functions,
         })
     }
 }
@@ -441,6 +456,7 @@ impl BtfSplit {
         let mut reader = Cursor::new(&self.btf_mmap);
         let header = BtfHeader::read(&mut reader).unwrap();
         let pos = (header.hdr_len + header.str_off + btf_raw_type.name_off) as usize;
+        assert!(pos < self.btf_mmap.len());
 
         let ptr = self.btf_mmap.as_ptr() as *const c_char;
         let name_str = unsafe { CStr::from_ptr(ptr.add(pos)).to_str().unwrap() };
@@ -488,7 +504,7 @@ mod tests {
     fn test_vmlinux_btf_number_of_types() {
         // TODO: copy vmlinux to asset file to make this independent of kernel version
         let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
-        assert_eq!(split.offsets.len(), 140745);
+        assert_eq!(split.offsets.len(), 140361);
     }
 
     #[test]
