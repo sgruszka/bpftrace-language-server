@@ -502,19 +502,20 @@ impl Btf {
 
 #[cfg(test)]
 mod tests {
+    const VMLINUX_BTF: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
     use super::*;
 
     #[test]
     fn test_vmlinux_btf_number_of_types() {
-        // TODO: copy vmlinux to asset file to make this independent of kernel version
-        let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
-        assert_eq!(split.offsets.len(), 140361);
+        let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+        assert_eq!(split.offsets.len(), 37691);
+        assert_eq!(split.functions.len(), 15944);
     }
 
     #[test]
     fn test_vmlinux_btf_atomic_t() {
-        let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
-        let atomic_typedef_raw = split.raw_type_by_id(14).unwrap();
+        let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+        let atomic_typedef_raw = split.raw_type_by_id(211).unwrap();
         assert_eq!(atomic_typedef_raw.get_kind(), BTF_KIND_TYPEDEF);
         assert_eq!(split.name_str(&atomic_typedef_raw), "atomic_t");
 
@@ -524,8 +525,8 @@ mod tests {
 
     #[test]
     fn test_vmlinux_btf_char() {
-        let split = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap();
-        let char = split.raw_type_by_id(10).unwrap();
+        let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+        let char = split.raw_type_by_id(9).unwrap();
         assert_eq!(char.get_kind(), BTF_KIND_INT);
         assert_eq!(split.name_str(&char), "char");
 
