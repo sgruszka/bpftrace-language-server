@@ -92,6 +92,10 @@ impl BtfRawType {
     fn get_vlen(&self) -> u32 {
         u32_get_field!(self.info, 0, 15)
     }
+
+    fn get_type(&self) -> u32 {
+        self.union_size_type
+    }
 }
 
 #[derive(Debug)]
@@ -367,6 +371,7 @@ fn to_btf_type(btf_raw_type: BtfRawType) -> Result<BtfType, binrw::Error> {
 
 struct BtfSplit {
     start_id: usize,
+    name_start_off: usize,
     offsets: Vec<u32>,
     btf_mmap: Mmap,
     functions: HashMap<String, u32>,
@@ -387,6 +392,7 @@ impl BtfSplit {
         let mut offsets: Vec<u32> = Vec::new();
         let mut read = 0;
 
+        let name_start_off = (header.hdr_len + header.str_off) as usize;
         let mut functions: HashMap<String, u32> = HashMap::new();
 
         while read < header.type_len {
@@ -394,12 +400,12 @@ impl BtfSplit {
             offsets.push(cur_pos);
 
             let btf_type = BtfRawType::read_ne(&mut reader)?;
-            let name_off = btf_type.name_off;
+            let name_off = btf_type.name_off as usize;
             let btf_kind_type = to_btf_type(btf_type)?;
             let size = btf_kind_type.kind_specific_size();
 
             if let BtfType::Func(_) = btf_kind_type {
-                let name_pos = (header.hdr_len + header.str_off + name_off) as usize;
+                let name_pos = name_start_off + name_off;
                 assert!(name_pos < btf_mmap.len());
 
                 let ptr = btf_mmap.as_ptr() as *const c_char;
@@ -419,6 +425,7 @@ impl BtfSplit {
 
         Ok(Self {
             start_id,
+            name_start_off,
             offsets,
             btf_mmap,
             functions,
@@ -452,10 +459,7 @@ impl BtfSplit {
     }
 
     fn name_str(&self, btf_raw_type: &BtfRawType) -> &str {
-        // TODO: remove header read
-        let mut reader = Cursor::new(&self.btf_mmap);
-        let header = BtfHeader::read(&mut reader).unwrap();
-        let pos = (header.hdr_len + header.str_off + btf_raw_type.name_off) as usize;
+        let pos = self.name_start_off + (btf_raw_type.name_off as usize);
         assert!(pos < self.btf_mmap.len());
 
         let ptr = self.btf_mmap.as_ptr() as *const c_char;
