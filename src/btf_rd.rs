@@ -438,7 +438,7 @@ impl BtfSplit {
         if id < self.start_id {
             return Err(binrw::Error::AssertFail {
                 pos: 0,
-                message: format!("ID {id} smaller than start_id  {0}", self.start_id),
+                message: format!("ID {id} smaller than start_id {0}", self.start_id),
             });
         }
 
@@ -450,12 +450,7 @@ impl BtfSplit {
             });
         }
 
-        let off = self.offsets[idx] as u64;
-        let mut reader = Cursor::new(&self.btf_mmap);
-        reader.seek(SeekFrom::Start(off))?;
-
-        let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
-        Ok(btf_raw_type)
+        self.raw_type_by_offset(self.offsets[idx])
     }
 
     fn name_str(&self, btf_raw_type: &BtfRawType) -> &str {
@@ -466,6 +461,14 @@ impl BtfSplit {
         let name_str = unsafe { CStr::from_ptr(ptr.add(pos)).to_str().unwrap() };
 
         name_str
+    }
+
+    fn raw_type_by_offset(&self, off: u32) -> binrw::BinResult<BtfRawType> {
+        let mut reader = Cursor::new(&self.btf_mmap);
+        reader.seek(SeekFrom::Start(off as u64))?;
+
+        let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
+        Ok(btf_raw_type)
     }
 }
 
@@ -532,5 +535,24 @@ mod tests {
 
         let char = to_btf_type(char).unwrap();
         assert_eq!(char.kind_specific_size(), 4);
+    }
+
+    #[test]
+    fn test_vmlinux_do_brk_flags() {
+        let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+        let func_off = split.functions.get("do_brk_flags").unwrap();
+
+        let btf_raw_type = split.raw_type_by_offset(*func_off).unwrap();
+        assert_eq!(split.name_str(&btf_raw_type), "do_brk_flags");
+
+        let type_kind = to_btf_type(btf_raw_type).unwrap();
+        match type_kind {
+            BtfType::Func(f) => {
+                let proto_id = f.btf_raw_type.get_type();
+
+                assert_eq!(proto_id, 21876);
+            }
+            _ => panic!(),
+        }
     }
 }
