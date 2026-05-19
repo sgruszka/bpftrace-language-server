@@ -2,6 +2,7 @@ use binrw::BinRead;
 use enum_dispatch::enum_dispatch;
 use memmap2::{Mmap, MmapOptions};
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use std::ffi::CStr;
@@ -196,17 +197,38 @@ struct BtfTypeEnum64 {
 #[enum_dispatch]
 trait BtfTypeTrait {
     fn kind_specific_size(&self) -> u64;
+    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+        ("".to_owned(), "".to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeInteger {
     fn kind_specific_size(&self) -> u64 {
         4
     }
+
+    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+        let name = split.name_str(&self.btf_raw_type).to_owned();
+
+        (name.to_owned(), "".to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypePointer {
     fn kind_specific_size(&self) -> u64 {
         0
+    }
+
+    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+        let sub_type_id = self.btf_raw_type.get_type();
+        let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
+        let sub_type = to_btf_type(sub_type_raw).unwrap();
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
+
+        let mut prefix = sub_prefix;
+        prefix.push_str(" *");
+
+        (prefix.to_owned(), sub_sufix.to_owned())
     }
 }
 
@@ -221,12 +243,26 @@ impl BtfTypeTrait for BtfTypeUnion {
         let vlen = u32_get_field!(self.btf_raw_type.info, 0, 15) as u64;
         vlen * 12
     }
+
+    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+        let mut name = "union ".to_owned();
+        name.push_str(split.name_str(&self.btf_raw_type));
+
+        (name, "".to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeStruct {
     fn kind_specific_size(&self) -> u64 {
         let vlen = u32_get_field!(self.btf_raw_type.info, 0, 15) as u64;
         vlen * 12
+    }
+
+    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+        let mut name = "struct ".to_owned();
+        name.push_str(split.name_str(&self.btf_raw_type));
+
+        (name, "".to_owned())
     }
 }
 
@@ -258,6 +294,28 @@ impl BtfTypeTrait for BtfTypeVolatile {
 impl BtfTypeTrait for BtfTypeConst {
     fn kind_specific_size(&self) -> u64 {
         0
+    }
+
+    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+        let sub_type_id = self.btf_raw_type.get_type();
+        let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
+        let sub_type = to_btf_type(sub_type_raw).unwrap();
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
+
+        let prefix = match sub_type {
+            BtfType::Ptr(_) => {
+                let mut prefix = sub_prefix;
+                prefix.push_str("const");
+                prefix
+            }
+            _ => {
+                let mut prefix = "const ".to_owned();
+                prefix.push_str(&sub_prefix);
+                prefix
+            }
+        };
+
+        (prefix, sub_sufix.to_owned())
     }
 }
 
@@ -379,7 +437,7 @@ struct BtfSplit {
 
 impl BtfSplit {
     fn build(base: Option<&BtfSplit>, path: &str) -> binrw::BinResult<Self> {
-        let file = std::fs::File::open(path)?;
+        let file = File::open(path)?;
         // copy_read_only do PROT_READ, MAP_PRIVATE mmap
         let btf_mmap = unsafe { MmapOptions::new().map_copy_read_only(&file)? };
 
@@ -554,5 +612,30 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn test_vmlinux_struct_kernel_param() {
+        let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+        let btf_raw_type = split.raw_type_by_id(23).unwrap();
+
+        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        assert_eq!(prefix, "struct kernel_param");
+    }
+
+    #[test]
+    fn test_vmlinux_pointers() {
+        let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+
+        let btf_raw_type = split.raw_type_by_id(111).unwrap();
+        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        assert_eq!(prefix, "struct posix_acl *");
+
+        let btf_raw_type = split.raw_type_by_id(120).unwrap();
+        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        assert_eq!(prefix, "const struct inode_operations *");
     }
 }
