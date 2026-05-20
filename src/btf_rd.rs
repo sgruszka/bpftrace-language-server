@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
+use std::ops::Deref;
+
 use std::ffi::CStr;
 use std::os::raw::c_char;
 // use crate::log_mod::{self, BTFRD};
@@ -427,21 +429,56 @@ fn to_btf_type(btf_raw_type: BtfRawType) -> Result<BtfType, binrw::Error> {
     }
 }
 
+enum BtfData {
+    MemoryMap(Mmap),
+    Vector(Vec<u8>),
+}
+
+impl Deref for BtfData {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &[u8] {
+        match self {
+            BtfData::MemoryMap(mmap) => mmap.deref(),
+            BtfData::Vector(vec) => vec.deref(),
+        }
+    }
+}
+
+impl AsRef<[u8]> for BtfData {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.deref()
+    }
+}
+
 struct BtfSplit {
     start_id: usize,
     name_start_off: usize,
     offsets: Vec<u32>,
-    btf_mmap: Mmap,
+    data: BtfData,
     functions: HashMap<String, u32>,
 }
 
 impl BtfSplit {
     fn build(base: Option<&BtfSplit>, path: &str) -> binrw::BinResult<Self> {
-        let file = File::open(path)?;
-        // copy_read_only do PROT_READ, MAP_PRIVATE mmap
-        let btf_mmap = unsafe { MmapOptions::new().map_copy_read_only(&file)? };
+        let (start_id, data) = match base {
+            None => {
+                let file = File::open(path)?;
+                // copy_read_only do PROT_READ, MAP_PRIVATE mmap
+                let btf_mmap = unsafe { MmapOptions::new().map_copy_read_only(&file)? };
+                let data = BtfData::MemoryMap(btf_mmap);
+                (1, data)
+            }
+            Some(split) => {
+                let vec: Vec<u8> = std::fs::read(path)?;
+                let data = BtfData::Vector(vec);
+                (split.start_id + split.offsets.len(), data)
+            }
+        };
 
-        let mut reader = Cursor::new(&btf_mmap);
+        let mut reader = Cursor::new(&data);
         let header = BtfHeader::read(&mut reader)?;
 
         let pos: u64 = (header.hdr_len + header.type_off) as u64;
@@ -464,9 +501,9 @@ impl BtfSplit {
 
             if let BtfType::Func(_) = btf_kind_type {
                 let name_pos = name_start_off + name_off;
-                assert!(name_pos < btf_mmap.len());
+                assert!(name_pos < data.len());
 
-                let ptr = btf_mmap.as_ptr() as *const c_char;
+                let ptr = data.as_ptr() as *const c_char;
                 let name_str = unsafe { CStr::from_ptr(ptr.add(name_pos)).to_str().unwrap() };
                 functions.insert(name_str.to_owned(), cur_pos);
             }
@@ -476,16 +513,11 @@ impl BtfSplit {
             read += 12 + (size as u32);
         }
 
-        let start_id = match base {
-            None => 1,
-            Some(split) => split.start_id + split.offsets.len(),
-        };
-
         Ok(Self {
             start_id,
             name_start_off,
             offsets,
-            btf_mmap,
+            data,
             functions,
         })
     }
@@ -513,16 +545,16 @@ impl BtfSplit {
 
     fn name_str(&self, btf_raw_type: &BtfRawType) -> &str {
         let pos = self.name_start_off + (btf_raw_type.name_off as usize);
-        assert!(pos < self.btf_mmap.len());
+        assert!(pos < self.data.len());
 
-        let ptr = self.btf_mmap.as_ptr() as *const c_char;
+        let ptr = self.data.as_ptr() as *const c_char;
         let name_str = unsafe { CStr::from_ptr(ptr.add(pos)).to_str().unwrap() };
 
         name_str
     }
 
     fn raw_type_by_offset(&self, off: u32) -> binrw::BinResult<BtfRawType> {
-        let mut reader = Cursor::new(&self.btf_mmap);
+        let mut reader = Cursor::new(&self.data);
         reader.seek(SeekFrom::Start(off as u64))?;
 
         let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
