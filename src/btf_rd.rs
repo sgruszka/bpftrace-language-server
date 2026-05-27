@@ -290,13 +290,8 @@ impl BtfTypeTrait for BtfTypeArray {
         let (split, mut off) = this_split.offset_from_id(self.type_id);
         off += 12;
         let raw_array = split.raw_array_by_offset(off).unwrap();
-        println!(
-            "ELEM TYPE {} nelems {}",
-            raw_array.elem_type, raw_array.nelems
-        );
 
-        let sub_type_raw = split.raw_type_from_id(raw_array.elem_type).unwrap();
-        let sub_type = inner_to_btf_type(sub_type_raw, raw_array.elem_type).unwrap();
+        let sub_type = split.type_from_id(raw_array.elem_type).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let mut sufix = sub_sufix;
@@ -373,8 +368,7 @@ impl BtfTypeTrait for BtfTypeConst {
 
     fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type_raw = split.raw_type_from_id(sub_type_id).unwrap();
-        let sub_type = inner_to_btf_type(sub_type_raw, sub_type_id).unwrap();
+        let sub_type = split.type_from_id(sub_type_id).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let prefix = match sub_type {
@@ -621,10 +615,10 @@ impl BtfSplit {
         inner_raw_type_from_id(self, id)
     }
 
-    // fn type_from_id(&self, id: u32) -> binrw::BinResult<BtfType> {
-    //     let btf_raw_type = raw_type = inner_raw
-    //
-    // }
+    fn type_from_id(&self, id: u32) -> binrw::BinResult<BtfType> {
+        let btf_raw_type = self.raw_type_from_id(id)?;
+        inner_to_btf_type(btf_raw_type, id)
+    }
 
     fn get_type_name(&self, btf_raw_type: &BtfRawType) -> &str {
         let name_off = btf_raw_type.name_off;
@@ -720,9 +714,7 @@ mod tests {
     #[test]
     fn test_vmlinux_struct_kernel_param() {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
-        let btf_raw_type = split.raw_type_from_id(23).unwrap();
-
-        let btf_type = inner_to_btf_type(btf_raw_type, 23).unwrap();
+        let btf_type = split.type_from_id(23).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct kernel_param");
     }
@@ -731,13 +723,11 @@ mod tests {
     fn test_vmlinux_pointers() {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
 
-        let btf_raw_type = split.raw_type_from_id(111).unwrap();
-        let btf_type = inner_to_btf_type(btf_raw_type, 111).unwrap();
+        let btf_type = split.type_from_id(111).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct posix_acl *");
 
-        let btf_raw_type = split.raw_type_from_id(120).unwrap();
-        let btf_type = inner_to_btf_type(btf_raw_type, 120).unwrap();
+        let btf_type = split.type_from_id(120).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct inode_operations *");
     }
@@ -747,18 +737,15 @@ mod tests {
         let base = Rc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
         let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
 
-        let btf_raw_type = base.raw_type_from_id(1708).unwrap();
-        let btf_type = inner_to_btf_type(btf_raw_type, 1708).unwrap();
+        let btf_type = base.type_from_id(1708).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&base);
         assert_eq!(prefix, "const struct device *");
 
-        let btf_raw_type = split.raw_type_from_id(140493).unwrap();
-        let btf_type = inner_to_btf_type(btf_raw_type, 140493).unwrap();
+        let btf_type = split.type_from_id(140493).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct device *const");
 
-        let btf_raw_type = split.raw_type_from_id(140494).unwrap();
-        let btf_type = inner_to_btf_type(btf_raw_type, 140494).unwrap();
+        let btf_type = split.type_from_id(140494).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct device *const");
     }
@@ -768,14 +755,12 @@ mod tests {
         let base = Rc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
         let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
 
-        let btf_raw_type = split.raw_type_from_id(140495).unwrap();
-        let btf_type = inner_to_btf_type(btf_raw_type, 140495).unwrap();
+        let btf_type = split.type_from_id(140495).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "int");
         assert_eq!(sufix, "[10]");
 
-        let btf_raw_type = split.raw_type_from_id(140496).unwrap();
-        let btf_type = inner_to_btf_type(btf_raw_type, 140496).unwrap();
+        let btf_type = split.type_from_id(140496).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct device *");
         assert_eq!(sufix, "[2]");
