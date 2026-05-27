@@ -74,6 +74,13 @@ struct BtfRawType {
     union_size_type: u32,
 }
 
+#[derive(Debug, BinRead)]
+struct BtfRawArray {
+    elem_type: u32,
+    index_type: u32,
+    nelems: u32,
+}
+
 macro_rules! u32_get_field {
     ($value:expr, $from:literal, $to:literal) => {{
         const _: () = assert!($to >= 0 && $to <= 31);
@@ -210,8 +217,9 @@ impl BtfTypeTrait for BtfTypeInteger {
         4
     }
 
-    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let name = split.get_type_name(&self.btf_raw_type).to_owned();
+        // TODO: bitfields ;
 
         (name.to_owned(), "".to_owned())
     }
@@ -222,7 +230,7 @@ impl BtfTypeTrait for BtfTypePointer {
         0
     }
 
-    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type();
         let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
         let sub_type = to_btf_type(sub_type_raw).unwrap();
@@ -239,6 +247,26 @@ impl BtfTypeTrait for BtfTypeArray {
     fn kind_specific_size(&self) -> u64 {
         12
     }
+
+    fn string_format(&self, this_split: &BtfSplit, id: u32) -> (String, String) {
+        println!("ID {id}");
+        let (split, mut off) = this_split.offset_by_id(id as usize);
+        off += 12;
+        let raw_array = split.raw_array_by_offset(off).unwrap();
+        println!(
+            "ELEM TYPE {} nelems {}",
+            raw_array.elem_type, raw_array.nelems
+        );
+
+        let sub_type_raw = split.raw_type_by_id(raw_array.elem_type as usize).unwrap();
+        let sub_type = to_btf_type(sub_type_raw).unwrap();
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split, raw_array.elem_type);
+
+        let mut sufix = sub_sufix;
+        sufix.push_str(&format!("[{}]", raw_array.nelems));
+
+        (sub_prefix, sufix.to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeUnion {
@@ -247,7 +275,7 @@ impl BtfTypeTrait for BtfTypeUnion {
         vlen * 12
     }
 
-    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let mut name = "union ".to_owned();
         name.push_str(split.get_type_name(&self.btf_raw_type));
 
@@ -261,7 +289,7 @@ impl BtfTypeTrait for BtfTypeStruct {
         vlen * 12
     }
 
-    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let mut name = "struct ".to_owned();
         name.push_str(split.get_type_name(&self.btf_raw_type));
 
@@ -273,6 +301,13 @@ impl BtfTypeTrait for BtfTypeEnum {
     fn kind_specific_size(&self) -> u64 {
         let vlen = u32_get_field!(self.btf_raw_type.info, 0, 15) as u64;
         vlen * 8
+    }
+
+    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
+        let mut name = "enum ".to_owned();
+        name.push_str(split.get_type_name(&self.btf_raw_type));
+
+        (name, "".to_owned())
     }
 }
 
@@ -299,7 +334,7 @@ impl BtfTypeTrait for BtfTypeConst {
         0
     }
 
-    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type();
         let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
         let sub_type = to_btf_type(sub_type_raw).unwrap();
@@ -575,6 +610,7 @@ fn inner_get_type_name(btf_split: &BtfSplit, name_off: usize) -> &str {
 
     name
 }
+
 impl BtfSplit {
     fn raw_type_by_id(&self, id: usize) -> binrw::BinResult<BtfRawType> {
         if id < self.start_id {
@@ -610,6 +646,30 @@ impl BtfSplit {
 
         let btf_raw_type = BtfRawType::read_ne(&mut reader)?;
         Ok(btf_raw_type)
+    }
+
+    fn raw_array_by_offset(&self, off: u32) -> binrw::BinResult<BtfRawArray> {
+        let mut reader = Cursor::new(&self.data);
+        reader.seek(SeekFrom::Start(off as u64))?;
+
+        let btf_raw_array = BtfRawArray::read_ne(&mut reader)?;
+        Ok(btf_raw_array)
+    }
+
+    fn offset_by_id(&self, id: usize) -> (&BtfSplit, u32) {
+        if id == 0 {
+            return (self, 0);
+        }
+
+        if id >= self.start_id {
+            let idx = id - self.start_id;
+            (self, self.offsets[idx])
+        } else if let Some(base_split) = &self.base_split {
+            let idx = id - base_split.start_id;
+            (base_split, base_split.offsets[idx])
+        } else {
+            (self, 0) // TODO
+        }
     }
 }
 
@@ -710,5 +770,25 @@ mod tests {
         let btf_type = to_btf_type(btf_raw_type).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split, 0);
         assert_eq!(prefix, "struct device *const");
+    }
+
+    #[test]
+    fn test_vmlinux_array() {
+        let base = Rc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
+        let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
+
+        let btf_raw_type = split.raw_type_by_id(140495).unwrap();
+        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let (prefix, sufix) = btf_type.string_format(&split, 140495);
+        assert_eq!(prefix, "int");
+        assert_eq!(sufix, "[10]");
+
+        let btf_raw_type = split.raw_type_by_id(140496).unwrap();
+        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let (prefix, sufix) = btf_type.string_format(&split, 140496);
+        assert_eq!(prefix, "const struct device *");
+        assert_eq!(sufix, "[2]");
+
+        // TODO test array[N][M]
     }
 }
