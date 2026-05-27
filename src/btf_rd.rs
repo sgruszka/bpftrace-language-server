@@ -104,104 +104,83 @@ impl BtfRawType {
         u32_get_field!(self.info, 0, 15)
     }
 
-    fn get_type(&self) -> u32 {
+    fn get_type_id(&self) -> u32 {
         self.union_size_type
     }
 }
 
-#[derive(Debug)]
-struct BtfTypeInteger {
-    btf_raw_type: BtfRawType,
+macro_rules! define_btf_types {
+    (
+        $(
+            $variant:ident => $struct_name:ident
+        ),* $(,)?
+    ) => {
+        $(
+            #[derive(Debug)]
+            struct $struct_name {
+                btf_raw_type: BtfRawType,
+            }
+        )*
+
+        #[enum_dispatch(BtfTypeTrait)]
+        #[derive(Debug)]
+        enum BtfType {
+            $(
+                $variant($struct_name),
+            )*
+        }
+    };
 }
 
-#[derive(Debug)]
-struct BtfTypePointer {
-    btf_raw_type: BtfRawType,
+define_btf_types! {
+    Int       => BtfTypeInteger,
+    Ptr       => BtfTypePointer,
+    Array     => BtfTypeArray,
+    Union     => BtfTypeUnion,
+    Struct    => BtfTypeStruct,
+    Enum      => BtfTypeEnum,
+    Fwd       => BtfTypeFwd,
+    Typedef   => BtfTypeTypedef,
+    Volatile  => BtfTypeVolatile,
+    Const     => BtfTypeConst,
+    Restrict  => BtfTypeRestrict,
+    Func      => BtfTypeFunc,
+    FuncProto => BtfTypeFuncProto,
+    Var       => BtfTypeVar,
+    Datasec   => BtfTypeDatasec,
+    Float     => BtfTypeFloat,
+    DeclTag   => BtfTypeDeclTag,
+    TypeTag   => BtfTypeTypeTag,
+    Enum64    => BtfTypeEnum64,
 }
 
-#[derive(Debug)]
-struct BtfTypeArray {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeUnion {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeStruct {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeEnum {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeFwd {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeTypedef {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeVolatile {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeConst {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeRestrict {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeFunc {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeFuncProto {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeVar {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeDatasec {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeFloat {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeDeclTag {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeTypeTag {
-    btf_raw_type: BtfRawType,
-}
-
-#[derive(Debug)]
-struct BtfTypeEnum64 {
-    btf_raw_type: BtfRawType,
+fn to_btf_type(btf_raw_type: BtfRawType) -> Result<BtfType, binrw::Error> {
+    let kind = btf_raw_type.get_kind();
+    match kind {
+        BTF_KIND_INT => Ok(BtfType::Int(BtfTypeInteger { btf_raw_type })),
+        BTF_KIND_PTR => Ok(BtfType::Ptr(BtfTypePointer { btf_raw_type })),
+        BTF_KIND_ARRAY => Ok(BtfType::Array(BtfTypeArray { btf_raw_type })),
+        BTF_KIND_UNION => Ok(BtfType::Union(BtfTypeUnion { btf_raw_type })),
+        BTF_KIND_STRUCT => Ok(BtfType::Struct(BtfTypeStruct { btf_raw_type })),
+        BTF_KIND_ENUM => Ok(BtfType::Enum(BtfTypeEnum { btf_raw_type })),
+        BTF_KIND_FWD => Ok(BtfType::Fwd(BtfTypeFwd { btf_raw_type })),
+        BTF_KIND_TYPEDEF => Ok(BtfType::Typedef(BtfTypeTypedef { btf_raw_type })),
+        BTF_KIND_VOLATILE => Ok(BtfType::Volatile(BtfTypeVolatile { btf_raw_type })),
+        BTF_KIND_CONST => Ok(BtfType::Const(BtfTypeConst { btf_raw_type })),
+        BTF_KIND_RESTRICT => Ok(BtfType::Restrict(BtfTypeRestrict { btf_raw_type })),
+        BTF_KIND_FUNC => Ok(BtfType::Func(BtfTypeFunc { btf_raw_type })),
+        BTF_KIND_FUNC_PROTO => Ok(BtfType::FuncProto(BtfTypeFuncProto { btf_raw_type })),
+        BTF_KIND_VAR => Ok(BtfType::Var(BtfTypeVar { btf_raw_type })),
+        BTF_KIND_DATASEC => Ok(BtfType::Datasec(BtfTypeDatasec { btf_raw_type })),
+        BTF_KIND_FLOAT => Ok(BtfType::Float(BtfTypeFloat { btf_raw_type })),
+        BTF_KIND_DECL_TAG => Ok(BtfType::DeclTag(BtfTypeDeclTag { btf_raw_type })),
+        BTF_KIND_TYPE_TAG => Ok(BtfType::TypeTag(BtfTypeTypeTag { btf_raw_type })),
+        BTF_KIND_ENUM64 => Ok(BtfType::Enum64(BtfTypeEnum64 { btf_raw_type })),
+        _ => Err(binrw::Error::AssertFail {
+            pos: 0,
+            message: format!("Unknown BTF KIND {kind}"),
+        }),
+    }
 }
 
 #[enum_dispatch]
@@ -231,7 +210,7 @@ impl BtfTypeTrait for BtfTypePointer {
     }
 
     fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
-        let sub_type_id = self.btf_raw_type.get_type();
+        let sub_type_id = self.btf_raw_type.get_type_id();
         let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
         let sub_type = to_btf_type(sub_type_raw).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
@@ -335,7 +314,7 @@ impl BtfTypeTrait for BtfTypeConst {
     }
 
     fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
-        let sub_type_id = self.btf_raw_type.get_type();
+        let sub_type_id = self.btf_raw_type.get_type_id();
         let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
         let sub_type = to_btf_type(sub_type_raw).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
@@ -410,58 +389,6 @@ impl BtfTypeTrait for BtfTypeEnum64 {
     fn kind_specific_size(&self) -> u64 {
         let vlen = self.btf_raw_type.get_vlen() as u64;
         vlen * 12
-    }
-}
-
-#[enum_dispatch(BtfTypeTrait)]
-enum BtfType {
-    Int(BtfTypeInteger),
-    Ptr(BtfTypePointer),
-    Array(BtfTypeArray),
-    Union(BtfTypeUnion),
-    Struct(BtfTypeStruct),
-    Enum(BtfTypeEnum),
-    Fwd(BtfTypeFwd),
-    Typedef(BtfTypeTypedef),
-    Volatile(BtfTypeVolatile),
-    Const(BtfTypeConst),
-    Restrict(BtfTypeRestrict),
-    Func(BtfTypeFunc),
-    FuncProto(BtfTypeFuncProto),
-    Var(BtfTypeVar),
-    Datasec(BtfTypeDatasec),
-    Float(BtfTypeFloat),
-    DeclTag(BtfTypeDeclTag),
-    TypeTag(BtfTypeTypeTag),
-    Enum64(BtfTypeEnum64),
-}
-
-fn to_btf_type(btf_raw_type: BtfRawType) -> Result<BtfType, binrw::Error> {
-    let kind = btf_raw_type.get_kind();
-    match kind {
-        BTF_KIND_INT => Ok(BtfType::Int(BtfTypeInteger { btf_raw_type })),
-        BTF_KIND_PTR => Ok(BtfType::Ptr(BtfTypePointer { btf_raw_type })),
-        BTF_KIND_ARRAY => Ok(BtfType::Array(BtfTypeArray { btf_raw_type })),
-        BTF_KIND_UNION => Ok(BtfType::Union(BtfTypeUnion { btf_raw_type })),
-        BTF_KIND_STRUCT => Ok(BtfType::Struct(BtfTypeStruct { btf_raw_type })),
-        BTF_KIND_ENUM => Ok(BtfType::Enum(BtfTypeEnum { btf_raw_type })),
-        BTF_KIND_FWD => Ok(BtfType::Fwd(BtfTypeFwd { btf_raw_type })),
-        BTF_KIND_TYPEDEF => Ok(BtfType::Typedef(BtfTypeTypedef { btf_raw_type })),
-        BTF_KIND_VOLATILE => Ok(BtfType::Volatile(BtfTypeVolatile { btf_raw_type })),
-        BTF_KIND_CONST => Ok(BtfType::Const(BtfTypeConst { btf_raw_type })),
-        BTF_KIND_RESTRICT => Ok(BtfType::Restrict(BtfTypeRestrict { btf_raw_type })),
-        BTF_KIND_FUNC => Ok(BtfType::Func(BtfTypeFunc { btf_raw_type })),
-        BTF_KIND_FUNC_PROTO => Ok(BtfType::FuncProto(BtfTypeFuncProto { btf_raw_type })),
-        BTF_KIND_VAR => Ok(BtfType::Var(BtfTypeVar { btf_raw_type })),
-        BTF_KIND_DATASEC => Ok(BtfType::Datasec(BtfTypeDatasec { btf_raw_type })),
-        BTF_KIND_FLOAT => Ok(BtfType::Float(BtfTypeFloat { btf_raw_type })),
-        BTF_KIND_DECL_TAG => Ok(BtfType::DeclTag(BtfTypeDeclTag { btf_raw_type })),
-        BTF_KIND_TYPE_TAG => Ok(BtfType::TypeTag(BtfTypeTypeTag { btf_raw_type })),
-        BTF_KIND_ENUM64 => Ok(BtfType::Enum64(BtfTypeEnum64 { btf_raw_type })),
-        _ => Err(binrw::Error::AssertFail {
-            pos: 0,
-            message: format!("Unknown BTF KIND {kind}"),
-        }),
     }
 }
 
@@ -718,7 +645,7 @@ mod tests {
         let type_kind = to_btf_type(btf_raw_type).unwrap();
         match type_kind {
             BtfType::Func(f) => {
-                let proto_id = f.btf_raw_type.get_type();
+                let proto_id = f.btf_raw_type.get_type_id();
 
                 assert_eq!(proto_id, 21876);
             }
