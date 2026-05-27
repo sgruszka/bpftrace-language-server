@@ -245,7 +245,7 @@ fn inner_to_btf_type(btf_raw_type: BtfRawType, type_id: u32) -> Result<BtfType, 
 #[enum_dispatch]
 trait BtfTypeTrait {
     fn kind_specific_size(&self) -> u64;
-    fn string_format(&self, split: &BtfSplit, id: u32) -> (String, String) {
+    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
         ("".to_owned(), "".to_owned())
     }
 }
@@ -255,7 +255,7 @@ impl BtfTypeTrait for BtfTypeInteger {
         4
     }
 
-    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let name = split.get_type_name(&self.btf_raw_type).to_owned();
         // TODO: bitfields ;
 
@@ -268,11 +268,11 @@ impl BtfTypeTrait for BtfTypePointer {
         0
     }
 
-    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
         let sub_type_raw = split.raw_type_from_id(sub_type_id).unwrap();
         let sub_type = inner_to_btf_type(sub_type_raw, sub_type_id).unwrap();
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let mut prefix = sub_prefix;
         prefix.push_str(" *");
@@ -286,9 +286,8 @@ impl BtfTypeTrait for BtfTypeArray {
         12
     }
 
-    fn string_format(&self, this_split: &BtfSplit, id: u32) -> (String, String) {
-        println!("ID {id}");
-        let (split, mut off) = this_split.offset_from_id(id);
+    fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
+        let (split, mut off) = this_split.offset_from_id(self.type_id);
         off += 12;
         let raw_array = split.raw_array_by_offset(off).unwrap();
         println!(
@@ -298,7 +297,7 @@ impl BtfTypeTrait for BtfTypeArray {
 
         let sub_type_raw = split.raw_type_from_id(raw_array.elem_type).unwrap();
         let sub_type = inner_to_btf_type(sub_type_raw, raw_array.elem_type).unwrap();
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split, raw_array.elem_type);
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let mut sufix = sub_sufix;
         sufix.push_str(&format!("[{}]", raw_array.nelems));
@@ -313,7 +312,7 @@ impl BtfTypeTrait for BtfTypeUnion {
         vlen * 12
     }
 
-    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let mut name = "union ".to_owned();
         name.push_str(split.get_type_name(&self.btf_raw_type));
 
@@ -327,7 +326,7 @@ impl BtfTypeTrait for BtfTypeStruct {
         vlen * 12
     }
 
-    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let mut name = "struct ".to_owned();
         name.push_str(split.get_type_name(&self.btf_raw_type));
 
@@ -341,7 +340,7 @@ impl BtfTypeTrait for BtfTypeEnum {
         vlen * 8
     }
 
-    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let mut name = "enum ".to_owned();
         name.push_str(split.get_type_name(&self.btf_raw_type));
 
@@ -372,11 +371,11 @@ impl BtfTypeTrait for BtfTypeConst {
         0
     }
 
-    fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
         let sub_type_raw = split.raw_type_from_id(sub_type_id).unwrap();
         let sub_type = inner_to_btf_type(sub_type_raw, sub_type_id).unwrap();
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let prefix = match sub_type {
             BtfType::Ptr(_) => {
@@ -724,7 +723,7 @@ mod tests {
         let btf_raw_type = split.raw_type_from_id(23).unwrap();
 
         let btf_type = inner_to_btf_type(btf_raw_type, 23).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct kernel_param");
     }
 
@@ -734,12 +733,12 @@ mod tests {
 
         let btf_raw_type = split.raw_type_from_id(111).unwrap();
         let btf_type = inner_to_btf_type(btf_raw_type, 111).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct posix_acl *");
 
         let btf_raw_type = split.raw_type_from_id(120).unwrap();
         let btf_type = inner_to_btf_type(btf_raw_type, 120).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct inode_operations *");
     }
 
@@ -750,17 +749,17 @@ mod tests {
 
         let btf_raw_type = base.raw_type_from_id(1708).unwrap();
         let btf_type = inner_to_btf_type(btf_raw_type, 1708).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&base, 0);
+        let (prefix, _sufix) = btf_type.string_format(&base);
         assert_eq!(prefix, "const struct device *");
 
         let btf_raw_type = split.raw_type_from_id(140493).unwrap();
         let btf_type = inner_to_btf_type(btf_raw_type, 140493).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct device *const");
 
         let btf_raw_type = split.raw_type_from_id(140494).unwrap();
         let btf_type = inner_to_btf_type(btf_raw_type, 140494).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split, 0);
+        let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct device *const");
     }
 
@@ -771,13 +770,13 @@ mod tests {
 
         let btf_raw_type = split.raw_type_from_id(140495).unwrap();
         let btf_type = inner_to_btf_type(btf_raw_type, 140495).unwrap();
-        let (prefix, sufix) = btf_type.string_format(&split, 140495);
+        let (prefix, sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "int");
         assert_eq!(sufix, "[10]");
 
         let btf_raw_type = split.raw_type_from_id(140496).unwrap();
         let btf_type = inner_to_btf_type(btf_raw_type, 140496).unwrap();
-        let (prefix, sufix) = btf_type.string_format(&split, 140496);
+        let (prefix, sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct device *");
         assert_eq!(sufix, "[2]");
 
