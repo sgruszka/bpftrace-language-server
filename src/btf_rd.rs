@@ -119,6 +119,8 @@ macro_rules! define_btf_types {
             #[derive(Debug)]
             struct $struct_name {
                 btf_raw_type: BtfRawType,
+                type_id: u32
+
             }
         )*
 
@@ -154,28 +156,85 @@ define_btf_types! {
     Enum64    => BtfTypeEnum64,
 }
 
-fn to_btf_type(btf_raw_type: BtfRawType) -> Result<BtfType, binrw::Error> {
+fn to_btf_type(btf_raw_type: BtfRawType, type_id: u32) -> Result<BtfType, binrw::Error> {
     let kind = btf_raw_type.get_kind();
     match kind {
-        BTF_KIND_INT => Ok(BtfType::Int(BtfTypeInteger { btf_raw_type })),
-        BTF_KIND_PTR => Ok(BtfType::Ptr(BtfTypePointer { btf_raw_type })),
-        BTF_KIND_ARRAY => Ok(BtfType::Array(BtfTypeArray { btf_raw_type })),
-        BTF_KIND_UNION => Ok(BtfType::Union(BtfTypeUnion { btf_raw_type })),
-        BTF_KIND_STRUCT => Ok(BtfType::Struct(BtfTypeStruct { btf_raw_type })),
-        BTF_KIND_ENUM => Ok(BtfType::Enum(BtfTypeEnum { btf_raw_type })),
-        BTF_KIND_FWD => Ok(BtfType::Fwd(BtfTypeFwd { btf_raw_type })),
-        BTF_KIND_TYPEDEF => Ok(BtfType::Typedef(BtfTypeTypedef { btf_raw_type })),
-        BTF_KIND_VOLATILE => Ok(BtfType::Volatile(BtfTypeVolatile { btf_raw_type })),
-        BTF_KIND_CONST => Ok(BtfType::Const(BtfTypeConst { btf_raw_type })),
-        BTF_KIND_RESTRICT => Ok(BtfType::Restrict(BtfTypeRestrict { btf_raw_type })),
-        BTF_KIND_FUNC => Ok(BtfType::Func(BtfTypeFunc { btf_raw_type })),
-        BTF_KIND_FUNC_PROTO => Ok(BtfType::FuncProto(BtfTypeFuncProto { btf_raw_type })),
-        BTF_KIND_VAR => Ok(BtfType::Var(BtfTypeVar { btf_raw_type })),
-        BTF_KIND_DATASEC => Ok(BtfType::Datasec(BtfTypeDatasec { btf_raw_type })),
-        BTF_KIND_FLOAT => Ok(BtfType::Float(BtfTypeFloat { btf_raw_type })),
-        BTF_KIND_DECL_TAG => Ok(BtfType::DeclTag(BtfTypeDeclTag { btf_raw_type })),
-        BTF_KIND_TYPE_TAG => Ok(BtfType::TypeTag(BtfTypeTypeTag { btf_raw_type })),
-        BTF_KIND_ENUM64 => Ok(BtfType::Enum64(BtfTypeEnum64 { btf_raw_type })),
+        BTF_KIND_INT => Ok(BtfType::Int(BtfTypeInteger {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_PTR => Ok(BtfType::Ptr(BtfTypePointer {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_ARRAY => Ok(BtfType::Array(BtfTypeArray {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_UNION => Ok(BtfType::Union(BtfTypeUnion {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_STRUCT => Ok(BtfType::Struct(BtfTypeStruct {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_ENUM => Ok(BtfType::Enum(BtfTypeEnum {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_FWD => Ok(BtfType::Fwd(BtfTypeFwd {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_TYPEDEF => Ok(BtfType::Typedef(BtfTypeTypedef {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_VOLATILE => Ok(BtfType::Volatile(BtfTypeVolatile {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_CONST => Ok(BtfType::Const(BtfTypeConst {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_RESTRICT => Ok(BtfType::Restrict(BtfTypeRestrict {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_FUNC => Ok(BtfType::Func(BtfTypeFunc {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_FUNC_PROTO => Ok(BtfType::FuncProto(BtfTypeFuncProto {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_VAR => Ok(BtfType::Var(BtfTypeVar {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_DATASEC => Ok(BtfType::Datasec(BtfTypeDatasec {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_FLOAT => Ok(BtfType::Float(BtfTypeFloat {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_DECL_TAG => Ok(BtfType::DeclTag(BtfTypeDeclTag {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_TYPE_TAG => Ok(BtfType::TypeTag(BtfTypeTypeTag {
+            btf_raw_type,
+            type_id,
+        })),
+        BTF_KIND_ENUM64 => Ok(BtfType::Enum64(BtfTypeEnum64 {
+            btf_raw_type,
+            type_id,
+        })),
         _ => Err(binrw::Error::AssertFail {
             pos: 0,
             message: format!("Unknown BTF KIND {kind}"),
@@ -212,7 +271,7 @@ impl BtfTypeTrait for BtfTypePointer {
     fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
         let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
-        let sub_type = to_btf_type(sub_type_raw).unwrap();
+        let sub_type = to_btf_type(sub_type_raw, sub_type_id).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
 
         let mut prefix = sub_prefix;
@@ -238,7 +297,7 @@ impl BtfTypeTrait for BtfTypeArray {
         );
 
         let sub_type_raw = split.raw_type_by_id(raw_array.elem_type as usize).unwrap();
-        let sub_type = to_btf_type(sub_type_raw).unwrap();
+        let sub_type = to_btf_type(sub_type_raw, raw_array.elem_type).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, raw_array.elem_type);
 
         let mut sufix = sub_sufix;
@@ -316,7 +375,7 @@ impl BtfTypeTrait for BtfTypeConst {
     fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
         let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
-        let sub_type = to_btf_type(sub_type_raw).unwrap();
+        let sub_type = to_btf_type(sub_type_raw, sub_type_id).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
 
         let prefix = match sub_type {
@@ -459,10 +518,11 @@ impl BtfSplit {
         while read < header.type_len {
             let cur_pos = reader.stream_position()? as u32; // TODO fix usize to u32
             offsets.push(cur_pos);
+            let type_id = (start_id + offsets.len() - 1) as u32;
 
             let btf_type = BtfRawType::read_ne(&mut reader)?;
             let name_off = btf_type.name_off as usize;
-            let btf_kind_type = to_btf_type(btf_type)?;
+            let btf_kind_type = to_btf_type(btf_type, type_id)?;
             let size = btf_kind_type.kind_specific_size();
 
             if let BtfType::Func(_) = btf_kind_type {
@@ -480,7 +540,7 @@ impl BtfSplit {
                 assert!(name_pos < data.len());
 
                 let name = unsafe { CStr::from_ptr(ptr.add(name_pos)).to_str().unwrap() };
-                functions.insert(name.to_owned(), cur_pos);
+                functions.insert(name.to_owned(), type_id);
             }
 
             reader.seek(SeekFrom::Current(size as i64))?;
@@ -619,7 +679,7 @@ mod tests {
         assert_eq!(atomic_typedef_raw.get_kind(), BTF_KIND_TYPEDEF);
         assert_eq!(split.get_type_name(&atomic_typedef_raw), "atomic_t");
 
-        let atomic_typedef = to_btf_type(atomic_typedef_raw).unwrap();
+        let atomic_typedef = to_btf_type(atomic_typedef_raw, 211).unwrap();
         assert_eq!(atomic_typedef.kind_specific_size(), 0);
     }
 
@@ -630,19 +690,19 @@ mod tests {
         assert_eq!(char.get_kind(), BTF_KIND_INT);
         assert_eq!(split.get_type_name(&char), "char");
 
-        let char = to_btf_type(char).unwrap();
+        let char = to_btf_type(char, 9).unwrap();
         assert_eq!(char.kind_specific_size(), 4);
     }
 
     #[test]
     fn test_vmlinux_do_brk_flags() {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
-        let func_off = split.functions.get("do_brk_flags").unwrap();
+        let func_id = split.functions.get("do_brk_flags").unwrap();
 
-        let btf_raw_type = split.raw_type_by_offset(*func_off).unwrap();
+        let btf_raw_type = split.raw_type_by_id(*func_id as usize).unwrap();
         assert_eq!(split.get_type_name(&btf_raw_type), "do_brk_flags");
 
-        let type_kind = to_btf_type(btf_raw_type).unwrap();
+        let type_kind = to_btf_type(btf_raw_type, *func_id).unwrap();
         match type_kind {
             BtfType::Func(f) => {
                 let proto_id = f.btf_raw_type.get_type_id();
@@ -658,7 +718,7 @@ mod tests {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
         let btf_raw_type = split.raw_type_by_id(23).unwrap();
 
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 23).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split, 0);
         assert_eq!(prefix, "struct kernel_param");
     }
@@ -668,12 +728,12 @@ mod tests {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
 
         let btf_raw_type = split.raw_type_by_id(111).unwrap();
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 111).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split, 0);
         assert_eq!(prefix, "struct posix_acl *");
 
         let btf_raw_type = split.raw_type_by_id(120).unwrap();
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 120).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split, 0);
         assert_eq!(prefix, "const struct inode_operations *");
     }
@@ -684,17 +744,17 @@ mod tests {
         let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
 
         let btf_raw_type = base.raw_type_by_id(1708).unwrap();
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 1708).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&base, 0);
         assert_eq!(prefix, "const struct device *");
 
         let btf_raw_type = split.raw_type_by_id(140493).unwrap();
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 140493).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split, 0);
         assert_eq!(prefix, "const struct device *const");
 
         let btf_raw_type = split.raw_type_by_id(140494).unwrap();
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 140494).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split, 0);
         assert_eq!(prefix, "struct device *const");
     }
@@ -705,13 +765,13 @@ mod tests {
         let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
 
         let btf_raw_type = split.raw_type_by_id(140495).unwrap();
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 140495).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split, 140495);
         assert_eq!(prefix, "int");
         assert_eq!(sufix, "[10]");
 
         let btf_raw_type = split.raw_type_by_id(140496).unwrap();
-        let btf_type = to_btf_type(btf_raw_type).unwrap();
+        let btf_type = to_btf_type(btf_raw_type, 140496).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split, 140496);
         assert_eq!(prefix, "const struct device *");
         assert_eq!(sufix, "[2]");
