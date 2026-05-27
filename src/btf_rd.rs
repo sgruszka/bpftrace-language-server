@@ -270,7 +270,7 @@ impl BtfTypeTrait for BtfTypePointer {
 
     fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
+        let sub_type_raw = split.raw_type_by_id(sub_type_id).unwrap();
         let sub_type = to_btf_type(sub_type_raw, sub_type_id).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
 
@@ -288,7 +288,7 @@ impl BtfTypeTrait for BtfTypeArray {
 
     fn string_format(&self, this_split: &BtfSplit, id: u32) -> (String, String) {
         println!("ID {id}");
-        let (split, mut off) = this_split.offset_by_id(id as usize);
+        let (split, mut off) = this_split.offset_by_id(id);
         off += 12;
         let raw_array = split.raw_array_by_offset(off).unwrap();
         println!(
@@ -296,7 +296,7 @@ impl BtfTypeTrait for BtfTypeArray {
             raw_array.elem_type, raw_array.nelems
         );
 
-        let sub_type_raw = split.raw_type_by_id(raw_array.elem_type as usize).unwrap();
+        let sub_type_raw = split.raw_type_by_id(raw_array.elem_type).unwrap();
         let sub_type = to_btf_type(sub_type_raw, raw_array.elem_type).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, raw_array.elem_type);
 
@@ -374,7 +374,7 @@ impl BtfTypeTrait for BtfTypeConst {
 
     fn string_format(&self, split: &BtfSplit, _id: u32) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type_raw = split.raw_type_by_id(sub_type_id as usize).unwrap();
+        let sub_type_raw = split.raw_type_by_id(sub_type_id).unwrap();
         let sub_type = to_btf_type(sub_type_raw, sub_type_id).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split, sub_type_id);
 
@@ -477,8 +477,8 @@ impl AsRef<[u8]> for BtfData {
 
 struct BtfSplit {
     header: BtfHeader,
-    start_id: usize,
-    start_str_off: usize,
+    start_id: u32,
+    start_str_off: u32,
     base_split: Option<Rc<BtfSplit>>,
     offsets: Vec<u32>,
     data: BtfData,
@@ -498,8 +498,8 @@ impl BtfSplit {
             Some(base_split) => {
                 let vec: Vec<u8> = std::fs::read(path)?;
                 let data = BtfData::Vector(vec);
-                let start_id = base_split.start_id + base_split.offsets.len();
-                let start_str_off = base_split.header.str_len as usize;
+                let start_id = base_split.start_id + (base_split.offsets.len() as u32);
+                let start_str_off = base_split.header.str_len;
                 (start_id, start_str_off, data, Some(base_split))
             }
         };
@@ -518,16 +518,16 @@ impl BtfSplit {
         while read < header.type_len {
             let cur_pos = reader.stream_position()? as u32; // TODO fix usize to u32
             offsets.push(cur_pos);
-            let type_id = (start_id + offsets.len() - 1) as u32;
+            let type_id = start_id + (offsets.len() as u32) - 1;
 
             let btf_type = BtfRawType::read_ne(&mut reader)?;
-            let name_off = btf_type.name_off as usize;
+            let name_off = btf_type.name_off;
             let btf_kind_type = to_btf_type(btf_type, type_id)?;
             let size = btf_kind_type.kind_specific_size();
 
             if let BtfType::Func(_) = btf_kind_type {
                 // TODO: common code with get_type_name()
-                let start_off = (header.hdr_len + header.str_off) as usize;
+                let start_off = header.hdr_len + header.str_off;
                 let mut ptr = data.as_ptr() as *const c_char;
                 let mut name_pos = start_off + name_off;
                 if let Some(ref base_split) = base_split {
@@ -537,9 +537,9 @@ impl BtfSplit {
                         name_pos -= start_str_off;
                     }
                 }
-                assert!(name_pos < data.len());
+                assert!((name_pos as usize) < data.len());
 
-                let name = unsafe { CStr::from_ptr(ptr.add(name_pos)).to_str().unwrap() };
+                let name = unsafe { CStr::from_ptr(ptr.add(name_pos as usize)).to_str().unwrap() };
                 functions.insert(name.to_owned(), type_id);
             }
 
@@ -560,7 +560,7 @@ impl BtfSplit {
     }
 }
 
-fn inner_raw_type_by_id(btf_split: &BtfSplit, id: usize) -> binrw::BinResult<BtfRawType> {
+fn inner_raw_type_by_id(btf_split: &BtfSplit, id: u32) -> binrw::BinResult<BtfRawType> {
     if id == 0 {
         return Ok(BtfRawType {
             name_off: 0,
@@ -576,7 +576,7 @@ fn inner_raw_type_by_id(btf_split: &BtfSplit, id: usize) -> binrw::BinResult<Btf
         });
     }
 
-    let idx = id - btf_split.start_id;
+    let idx = (id - btf_split.start_id) as usize;
     if idx >= btf_split.offsets.len() {
         return Err(binrw::Error::AssertFail {
             pos: 0,
@@ -587,19 +587,19 @@ fn inner_raw_type_by_id(btf_split: &BtfSplit, id: usize) -> binrw::BinResult<Btf
     btf_split.raw_type_by_offset(btf_split.offsets[idx])
 }
 
-fn inner_get_type_name(btf_split: &BtfSplit, name_off: usize) -> &str {
-    let start_off = (btf_split.header.hdr_len + btf_split.header.str_off) as usize;
+fn inner_get_type_name(btf_split: &BtfSplit, name_off: u32) -> &str {
+    let start_off = btf_split.header.hdr_len + btf_split.header.str_off;
     let pos = start_off + name_off;
-    assert!(pos < btf_split.data.len());
+    assert!((pos as usize) < btf_split.data.len());
 
     let ptr = btf_split.data.as_ptr() as *const c_char;
-    let name = unsafe { CStr::from_ptr(ptr.add(pos)).to_str().unwrap() };
+    let name = unsafe { CStr::from_ptr(ptr.add(pos as usize)).to_str().unwrap() };
 
     name
 }
 
 impl BtfSplit {
-    fn raw_type_by_id(&self, id: usize) -> binrw::BinResult<BtfRawType> {
+    fn raw_type_by_id(&self, id: u32) -> binrw::BinResult<BtfRawType> {
         if id < self.start_id {
             if let Some(base_split) = &self.base_split {
                 return inner_raw_type_by_id(base_split, id);
@@ -615,7 +615,7 @@ impl BtfSplit {
     }
 
     fn get_type_name(&self, btf_raw_type: &BtfRawType) -> &str {
-        let name_off = btf_raw_type.name_off as usize;
+        let name_off = btf_raw_type.name_off;
         if name_off < self.start_str_off {
             if let Some(base_split) = &self.base_split {
                 return inner_get_type_name(base_split, name_off);
@@ -643,16 +643,16 @@ impl BtfSplit {
         Ok(btf_raw_array)
     }
 
-    fn offset_by_id(&self, id: usize) -> (&BtfSplit, u32) {
+    fn offset_by_id(&self, id: u32) -> (&BtfSplit, u32) {
         if id == 0 {
             return (self, 0);
         }
 
         if id >= self.start_id {
-            let idx = id - self.start_id;
+            let idx = (id - self.start_id) as usize;
             (self, self.offsets[idx])
         } else if let Some(base_split) = &self.base_split {
-            let idx = id - base_split.start_id;
+            let idx = (id - base_split.start_id) as usize;
             (base_split, base_split.offsets[idx])
         } else {
             (self, 0) // TODO
@@ -699,7 +699,7 @@ mod tests {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
         let func_id = split.functions.get("do_brk_flags").unwrap();
 
-        let btf_raw_type = split.raw_type_by_id(*func_id as usize).unwrap();
+        let btf_raw_type = split.raw_type_by_id(*func_id).unwrap();
         assert_eq!(split.get_type_name(&btf_raw_type), "do_brk_flags");
 
         let type_kind = to_btf_type(btf_raw_type, *func_id).unwrap();
