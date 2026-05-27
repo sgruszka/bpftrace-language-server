@@ -31,7 +31,7 @@ impl BtfHeader {
     fn read<R: Read + Seek>(reader: &mut R) -> binrw::BinResult<Self> {
         let hdr = BtfHeader::read_ne(reader)?;
         if hdr.magic != 0xeb9fu16 {
-            if hdr.magic == 0x9feb {
+            if hdr.magic == 0x9febu16 {
                 return Err(binrw::Error::AssertFail {
                     pos: 0,
                     message: "BTF data not in native endian".to_owned(),
