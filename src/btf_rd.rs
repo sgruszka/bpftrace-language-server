@@ -353,11 +353,40 @@ impl BtfTypeTrait for BtfTypeTypedef {
     fn kind_specific_size(&self) -> u64 {
         0
     }
+
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
+        let name = split.get_type_name(&self.btf_raw_type).to_owned();
+        // TODO: bitfields ;
+
+        (name.to_owned(), "".to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeVolatile {
     fn kind_specific_size(&self) -> u64 {
         0
+    }
+
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
+        // TODO: merge with "const"
+        let sub_type_id = self.btf_raw_type.get_type_id();
+        let sub_type = split.type_from_id(sub_type_id).unwrap();
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
+
+        let prefix = match sub_type {
+            BtfType::Ptr(_) => {
+                let mut prefix = sub_prefix;
+                prefix.push_str("volatile");
+                prefix
+            }
+            _ => {
+                let mut prefix = "volatile ".to_owned();
+                prefix.push_str(&sub_prefix);
+                prefix
+            }
+        };
+
+        (prefix, sub_sufix.to_owned())
     }
 }
 
@@ -441,6 +470,13 @@ impl BtfTypeTrait for BtfTypeEnum64 {
     fn kind_specific_size(&self) -> u64 {
         let vlen = self.btf_raw_type.get_vlen() as u64;
         vlen * 12
+    }
+
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
+        let mut name = "enum ".to_owned();
+        name.push_str(split.get_type_name(&self.btf_raw_type));
+
+        (name, "".to_owned())
     }
 }
 
