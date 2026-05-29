@@ -289,7 +289,7 @@ impl BtfTypeTrait for BtfTypeArray {
     fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
         let (split, mut off) = this_split.offset_from_id(self.type_id);
         off += 12;
-        let raw_array = split.raw_array_by_offset(off).unwrap();
+        let raw_array: BtfRawArray = split.read_raw_struct(off).unwrap();
 
         let sub_type = split.type_from_id(raw_array.elem_type).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
@@ -669,12 +669,16 @@ impl BtfSplit {
         inner_get_type_name(self, name_off)
     }
 
-    fn raw_array_by_offset(&self, off: u32) -> binrw::BinResult<BtfRawArray> {
+    fn read_raw_struct<T>(&self, off: u32) -> binrw::BinResult<T>
+    where
+        T: BinRead,
+        for<'a> T::Args<'a>: Default,
+    {
         let mut reader = Cursor::new(&self.data);
         reader.seek(SeekFrom::Start(off as u64))?;
 
-        let btf_raw_array = BtfRawArray::read_ne(&mut reader)?;
-        Ok(btf_raw_array)
+        let btf_raw_struct = T::read_ne(&mut reader)?;
+        Ok(btf_raw_struct)
     }
 
     fn offset_from_id(&self, id: u32) -> (&BtfSplit, u32) {
