@@ -81,6 +81,12 @@ struct BtfRawArray {
     nelems: u32,
 }
 
+#[derive(Debug, BinRead)]
+struct BtfRawParam {
+    name_off: u32,
+    type_id: u32,
+}
+
 macro_rules! u32_get_field {
     ($value:expr, $from:literal, $to:literal) => {{
         const _: () = assert!($to >= 0 && $to <= 31);
@@ -434,6 +440,47 @@ impl BtfTypeTrait for BtfTypeFuncProto {
         let vlen = self.btf_raw_type.get_vlen() as u64;
         vlen * 8
     }
+
+    fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
+        let (split, mut off) = this_split.offset_from_id(self.type_id);
+        off += 12;
+
+        let mut func_proto = "(".to_owned();
+
+        let vlen = self.btf_raw_type.get_vlen();
+        for p in 0..vlen {
+            let raw_param: BtfRawParam = split.read_raw_struct(off).unwrap();
+            off += 8;
+
+            let sub_type = this_split.type_from_id(raw_param.type_id).unwrap();
+            let (sub_prefix, sub_sufix) = sub_type.string_format(this_split);
+
+            let name = this_split.get_name(raw_param.name_off);
+
+            func_proto.push_str(&format!("{} {}{}", sub_prefix, name, sub_sufix));
+
+            if p < vlen - 1 {
+                func_proto.push_str(", ");
+            }
+        }
+
+        func_proto.push_str(")");
+
+        let ret_type_id = self.btf_raw_type.get_type_id();
+
+        // TODO: make this generic
+        let return_type = if ret_type_id == 0 {
+            "void".to_owned()
+        } else {
+            let ret_sub_type = this_split.type_from_id(ret_type_id).unwrap();
+            let (mut ret_type, ret_sufix) = ret_sub_type.string_format(this_split);
+            ret_type.push_str(" ");
+            ret_type.push_str(&ret_sufix);
+            ret_type
+        };
+
+        (return_type, func_proto.to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeVar {
@@ -624,7 +671,7 @@ fn inner_raw_type_from_id(btf_split: &BtfSplit, id: u32) -> binrw::BinResult<Btf
     inner_raw_type_from_offset(&btf_split.data, btf_split.offsets[idx])
 }
 
-fn inner_get_type_name(btf_split: &BtfSplit, name_off: u32) -> &str {
+fn inner_get_name(btf_split: &BtfSplit, name_off: u32) -> &str {
     let start_off = btf_split.header.hdr_len + btf_split.header.str_off;
     let pos = start_off + name_off;
     assert!((pos as usize) < btf_split.data.len());
@@ -658,15 +705,19 @@ impl BtfSplit {
 
     fn get_type_name(&self, btf_raw_type: &BtfRawType) -> &str {
         let name_off = btf_raw_type.name_off;
+        self.get_name(name_off)
+    }
+
+    fn get_name(&self, name_off: u32) -> &str {
         if name_off < self.start_str_off {
             if let Some(base_split) = &self.base_split {
-                return inner_get_type_name(base_split, name_off);
+                return inner_get_name(base_split, name_off);
             } else {
                 return ""; // TODO
             }
         }
 
-        inner_get_type_name(self, name_off)
+        inner_get_name(self, name_off - self.start_str_off)
     }
 
     fn read_raw_struct<T>(&self, off: u32) -> binrw::BinResult<T>
@@ -806,5 +857,19 @@ mod tests {
         assert_eq!(sufix, "[2]");
 
         // TODO test array[N][M]
+    }
+
+    #[test]
+    fn test_vmlinux_func_proto() {
+        let base = Rc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
+        let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
+
+        let btf_type = split.type_from_id(140995).unwrap();
+        let (prefix, sufix) = btf_type.string_format(&split);
+        assert_eq!(prefix, "void");
+        assert_eq!(
+            sufix,
+            "(struct sk_buff * skb, struct txentry_desc * txdesc)"
+        );
     }
 }
