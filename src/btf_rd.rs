@@ -47,6 +47,7 @@ impl BtfHeader {
     }
 }
 
+const BTF_KIND_VOID: u32 = 0;
 const BTF_KIND_INT: u32 = 1;
 const BTF_KIND_PTR: u32 = 2;
 const BTF_KIND_ARRAY: u32 = 3;
@@ -141,6 +142,7 @@ macro_rules! define_btf_types {
 }
 
 define_btf_types! {
+    Void      => BtfTypeVoid,
     Int       => BtfTypeInteger,
     Ptr       => BtfTypePointer,
     Array     => BtfTypeArray,
@@ -165,6 +167,10 @@ define_btf_types! {
 fn inner_to_btf_type(btf_raw_type: BtfRawType, type_id: u32) -> Result<BtfType, binrw::Error> {
     let kind = btf_raw_type.get_kind();
     match kind {
+        BTF_KIND_VOID => Ok(BtfType::Void(BtfTypeVoid {
+            btf_raw_type,
+            type_id,
+        })),
         BTF_KIND_INT => Ok(BtfType::Int(BtfTypeInteger {
             btf_raw_type,
             type_id,
@@ -256,6 +262,15 @@ trait BtfTypeTrait {
     }
 }
 
+impl BtfTypeTrait for BtfTypeVoid {
+    fn kind_specific_size(&self) -> u64 {
+        0
+    }
+
+    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
+        ("void".to_owned(), "".to_owned())
+    }
+}
 impl BtfTypeTrait for BtfTypeInteger {
     fn kind_specific_size(&self) -> u64 {
         4
@@ -468,18 +483,14 @@ impl BtfTypeTrait for BtfTypeFuncProto {
 
         let ret_type_id = self.btf_raw_type.get_type_id();
 
-        // TODO: make this generic
-        let return_type = if ret_type_id == 0 {
-            "void".to_owned()
-        } else {
-            let ret_sub_type = this_split.type_from_id(ret_type_id).unwrap();
-            let (mut ret_type, ret_sufix) = ret_sub_type.string_format(this_split);
+        let ret_sub_type = this_split.type_from_id(ret_type_id).unwrap();
+        let (mut ret_type, ret_sufix) = ret_sub_type.string_format(this_split);
+        if !ret_sufix.is_empty() {
             ret_type.push_str(" ");
             ret_type.push_str(&ret_sufix);
-            ret_type
-        };
+        }
 
-        (return_type, func_proto.to_owned())
+        (ret_type, func_proto.to_owned())
     }
 }
 
@@ -684,7 +695,9 @@ fn inner_get_name(btf_split: &BtfSplit, name_off: u32) -> &str {
 
 impl BtfSplit {
     fn raw_type_from_id(&self, id: u32) -> binrw::BinResult<BtfRawType> {
-        if id < self.start_id {
+        if id == 0 {
+            return inner_raw_type_from_id(self, id);
+        } else if id < self.start_id {
             if let Some(base_split) = &self.base_split {
                 return inner_raw_type_from_id(base_split, id);
             } else {
@@ -733,9 +746,7 @@ impl BtfSplit {
     }
 
     fn offset_from_id(&self, id: u32) -> (&BtfSplit, u32) {
-        if id == 0 {
-            return (self, 0);
-        }
+        assert!(id != 0);
 
         if id >= self.start_id {
             let idx = (id - self.start_id) as usize;
@@ -813,6 +824,10 @@ mod tests {
     #[test]
     fn test_vmlinux_pointers() {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+
+        let btf_type = split.type_from_id(5).unwrap();
+        let (prefix, _sufix) = btf_type.string_format(&split);
+        assert_eq!(prefix, "void *");
 
         let btf_type = split.type_from_id(111).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
