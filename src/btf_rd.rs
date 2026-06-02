@@ -538,6 +538,36 @@ impl BtfTypeTrait for BtfTypeEnum64 {
     }
 }
 
+struct BtfParam {
+    name: String,
+    type_id: u32,
+}
+
+impl BtfTypeFunc {
+    fn parameters(self: &Self, this_split: &BtfSplit) -> Vec<BtfParam> {
+        let func_proto_id = self.btf_raw_type.get_type_id();
+
+        let (split, mut off) = this_split.offset_from_id(func_proto_id);
+        let raw_func_proto: BtfRawType = split.read_raw_struct(off).unwrap();
+        off += 12;
+
+        let mut params: Vec<BtfParam> = Vec::new();
+
+        let vlen = raw_func_proto.get_vlen();
+        for _ in 0..vlen {
+            let raw_param: BtfRawParam = split.read_raw_struct(off).unwrap();
+            off += 8;
+
+            let name = this_split.get_name(raw_param.name_off).to_owned();
+            let type_id = raw_param.type_id;
+
+            params.push(BtfParam { name, type_id });
+        }
+
+        params
+    }
+}
+
 enum BtfData {
     MemoryMap(Mmap),
     Vector(Vec<u8>),
@@ -886,5 +916,34 @@ mod tests {
             sufix,
             "(struct sk_buff * skb, struct txentry_desc * txdesc)"
         );
+    }
+
+    #[test]
+    fn test_vmlinux_func_parameters() {
+        let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+        let btf_type = split.type_from_id(36752).unwrap();
+
+        match btf_type {
+            BtfType::Func(func) => {
+                let func_name = split.get_type_name(&func.btf_raw_type);
+                assert_eq!(func_name, "vfs_open");
+
+                let params = func.parameters(&split);
+                assert_eq!(params.len(), 2);
+
+                assert_eq!(params[0].name, "path");
+                assert_eq!(params[0].type_id, 1920);
+                let btf_type = split.type_from_id(params[0].type_id).unwrap();
+                let (prefix, _sufix) = btf_type.string_format(&split);
+                assert_eq!("const struct path *", prefix);
+
+                assert_eq!(params[1].name, "file");
+                assert_eq!(params[1].type_id, 216);
+                let btf_type = split.type_from_id(params[1].type_id).unwrap();
+                let (prefix, _sufix) = btf_type.string_format(&split);
+                assert_eq!("struct file *", prefix);
+            }
+            _ => panic!(),
+        }
     }
 }
