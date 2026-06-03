@@ -602,6 +602,8 @@ struct BtfSplit {
     functions: HashMap<String, u32>,
 }
 
+type Btf = BtfSplit;
+
 impl BtfSplit {
     fn build(base: Option<Rc<BtfSplit>>, path: &str) -> binrw::BinResult<Self> {
         let (start_id, start_str_off, data, base_split) = match base {
@@ -788,6 +790,16 @@ impl BtfSplit {
             (self, 0) // TODO
         }
     }
+
+    fn find_function(&self, func_name: &str) -> Option<BtfTypeFunc> {
+        let id = self.functions.get(func_name)?;
+        let btf_type = self.type_from_id(*id).ok()?;
+
+        match btf_type {
+            BtfType::Func(f) => Some(f),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -921,7 +933,8 @@ mod tests {
     #[test]
     fn test_vmlinux_func_parameters() {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
-        let btf_type = split.type_from_id(36752).unwrap();
+        let func = split.find_function("vfs_open").unwrap();
+        let btf_type = split.type_from_id(func.type_id).unwrap();
 
         match btf_type {
             BtfType::Func(func) => {
