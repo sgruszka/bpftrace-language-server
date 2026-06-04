@@ -8,10 +8,10 @@ use std::rc::Rc;
 
 use std::ops::Deref;
 
+use crate::log_mod::{self, BTFRD};
+use crate::{log_dbg, log_err};
 use std::ffi::CStr;
 use std::os::raw::c_char;
-// use crate::log_mod::{self, BTFRD};
-// use crate::{log_dbg, log_err};
 
 #[derive(Debug, BinRead)]
 // #[br(magic = 0xeb9fu16)]
@@ -538,20 +538,21 @@ impl BtfTypeTrait for BtfTypeEnum64 {
     }
 }
 
-struct BtfParam {
+// For struct/union fields, function parameters, etc ...
+struct BtfVariable {
     name: String,
     type_id: u32,
 }
 
 impl BtfTypeFunc {
-    fn parameters(self: &Self, this_split: &BtfSplit) -> Vec<BtfParam> {
+    fn parameters(self: &Self, this_split: &BtfSplit) -> Vec<BtfVariable> {
         let func_proto_id = self.btf_raw_type.get_type_id();
 
         let (split, mut off) = this_split.offset_from_id(func_proto_id);
         let raw_func_proto: BtfRawType = split.read_raw_struct(off).unwrap();
         off += 12;
 
-        let mut params: Vec<BtfParam> = Vec::new();
+        let mut params: Vec<BtfVariable> = Vec::new();
 
         let vlen = raw_func_proto.get_vlen();
         for _ in 0..vlen {
@@ -561,7 +562,7 @@ impl BtfTypeFunc {
             let name = this_split.get_name(raw_param.name_off).to_owned();
             let type_id = raw_param.type_id;
 
-            params.push(BtfParam { name, type_id });
+            params.push(BtfVariable { name, type_id });
         }
 
         params
@@ -602,7 +603,7 @@ struct BtfSplit {
     functions: HashMap<String, u32>,
 }
 
-type Btf = BtfSplit;
+pub type Btf = BtfSplit;
 
 impl BtfSplit {
     fn build(base: Option<Rc<BtfSplit>>, path: &str) -> binrw::BinResult<Self> {
@@ -802,6 +803,50 @@ impl BtfSplit {
     }
 }
 
+pub fn btf_setup_module(module: &str) -> Option<Btf> {
+    let btf = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").ok()?;
+    if module.is_empty() || module == "vmlinux" {
+        return Some(btf);
+    }
+
+    let path = "/sys/kernel/btf/".to_string() + module;
+    let base = Rc::new(btf);
+    if let Ok(split) = BtfSplit::build(Some(Rc::clone(&base)), &path) {
+        log_dbg!(BTFRD, "Loaded btf for {}", path);
+        return Some(split);
+    }
+
+    None
+}
+
+pub struct BtfFunction {
+    name: String,
+    proto: String,
+    args: Vec<BtfVariable>,
+}
+
+pub fn btf_resolve_func(btf: &Btf, func_name: &str, need_retval: bool) -> Option<BtfFunction> {
+    log_dbg!(BTFRD, "Looking for function {}", func_name);
+
+    let func = btf.find_function(func_name)?;
+    let name = btf.get_type_name(&func.btf_raw_type);
+
+    let func_proto_id = func.btf_raw_type.get_type_id();
+    let func_proto = btf.type_from_id(func_proto_id).ok()?;
+    let (ret_type, args) = func_proto.string_format(btf);
+
+    let mut proto = String::new();
+    proto.push_str(&ret_type);
+    proto.push_str(" ");
+    proto.push_str(name);
+    proto.push_str(&args);
+
+    let args = func.parameters(btf);
+    let name = name.to_string();
+
+    Some(BtfFunction { name, proto, args })
+}
+
 #[cfg(test)]
 mod tests {
     const VMLINUX_BTF: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
@@ -958,5 +1003,22 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn test_resolve_alloc_pid() {
+        let btf = btf_setup_module("vmlinux").unwrap();
+
+        let f = btf_resolve_func(&btf, "alloc_pid", true).unwrap();
+        assert_eq!(f.name, "alloc_pid");
+        // TODO spaces after "*"
+        assert_eq!(
+            f.proto,
+            "struct pid * alloc_pid(struct pid_namespace * ns, pid_t * set_tid, size_t set_tid_size)"
+        );
+        assert_eq!(f.args.len(), 3);
+        assert_eq!(f.args[0].name, "ns");
+        assert_eq!(f.args[1].name, "set_tid");
+        assert_eq!(f.args[2].name, "set_tid_size");
     }
 }
