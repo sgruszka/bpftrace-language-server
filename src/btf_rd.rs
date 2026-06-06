@@ -88,6 +88,13 @@ struct BtfRawParam {
     type_id: u32,
 }
 
+#[derive(Debug, BinRead)]
+struct BtfRawMember {
+    name_off: u32,
+    type_id: u32,
+    offset: u32,
+}
+
 macro_rules! u32_get_field {
     ($value:expr, $from:literal, $to:literal) => {{
         const _: () = assert!($to >= 0 && $to <= 31);
@@ -569,6 +576,28 @@ impl BtfTypeFunc {
     }
 }
 
+impl BtfTypeStruct {
+    fn members(self: &Self, this_split: &BtfSplit) -> Vec<BtfVariable> {
+        let (split, mut off) = this_split.offset_from_id(self.type_id);
+        off += 12;
+
+        let mut members: Vec<BtfVariable> = Vec::new();
+
+        let vlen = self.btf_raw_type.get_vlen();
+        for _ in 0..vlen {
+            let raw_member: BtfRawMember = split.read_raw_struct(off).unwrap();
+            off += 12;
+
+            let name = this_split.get_name(raw_member.name_off).to_owned();
+            let type_id = raw_member.type_id;
+
+            members.push(BtfVariable { name, type_id });
+        }
+
+        members
+    }
+}
+
 enum BtfData {
     MemoryMap(Mmap),
     Vector(Vec<u8>),
@@ -905,10 +934,16 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
         let comp_type = btf.type_from_id(id).ok()?;
         let (prefix, sufix) = comp_type.string_format(btf);
         assert_eq!(sufix, "");
+
+        let members = match comp_type {
+            BtfType::Struct(s) => s.members(btf),
+            _ => panic!(),
+        };
+
         Some(BtfComposite {
             type_id: id,
             type_name: prefix,
-            members: Vec::new(),
+            members,
         })
     } else {
         None
@@ -1146,9 +1181,10 @@ mod tests {
         let inode_struct = inode_ptr.actual_type.unwrap();
         assert_eq!(inode_struct.type_name, "struct inode");
 
-        // for m in inode_struct.members {
-        //     println!("{}", m.name);
-        // }
-        // panic!();
+        assert_eq!(inode_struct.members[0].name, "i_mode");
+        assert_eq!(inode_struct.members[10].name, "i_ino");
+        assert_eq!(inode_struct.members[20].name, "i_generation");
+
+        assert_eq!(inode_struct.members.len(), 47);
     }
 }
