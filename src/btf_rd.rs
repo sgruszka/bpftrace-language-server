@@ -854,9 +854,10 @@ pub struct BtfName {
 
 pub struct BtfResolvedType {
     type_id: u32,
+    acutal_type_id: u32,
     type_prefix: String,
     type_sufix: String,
-    actual_type: BtfComposite,
+    actual_type: Option<BtfComposite>,
 }
 
 // Struct/Union
@@ -867,7 +868,61 @@ pub struct BtfComposite {
 }
 
 pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
-    todo!()
+    let mut is_composite = false;
+    let btf_type = btf.type_from_id(type_id).ok()?;
+
+    let mut id = type_id;
+    loop {
+        let btf_sub_type = btf.type_from_id(id).ok()?;
+        let sub_id = match btf_sub_type {
+            BtfType::Const(c) => c.btf_raw_type.get_type_id(),
+            BtfType::Volatile(v) => v.btf_raw_type.get_type_id(),
+            BtfType::Restrict(r) => r.btf_raw_type.get_type_id(),
+            BtfType::Ptr(p) => p.btf_raw_type.get_type_id(),
+            BtfType::Typedef(t) => t.btf_raw_type.get_type_id(),
+            // TODO: Func / Func Proto // TypeTag ...
+            BtfType::Array(_) => {
+                let (split, mut off) = btf.offset_from_id(id);
+                off += 12;
+                let raw_array: BtfRawArray = split.read_raw_struct(off).ok()?;
+
+                raw_array.elem_type
+            }
+            BtfType::Struct(_) => {
+                is_composite = true;
+                break;
+            }
+            BtfType::Union(_) => {
+                is_composite = true;
+                break;
+            }
+            _ => break,
+        };
+        id = sub_id;
+    }
+
+    let actual_type = if is_composite {
+        let comp_type = btf.type_from_id(id).ok()?;
+        let (prefix, sufix) = comp_type.string_format(btf);
+        assert_eq!(sufix, "");
+        Some(BtfComposite {
+            type_id: id,
+            type_name: prefix,
+            members: Vec::new(),
+        })
+    } else {
+        None
+    };
+
+    let (type_prefix, type_sufix) = btf_type.string_format(btf);
+
+    Some(BtfResolvedType {
+        type_id,
+        acutal_type_id: id,
+        type_prefix,
+        type_sufix,
+        actual_type,
+    })
 }
 
 pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
@@ -1078,5 +1133,22 @@ mod tests {
         let var_name = btf_variable_name(&btf, &f.args[2]).unwrap();
         assert_eq!(var_name.type_name, "size_t");
         assert_eq!(var_name.full_name, "size_t set_tid_size");
+    }
+
+    #[test]
+    fn test_resolve_inode_ptr() {
+        let btf = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+
+        let inode_ptr = btf_resolve_type(&btf, 6292).unwrap();
+        assert_eq!(inode_ptr.type_prefix, "const struct inode *");
+        assert_eq!(inode_ptr.acutal_type_id, 110);
+
+        let inode_struct = inode_ptr.actual_type.unwrap();
+        assert_eq!(inode_struct.type_name, "struct inode");
+
+        // for m in inode_struct.members {
+        //     println!("{}", m.name);
+        // }
+        // panic!();
     }
 }
