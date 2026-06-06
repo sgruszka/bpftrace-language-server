@@ -847,6 +847,52 @@ pub fn btf_resolve_func(btf: &Btf, func_name: &str, need_retval: bool) -> Option
     Some(BtfFunction { name, proto, args })
 }
 
+pub struct BtfName {
+    type_name: String,
+    full_name: String,
+}
+
+pub struct BtfResolvedType {
+    type_id: u32,
+    type_prefix: String,
+    type_sufix: String,
+    actual_type: BtfComposite,
+}
+
+// Struct/Union
+pub struct BtfComposite {
+    type_id: u32,
+    type_name: String,
+    members: Vec<BtfVariable>,
+}
+
+pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
+    todo!()
+}
+
+pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
+    log_dbg!(
+        BTFRD,
+        "Looking for name of variable {} with id {} ",
+        var.name,
+        var.type_id
+    );
+
+    let btf_type = btf.type_from_id(var.type_id).ok()?;
+    let (type_prefix, type_sufix) = btf_type.string_format(btf);
+
+    // TODO: correct push spaces for different types
+    let type_name = type_prefix.clone() + &type_sufix;
+
+    let space = if !type_prefix.ends_with("*") { " " } else { "" };
+    let full_name = type_prefix + space + &var.name + &type_sufix;
+
+    Some(BtfName {
+        type_name,
+        full_name,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     const VMLINUX_BTF: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
@@ -1020,5 +1066,17 @@ mod tests {
         assert_eq!(f.args[0].name, "ns");
         assert_eq!(f.args[1].name, "set_tid");
         assert_eq!(f.args[2].name, "set_tid_size");
+
+        let var_name = btf_variable_name(&btf, &f.args[0]).unwrap();
+        assert_eq!(var_name.type_name, "struct pid_namespace *");
+        assert_eq!(var_name.full_name, "struct pid_namespace *ns");
+
+        let var_name = btf_variable_name(&btf, &f.args[1]).unwrap();
+        assert_eq!(var_name.type_name, "pid_t *");
+        assert_eq!(var_name.full_name, "pid_t *set_tid");
+
+        let var_name = btf_variable_name(&btf, &f.args[2]).unwrap();
+        assert_eq!(var_name.type_name, "size_t");
+        assert_eq!(var_name.full_name, "size_t set_tid_size");
     }
 }
