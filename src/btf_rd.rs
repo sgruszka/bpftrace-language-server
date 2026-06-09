@@ -598,6 +598,29 @@ impl BtfTypeStruct {
     }
 }
 
+// TODO: Merge with BtfTypeStruct
+impl BtfTypeUnion {
+    fn members(self: &Self, this_split: &BtfSplit) -> Vec<BtfVariable> {
+        let (split, mut off) = this_split.offset_from_id(self.type_id);
+        off += 12;
+
+        let mut members: Vec<BtfVariable> = Vec::new();
+
+        let vlen = self.btf_raw_type.get_vlen();
+        for _ in 0..vlen {
+            let raw_member: BtfRawMember = split.read_raw_struct(off).unwrap();
+            off += 12;
+
+            let name = this_split.get_name(raw_member.name_off).to_owned();
+            let type_id = raw_member.type_id;
+
+            members.push(BtfVariable { name, type_id });
+        }
+
+        members
+    }
+}
+
 enum BtfData {
     MemoryMap(Mmap),
     Vector(Vec<u8>),
@@ -937,6 +960,7 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
 
         let members = match comp_type {
             BtfType::Struct(s) => s.members(btf),
+            BtfType::Union(u) => u.members(btf),
             _ => panic!(),
         };
 
@@ -1171,7 +1195,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_inode_ptr() {
+    fn test_resolve_struct_inode_ptr() {
         let btf = BtfSplit::build(None, VMLINUX_BTF).unwrap();
 
         let inode_ptr = btf_resolve_type(&btf, 6292).unwrap();
@@ -1186,5 +1210,22 @@ mod tests {
         assert_eq!(inode_struct.members[20].name, "i_generation");
 
         assert_eq!(inode_struct.members.len(), 47);
+    }
+
+    #[test]
+    fn test_resolve_rcu_special_union() {
+        let btf = BtfSplit::build(None, VMLINUX_BTF).unwrap();
+
+        let union = btf_resolve_type(&btf, 430).unwrap();
+        assert_eq!(union.type_prefix, "union rcu_special");
+        assert_eq!(union.acutal_type_id, 430);
+
+        let union = union.actual_type.unwrap();
+        assert_eq!(union.type_name, "union rcu_special");
+
+        assert_eq!(union.members[0].name, "b");
+        assert_eq!(union.members[1].name, "s");
+
+        assert_eq!(union.members.len(), 2);
     }
 }
