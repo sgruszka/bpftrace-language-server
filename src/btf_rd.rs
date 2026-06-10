@@ -1061,6 +1061,52 @@ fn chain_str_to_tokens(names_chain: &str) -> Vec<&str> {
     res
 }
 
+fn inner_iterate_over_names_chain(
+    btf: &Btf,
+    first_var: &BtfVariable,
+    names_chain_vec: &Vec<&str>,
+) -> Option<BtfVariable> {
+    let mut names_iter = names_chain_vec.iter();
+
+    let first_name = names_iter.next()?;
+    assert_eq!(*first_name, first_var.name);
+
+    // Handle struct/union members: use -> for pointrs and . for direct access
+    let mut cur_var = first_var.clone();
+    while let Some(op) = names_iter.next() {
+        let is_pointer = is_pointer_type(btf, cur_var.type_id);
+
+        if *op == "->" {
+            if !is_pointer {
+                return None;
+            }
+        } else if *op == "." {
+            if is_pointer {
+                return None;
+            }
+        } else {
+            return None;
+        }
+
+        let member_name = if let Some(name) = names_iter.next() {
+            name
+        } else {
+            if names_chain_vec.last() == Some(&"->") || names_chain_vec.last() == Some(&".") {
+                break;
+            }
+            return None;
+        };
+
+        let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+        let composite = cur_type.actual_type?;
+        let member = composite.members.iter().find(|m| m.name == *member_name)?;
+
+        cur_var = member.clone();
+    }
+
+    Some(cur_var)
+}
+
 fn btf_iterate_over_names_chain(
     btf: &Btf,
     func: &BtfFunction,
@@ -1081,44 +1127,10 @@ fn btf_iterate_over_names_chain(
         }
     }
 
-    let mut names_iter = names_chain_vec.iter().peekable();
-    let first_name = names_iter.next()?;
+    let first_name = names_chain_vec.first()?;
 
     if let Some(first_param) = func.args.iter().find(|p| p.name == *first_name) {
-        // Handle struct/union members: use -> for pointrs and . for direct access
-        let mut cur_var = first_param.clone();
-        let mut names_iter_peek = names_iter.peekable();
-        while let Some(op) = names_iter_peek.next() {
-            let is_pointer = is_pointer_type(btf, cur_var.type_id);
-
-            if *op == "->" {
-                if !is_pointer {
-                    return None;
-                }
-            } else if *op == "." {
-                if is_pointer {
-                    return None;
-                }
-            } else {
-                return None;
-            }
-
-            let member_name = if let Some(name) = names_iter_peek.next() {
-                name
-            } else {
-                if names_chain_vec.last() == Some(&"->") || names_chain_vec.last() == Some(&".") {
-                    break;
-                }
-                return None;
-            };
-
-            let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
-            let composite = cur_type.actual_type?;
-            let member = composite.members.iter().find(|m| m.name == *member_name)?;
-
-            cur_var = member.clone();
-        }
-
+        let cur_var = inner_iterate_over_names_chain(btf, first_param, &names_chain_vec)?;
         let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
         return Some((cur_var, cur_type));
     }
