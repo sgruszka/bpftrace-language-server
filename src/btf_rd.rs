@@ -1193,6 +1193,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_load_module() {
+        let btf1 = btf_setup_module("vmlinux");
+        assert!(btf1.is_some());
+
+        let btf2 = btf_setup_module("Xblabla713h");
+        assert!(btf2.is_none());
+    }
+
+    #[test]
+    fn test_chain_str_to_tokens() {
+        assert!(chain_str_to_tokens("args") == vec!["args"]);
+        assert!(chain_str_to_tokens("args.") == vec!["args", "."]);
+        assert!(chain_str_to_tokens("xxx->yyy") == vec!["xxx", "->", "yyy"]);
+        assert!(chain_str_to_tokens("a.b.c.d") == vec!["a", ".", "b", ".", "c", ".", "d"]);
+        assert!(
+            chain_str_to_tokens("args.f1.f2->f3") == vec!["args", ".", "f1", ".", "f2", "->", "f3"]
+        );
+    }
+    #[test]
     fn test_vmlinux_btf_number_of_types() {
         let split = BtfSplit::build(None, VMLINUX_BTF).unwrap();
         assert_eq!(split.offsets.len(), 37691);
@@ -1461,5 +1480,98 @@ mod tests {
             .members
             .iter()
             .any(|child| child.name == "sk_socket"));
+    }
+
+    #[test]
+    fn test_iterate_over_mixed_chain() {
+        // alloc_pid: ns->rcu.next->func
+        let btf = btf_setup_module("vmlinux").unwrap();
+
+        let base = btf_resolve_func(&btf, "alloc_pid").unwrap();
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.ns->rcu.next").unwrap();
+        assert!(resolved_var.name == "next");
+        assert!(resolved_type.actual_type.unwrap().members[0].name == "next");
+
+        let (resolved_var, _resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.ns->rcu.func").unwrap();
+        assert_eq!(resolved_var.name, "func");
+        // TODO
+        // assert_eq!(resolved_type.type_prefix, "void *");
+        // assert_eq!(
+        //     resolved_type.type_sufix,
+        //     "void (*)( struct callback_head * )"
+        // );
+
+        let resolved_fail = btf_iterate_over_names_chain(&btf, &base, "args.ns->rcu->next");
+        assert!(resolved_fail.is_none());
+    }
+
+    #[test]
+    fn test_resolve_k_itimer_union() {
+        let btf = btf_setup_module("vmlinux").unwrap();
+        let base = btf_resolve_func(&btf, "posixtimer_send_sigqueue").unwrap();
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.tmr->it").unwrap();
+
+        assert_eq!(resolved_var.name, "it");
+        assert_eq!(resolved_type.type_prefix, "union ");
+        assert_eq!(resolved_type.type_sufix, "");
+
+        let actual_type = resolved_type.actual_type.unwrap();
+        let cpu_member = actual_type
+            .members
+            .iter()
+            .find(|&r| r.name == "cpu")
+            .unwrap();
+
+        assert_eq!(cpu_member.name, "cpu");
+
+        let cpu_timer_type = btf_resolve_type(&btf, cpu_member.type_id).unwrap();
+        assert_eq!(cpu_timer_type.type_prefix, "struct cpu_timer");
+    }
+
+    #[test]
+    fn test_resolve_vfs_open() {
+        // vfs_open: path->dentry->d_inode->i_uid
+        let btf = btf_setup_module("vmlinux").unwrap();
+
+        let base = btf_resolve_func(&btf, "vfs_open").unwrap();
+        assert!(base.name == "vfs_open");
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.").unwrap();
+        assert_eq!(resolved_var.name, "vfs_open");
+
+        let members = resolved_type.actual_type.unwrap().members;
+        assert_eq!(members.len(), 2);
+        assert_eq!(members[0].name, "path");
+        assert_eq!(members[1].name, "file");
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "retval").unwrap();
+        assert_eq!(resolved_var.name, "retval");
+        assert_eq!(resolved_type.type_prefix, "int");
+        assert!(resolved_type.actual_type.is_none());
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.path").unwrap();
+        assert_eq!(resolved_var.name, "path");
+        assert_eq!(resolved_type.type_prefix, "const struct path *");
+        let actual_type = resolved_type.actual_type.unwrap();
+        assert_eq!(actual_type.type_name, "struct path");
+        assert_eq!(actual_type.members[0].name, "mnt");
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.path->dentry->d_inode").unwrap();
+        assert_eq!(resolved_var.name, "d_inode");
+        assert_eq!(resolved_type.type_prefix, "struct inode *");
+        let actual_type = resolved_type.actual_type.unwrap();
+        assert_eq!(actual_type.type_name, "struct inode");
+        assert_eq!(actual_type.members[0].name, "i_mode");
+
+        let resolved_fail = btf_iterate_over_names_chain(&btf, &base, "args.path.dentry");
+        assert!(resolved_fail.is_none());
     }
 }
