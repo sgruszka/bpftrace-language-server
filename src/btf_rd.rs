@@ -881,7 +881,7 @@ pub struct BtfFunction {
     proto_id: u32,
 }
 
-pub fn btf_resolve_func(btf: &Btf, func_name: &str, need_retval: bool) -> Option<BtfFunction> {
+pub fn btf_resolve_func(btf: &Btf, func_name: &str) -> Option<BtfFunction> {
     log_dbg!(BTFRD, "Looking for function {}", func_name);
 
     let func = btf.find_function(func_name)?;
@@ -919,7 +919,7 @@ pub struct BtfName {
 
 pub struct BtfResolvedType {
     type_id: u32,
-    acutal_type_id: u32,
+    actual_type_id: u32,
     type_prefix: String,
     type_sufix: String,
     actual_type: Option<BtfComposite>,
@@ -990,7 +990,7 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
 
     Some(BtfResolvedType {
         type_id,
-        acutal_type_id: id,
+        actual_type_id: id,
         type_prefix,
         type_sufix,
         actual_type,
@@ -1064,9 +1064,9 @@ fn chain_str_to_tokens(names_chain: &str) -> Vec<&str> {
 fn inner_iterate_over_names_chain(
     btf: &Btf,
     first_var: &BtfVariable,
-    names_chain_vec: &Vec<&str>,
+    name_chain: &Vec<&str>,
 ) -> Option<BtfVariable> {
-    let mut names_iter = names_chain_vec.iter();
+    let mut names_iter = name_chain.iter();
 
     let first_name = names_iter.next()?;
     assert_eq!(*first_name, first_var.name);
@@ -1091,7 +1091,7 @@ fn inner_iterate_over_names_chain(
         let member_name = if let Some(name) = names_iter.next() {
             name
         } else {
-            if names_chain_vec.last() == Some(&"->") || names_chain_vec.last() == Some(&".") {
+            if name_chain.last() == Some(&"->") || name_chain.last() == Some(&".") {
                 break;
             }
             return None;
@@ -1110,28 +1110,77 @@ fn inner_iterate_over_names_chain(
 fn btf_iterate_over_names_chain(
     btf: &Btf,
     func: &BtfFunction,
-    names_chain_str: &str,
+    name_chain_str: &str,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
-    let mut names_chain_vec = chain_str_to_tokens(names_chain_str);
+    let mut name_chain = chain_str_to_tokens(name_chain_str);
 
-    let mut is_retval = false;
-    if names_chain_vec.len() >= 2 {
-        if names_chain_vec[0] == "retval()" || names_chain_vec[0] == "retval" {
-            is_retval = true;
-            names_chain_vec[0] = "retval";
-        }
-
-        if names_chain_vec[0] == "args" && names_chain_vec[1] == "." {
-            names_chain_vec.remove(0);
-            names_chain_vec.remove(0);
-        }
+    // Support only args. , retval() , retval as prefixes for name chain
+    if !name_chain_str.starts_with("args.") && !name_chain_str.starts_with("retval") {
+        return None;
     }
 
-    let first_name = names_chain_vec.first()?;
+    let mut is_retval = false;
+    if name_chain.len() == 1 {
+        if name_chain[0] == "retval()" || name_chain[0] == "retval" {
+            is_retval = true;
+            name_chain.remove(0);
+        } else {
+            return None;
+        }
+    } else if name_chain.len() >= 2 {
+        if name_chain[0] == "retval()" || name_chain[0] == "retval" {
+            is_retval = true;
+            name_chain.remove(0);
+        } else if name_chain[0] == "args" && name_chain[1] == "." {
+            name_chain.remove(0);
+            name_chain.remove(0);
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    }
 
-    if let Some(first_param) = func.args.iter().find(|p| p.name == *first_name) {
-        let cur_var = inner_iterate_over_names_chain(btf, first_param, &names_chain_vec)?;
-        let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+    if is_retval {
+        let cur_type = btf_resolve_type(btf, func.ret_type_id)?;
+        if let Some(first_name) = name_chain.first() {
+            let actual_type = cur_type.actual_type?;
+            if let Some(first_param) = actual_type.members.iter().find(|p| p.name == *first_name) {
+                let cur_var = inner_iterate_over_names_chain(btf, first_param, &name_chain)?;
+                let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+                return Some((cur_var, cur_type));
+            }
+        } else {
+            let cur_var = BtfVariable {
+                type_id: func.ret_type_id,
+                name: "retval".to_owned(),
+            };
+            return Some((cur_var, cur_type));
+        }
+    } else if let Some(first_name) = name_chain.first() {
+        if let Some(first_param) = func.args.iter().find(|p| p.name == *first_name) {
+            let cur_var = inner_iterate_over_names_chain(btf, first_param, &name_chain)?;
+            let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+            return Some((cur_var, cur_type));
+        }
+    } else {
+        // Convert BtfFunction to BtfResolvedType
+        let cur_var = BtfVariable {
+            type_id: func.type_id,
+            name: func.name.clone(),
+        };
+        let func_args = BtfComposite {
+            type_id: func.proto_id,
+            type_name: func.proto.clone(),
+            members: func.args.clone(),
+        };
+        let cur_type = BtfResolvedType {
+            type_id: func.type_id,
+            actual_type_id: func.proto_id,
+            type_prefix: func.name.clone(),
+            type_sufix: func.proto.clone(),
+            actual_type: Some(func_args),
+        };
         return Some((cur_var, cur_type));
     }
 
@@ -1300,7 +1349,7 @@ mod tests {
     fn test_resolve_alloc_pid() {
         let btf = btf_setup_module("vmlinux").unwrap();
 
-        let f = btf_resolve_func(&btf, "alloc_pid", true).unwrap();
+        let f = btf_resolve_func(&btf, "alloc_pid").unwrap();
         assert_eq!(f.name, "alloc_pid");
         // TODO spaces after "*"
         assert_eq!(
@@ -1331,7 +1380,7 @@ mod tests {
 
         let inode_ptr = btf_resolve_type(&btf, 6292).unwrap();
         assert_eq!(inode_ptr.type_prefix, "const struct inode *");
-        assert_eq!(inode_ptr.acutal_type_id, 110);
+        assert_eq!(inode_ptr.actual_type_id, 110);
 
         let inode_struct = inode_ptr.actual_type.unwrap();
         assert_eq!(inode_struct.type_name, "struct inode");
@@ -1349,7 +1398,7 @@ mod tests {
 
         let union = btf_resolve_type(&btf, 430).unwrap();
         assert_eq!(union.type_prefix, "union rcu_special");
-        assert_eq!(union.acutal_type_id, 430);
+        assert_eq!(union.actual_type_id, 430);
 
         let union = union.actual_type.unwrap();
         assert_eq!(union.type_name, "union rcu_special");
@@ -1370,7 +1419,7 @@ mod tests {
                 return;
             }
         };
-        let func = btf_resolve_func(&btf, "ieee80211_register_hw", true).unwrap();
+        let func = btf_resolve_func(&btf, "ieee80211_register_hw").unwrap();
 
         assert_eq!(func.args[0].name, "hw");
         let ieee80211_hw_ptr = btf_resolve_type(&btf, func.args[0].type_id).unwrap();
@@ -1384,5 +1433,33 @@ mod tests {
         let (_owner, owner_type) =
             btf_iterate_over_names_chain(&btf, &func, "args.hw->wiphy->mtx.owner").unwrap();
         assert_eq!(owner_type.type_prefix, "atomic_long_t");
+    }
+
+    #[test]
+    fn test_resolve_tcp_check_req_retval() {
+        let btf = btf_setup_module("vmlinux").unwrap();
+        let base = btf_resolve_func(&btf, "tcp_check_req").unwrap();
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "retval").unwrap();
+
+        assert_eq!(resolved_var.name, "retval");
+        assert_eq!(resolved_type.type_prefix, "struct sock *");
+
+        assert!(resolved_type
+            .actual_type
+            .as_ref()
+            .unwrap()
+            .members
+            .iter()
+            .any(|v| v.name == "sk_receive_queue"));
+
+        assert!(resolved_type
+            .actual_type
+            .as_ref()
+            .unwrap()
+            .members
+            .iter()
+            .any(|child| child.name == "sk_socket"));
     }
 }
