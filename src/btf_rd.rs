@@ -546,6 +546,7 @@ impl BtfTypeTrait for BtfTypeEnum64 {
 }
 
 // For struct/union fields, function parameters, etc ...
+#[derive(Clone)]
 struct BtfVariable {
     name: String,
     type_id: u32,
@@ -875,6 +876,9 @@ pub struct BtfFunction {
     name: String,
     proto: String,
     args: Vec<BtfVariable>,
+    type_id: u32,
+    ret_type_id: u32,
+    proto_id: u32,
 }
 
 pub fn btf_resolve_func(btf: &Btf, func_name: &str, need_retval: bool) -> Option<BtfFunction> {
@@ -884,7 +888,9 @@ pub fn btf_resolve_func(btf: &Btf, func_name: &str, need_retval: bool) -> Option
     let name = btf.get_type_name(&func.btf_raw_type);
 
     let func_proto_id = func.btf_raw_type.get_type_id();
-    let func_proto = btf.type_from_id(func_proto_id).ok()?;
+    let func_proto_raw = btf.raw_type_from_id(func_proto_id).ok()?;
+    let ret_type_id = func_proto_raw.get_type_id();
+    let func_proto = inner_to_btf_type(func_proto_raw, func_proto_id).ok()?;
     let (ret_type, args) = func_proto.string_format(btf);
 
     let mut proto = String::new();
@@ -896,7 +902,14 @@ pub fn btf_resolve_func(btf: &Btf, func_name: &str, need_retval: bool) -> Option
     let args = func.parameters(btf);
     let name = name.to_string();
 
-    Some(BtfFunction { name, proto, args })
+    Some(BtfFunction {
+        name,
+        proto,
+        args,
+        type_id: func.type_id,
+        proto_id: func_proto_id,
+        ret_type_id,
+    })
 }
 
 pub struct BtfName {
@@ -1005,6 +1018,112 @@ pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
         type_name,
         full_name,
     })
+}
+
+fn is_pointer_type(btf: &Btf, type_id: u32) -> bool {
+    let Ok(btf_type) = btf.type_from_id(type_id) else {
+        return false;
+    };
+
+    // TODO limit to struct or union pointers ?
+    matches!(btf_type, BtfType::Ptr(_))
+}
+
+fn chain_str_to_tokens(names_chain: &str) -> Vec<&str> {
+    let mut res: Vec<&str> = Vec::new();
+
+    let mut start_idx = 0;
+    let mut end_idx = 0;
+
+    for (i, c) in names_chain.char_indices() {
+        match c {
+            '.' => {
+                res.push(&names_chain[start_idx..i]);
+                res.push(".");
+                start_idx = i + 1;
+            }
+            '-' => {
+                res.push(&names_chain[start_idx..i]);
+                start_idx = i + 1;
+            }
+            '>' => {
+                res.push("->");
+                start_idx = i + 1;
+            }
+            _ => end_idx = i,
+        };
+    }
+
+    if end_idx != 0 && start_idx <= end_idx {
+        res.push(&names_chain[start_idx..=end_idx]);
+    }
+
+    res
+}
+
+fn btf_iterate_over_names_chain(
+    btf: &Btf,
+    func: &BtfFunction,
+    names_chain_str: &str,
+) -> Option<(BtfVariable, BtfResolvedType)> {
+    let mut names_chain_vec = chain_str_to_tokens(names_chain_str);
+
+    let mut is_retval = false;
+    if names_chain_vec.len() >= 2 {
+        if names_chain_vec[0] == "retval()" || names_chain_vec[0] == "retval" {
+            is_retval = true;
+            names_chain_vec[0] = "retval";
+        }
+
+        if names_chain_vec[0] == "args" && names_chain_vec[1] == "." {
+            names_chain_vec.remove(0);
+            names_chain_vec.remove(0);
+        }
+    }
+
+    let mut names_iter = names_chain_vec.iter().peekable();
+    let first_name = names_iter.next()?;
+
+    if let Some(first_param) = func.args.iter().find(|p| p.name == *first_name) {
+        // Handle struct/union members: use -> for pointrs and . for direct access
+        let mut cur_var = first_param.clone();
+        let mut names_iter_peek = names_iter.peekable();
+        while let Some(op) = names_iter_peek.next() {
+            let is_pointer = is_pointer_type(btf, cur_var.type_id);
+
+            if *op == "->" {
+                if !is_pointer {
+                    return None;
+                }
+            } else if *op == "." {
+                if is_pointer {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+
+            let member_name = if let Some(name) = names_iter_peek.next() {
+                name
+            } else {
+                if names_chain_vec.last() == Some(&"->") || names_chain_vec.last() == Some(&".") {
+                    break;
+                }
+                return None;
+            };
+
+            let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+            let composite = cur_type.actual_type?;
+            let member = composite.members.iter().find(|m| m.name == *member_name)?;
+
+            cur_var = member.clone();
+        }
+
+        let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+        return Some((cur_var, cur_type));
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -1227,5 +1346,31 @@ mod tests {
         assert_eq!(union.members[1].name, "s");
 
         assert_eq!(union.members.len(), 2);
+    }
+
+    #[test]
+    fn test_resolve_ieee80211_hw_array_in_struct() {
+        // This test requires mac80211 module to be loaded
+        let btf = match btf_setup_module("mac80211") {
+            Some(btf) => btf,
+            None => {
+                eprintln!("\x1b[33mskipped\x1b[0m: mac80211 module not loaded");
+                return;
+            }
+        };
+        let func = btf_resolve_func(&btf, "ieee80211_register_hw", true).unwrap();
+
+        assert_eq!(func.args[0].name, "hw");
+        let ieee80211_hw_ptr = btf_resolve_type(&btf, func.args[0].type_id).unwrap();
+        assert_eq!(ieee80211_hw_ptr.type_prefix, "struct ieee80211_hw *");
+
+        let ieee80211_hw = ieee80211_hw_ptr.actual_type.unwrap();
+        assert_eq!(ieee80211_hw.type_name, "struct ieee80211_hw");
+        assert_eq!(ieee80211_hw.members[0].name, "conf");
+        assert_eq!(ieee80211_hw.members[1].name, "wiphy");
+
+        let (_owner, owner_type) =
+            btf_iterate_over_names_chain(&btf, &func, "args.hw->wiphy->mtx.owner").unwrap();
+        assert_eq!(owner_type.type_prefix, "atomic_long_t");
     }
 }

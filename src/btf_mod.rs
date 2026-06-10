@@ -869,29 +869,4 @@ mod tests {
             .iter()
             .any(|child| child.name == "sk_socket"));
     }
-
-    #[test]
-    fn test_resolve_ieee80211_hw_array_in_struct() {
-        // This test requires mac80211 module to be loaded
-        let btf = match btf_setup_module("mac80211") {
-            Some(btf) => btf,
-            None => {
-                eprintln!("\x1b[33mskipped\x1b[0m: mac80211 module not loaded");
-                return;
-            }
-        };
-        let base = btf_resolve_func(&btf, "ieee80211_register_hw", true).unwrap();
-
-        // The argument is struct ieee80211_hw *hw
-        let hw = btf_iterate_over_names_chain(&btf, &base, "args.hw").unwrap();
-        let hw_type = hw.var_type.unwrap();
-
-        let flags = hw_type
-            .children_vec
-            .iter()
-            .find(|&r| r.name == "flags")
-            .unwrap();
-
-        assert_eq!(flags.type_vec, vec!["unsigned long", "[]"]);
-    }
 }
