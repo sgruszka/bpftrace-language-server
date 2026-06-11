@@ -5,17 +5,17 @@ use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Instant;
 use tree_sitter::Node;
 
-use crate::btf_mod::{
-    btf_iterate_over_names_chain, btf_resolve_func, btf_setup_module, ResolvedBtfItem,
-    ResolvedVariable,
+use crate::btf_rd::{
+    btf_iterate_over_names_chain, btf_resolve_func, btf_resolve_type, btf_setup_module,
 };
+use crate::btf_rd::{Btf, BtfFunction, BtfResolvedType, BtfVariable};
+
 use crate::cmd_mod::bpftrace_command;
 use crate::gen::completion::{bpftrace_probe_providers, bpftrace_stdlib_functions};
 use crate::log_mod::{self, COMPL, HOVER};
 use crate::parser::{self, SyntaxLocation};
 use crate::DOCUMENTS_STATE;
 use crate::{log_dbg, log_err, log_vdbg};
-use btf_rs::Btf;
 
 #[allow(unused)]
 #[derive(PartialEq, Clone, Copy)]
@@ -63,22 +63,23 @@ static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
 
 static FENTRY_KFUNC_NAME: OnceLock<&'static str> = OnceLock::new();
 
-fn btf_item_to_str(item: &ResolvedBtfItem, with_name: bool) -> String {
-    let mut s = item.type_vec.join(" ").to_string();
-    if with_name {
-        if !s.is_empty() {
-            s.push_str(" ");
-        }
-        s.push_str(&item.name);
+fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) -> String {
+    let mut s = res_type.type_prefix.clone();
+    s.push_str(" ");
+
+    if let Some(var) = res_var {
+        s.push_str(&var.name);
     }
+
+    s.push_str(&res_type.type_sufix);
     s
 }
 
 fn resolve_args_name_chain(
     module: &String,
-    resolved_func: &ResolvedBtfItem,
+    resolved_func: &BtfFunction,
     this_argument: &str,
-) -> Option<ResolvedVariable> {
+) -> Option<(BtfVariable, BtfResolvedType)> {
     // log_dbg!(COMPL, "MODULE {}", module);
     // log_dbg!(COMPL, "RESOLVED FUNC {:?}", resolved_func);
     // log_dbg!(COMPL, "THIS_ARGUMENT {}", this_argument);
@@ -96,14 +97,21 @@ fn resolve_args_name_chain(
 
     let module_btf_map = MODULE_BTF_MAP.lock().unwrap();
 
-    if let Some(resolved_var) = module_btf_map
+    if let Some(resolved_tuple) = module_btf_map
         .get(module)
         .and_then(|btf| btf_iterate_over_names_chain(btf, resolved_func, this_argument))
     {
-        return Some(resolved_var);
+        return Some(resolved_tuple);
     }
 
     None
+}
+
+fn resolve_variable_type(module: &String, var: &BtfVariable) -> Option<BtfResolvedType> {
+    let module_btf_map = MODULE_BTF_MAP.lock().unwrap();
+    let btf = module_btf_map.get(module)?;
+
+    btf_resolve_type(btf, var.type_id)
 }
 
 fn is_fentry_probe(probe: &str) -> bool {
@@ -162,7 +170,7 @@ fn find_probe_args_by_command(probe: &str) -> String {
     probe_args
 }
 
-fn find_kfunc_args_by_btf(kfunc: &str, need_retval: bool) -> Option<(String, ResolvedBtfItem)> {
+fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
     let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
     log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
 
@@ -190,28 +198,33 @@ fn find_kfunc_args_by_btf(kfunc: &str, need_retval: bool) -> Option<(String, Res
         }
     }
 
-    if let Some(ret) = btf_resolve_func(this_btf, kfunc_vec[2], need_retval) {
+    if let Some(ret) = btf_resolve_func(this_btf, kfunc_vec[2]) {
         return Some((module.to_string(), ret));
     }
 
     None
 }
 
-fn items_from_resolved_btf(btf_item: &ResolvedBtfItem) -> json::JsonValue {
+fn items_from_resolved_btf(btf_tuple: &(BtfVariable, BtfResolvedType)) -> json::JsonValue {
     let mut items = json::JsonValue::new_array();
 
-    for child in btf_item.children_vec.iter() {
-        if child.name == "retval" {
-            continue;
-        }
-        let completion = object! {
-            "label": child.name.clone(),
-            "kind" : 5,
-            "detail" : btf_item_to_str(child, false),
+    let (_res_var, res_type) = btf_tuple;
+
+    if let Some(actual_type) = &res_type.actual_type {
+        for m in actual_type.members.iter() {
             // TODO
-            // "documentation" : field_type,
-        };
-        let _ = items.push(completion);
+            if m.name == "retval" {
+                continue;
+            }
+            let completion = object! {
+                "label": m.name.clone(),
+                "kind" : 5,
+                "detail" : "TODO", // btf_item_to_str(child, false),
+                // TODO
+                // "documentation" : field_type,
+            };
+            let _ = items.push(completion);
+        }
     }
     items
 }
@@ -295,12 +308,12 @@ fn encode_completion_for_args_or_retval(
         // On first line of probe args is kfunc module and name
         probe_args_iter.next();
         items_from_probe_args(probe_args_iter)
-    } else if let Some(next_items) = probes_compl
-        .btf_probe_args
-        .and_then(|(module, resolved_btf)| {
-            resolve_args_name_chain(&module, &resolved_btf, args_with_fields)
-        })
-        .and_then(|item| item.var_type)
+    } else if let Some(next_items) =
+        probes_compl
+            .btf_probe_args
+            .and_then(|(module, resolved_func)| {
+                resolve_args_name_chain(&module, &resolved_func, args_with_fields)
+            })
     {
         // For debug:
         // log_dbg!(COMPL, "Found arguments using btf:\n{:?}", next_items);
@@ -464,41 +477,6 @@ fn encode_completion_for_action(
     Some(data)
 }
 
-#[allow(clippy::needless_range_loop)]
-fn func_proto_str(item: &ResolvedBtfItem) -> String {
-    let mut s = String::new();
-    let params = &item.children_vec;
-
-    let mut l = params.len();
-
-    if l > 0 && params[l - 1].name == "retval" {
-        s.push_str(&params[l - 1].type_vec.join(" ").to_string());
-        l -= 1;
-    } else {
-        s.push_str("void");
-    }
-
-    s.push_str(" ");
-    s.push_str(&item.name);
-
-    s.push_str("(");
-    for i in 0..l {
-        let p = &params[i];
-
-        s.push_str(&p.type_vec.join(" "));
-        if !s.ends_with("*") {
-            s.push_str(" ");
-        }
-        s.push_str(&p.name);
-        if i < l - 1 {
-            s.push_str(", ")
-        }
-    }
-    s.push_str(");");
-
-    s
-}
-
 fn bpftrace_get_traces_list() -> Option<String> {
     let start = Instant::now();
 
@@ -618,9 +596,8 @@ fn encode_completion_for_line(
                 if (trace_tokens[0] == "kfunc" || trace_tokens[0] == "fentry")
                     && kind == CompletionItemKind::Property
                 {
-                    if let Some((_module, resolved_btf)) = find_kfunc_args_by_btf(trace_line, true)
-                    {
-                        item["detail"] = func_proto_str(&resolved_btf).into();
+                    if let Some((_module, resolved_func)) = find_kfunc_args_by_btf(trace_line) {
+                        item["detail"] = resolved_func.full_name.into();
                     }
                 }
 
@@ -796,7 +773,7 @@ macro_rules! get_document_state {
 
 struct ProbesCompletion {
     probes_vec: Vec<String>,
-    btf_probe_args: Option<(String, ResolvedBtfItem)>,
+    btf_probe_args: Option<(String, BtfFunction)>,
     is_kfunc: bool,
     has_retval: bool,
 }
@@ -808,7 +785,7 @@ impl ProbesCompletion {
         if is_kfunc {
             // TODO
             // let kfunc = kprobe_to_kfunc(probe);
-            btf_probe_args = find_kfunc_list_arguments(&probes_vec, has_retval);
+            btf_probe_args = find_kfunc_list_arguments(&probes_vec);
         }
         ProbesCompletion {
             probes_vec,
@@ -934,19 +911,13 @@ where
     found.to_string()
 }
 
-fn cmp_child(a: &ResolvedBtfItem, b: &ResolvedBtfItem) -> bool {
+fn cmp_arg(a: &BtfVariable, b: &BtfVariable) -> bool {
     if a.name != b.name {
         return false;
     }
 
-    if a.type_vec.len() != b.type_vec.len() {
+    if a.type_id != b.type_id {
         return false;
-    }
-
-    for (type_a, type_b) in a.type_vec.iter().zip(b.type_vec.iter()) {
-        if type_a != type_b {
-            return false;
-        }
     }
 
     true
@@ -956,21 +927,18 @@ fn cmp_child(a: &ResolvedBtfItem, b: &ResolvedBtfItem) -> bool {
 // type and name.
 // TODO will that work when matching type and name but different arg number, IOW is position also
 // important ?
-pub fn find_kfunc_list_arguments(
-    probes_vec: &[String],
-    need_retval: bool,
-) -> Option<(String, ResolvedBtfItem)> {
+pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(String, BtfFunction)> {
     let mut probes_iter = probes_vec.iter();
     let probe = probes_iter.next()?;
 
-    let btf_probe_args = find_kfunc_args_by_btf(probe, need_retval);
+    let btf_probe_args = find_kfunc_args_by_btf(probe);
     let (module, mut resolved_func) = btf_probe_args?;
 
     let mut args_to_remove: Vec<usize> = Vec::new();
 
-    for (i, child) in resolved_func.children_vec.iter().enumerate() {
+    for (i, arg) in resolved_func.args.iter().enumerate() {
         for probe in probes_vec.iter().skip(1) {
-            let btf_probe_args = find_kfunc_args_by_btf(probe, need_retval);
+            let btf_probe_args = find_kfunc_args_by_btf(probe);
             let (_next_module, next_resolved_func) = btf_probe_args?;
             // TODO: we can support diffrent modules if arguments belong to not-split BTF
             if _next_module != module {
@@ -978,9 +946,9 @@ pub fn find_kfunc_list_arguments(
             }
 
             let found = next_resolved_func
-                .children_vec
+                .args
                 .iter()
-                .any(|next_child| cmp_child(child, next_child));
+                .any(|next_arg| cmp_arg(arg, next_arg));
 
             if !found {
                 args_to_remove.push(i);
@@ -988,16 +956,16 @@ pub fn find_kfunc_list_arguments(
         }
     }
 
-    let mut common_args: Vec<ResolvedBtfItem> = Vec::new();
-    for (i, child) in resolved_func.children_vec.iter().enumerate() {
+    let mut common_args: Vec<BtfVariable> = Vec::new();
+    for (i, args) in resolved_func.args.iter().enumerate() {
         if args_to_remove.contains(&i) {
             continue;
         }
 
-        common_args.push(child.clone());
+        common_args.push(args.clone());
     }
 
-    resolved_func.children_vec = common_args;
+    resolved_func.args = common_args;
 
     Some((module, resolved_func))
 }
@@ -1012,12 +980,12 @@ fn get_details_and_docs(
 
     let func_name = resolved_func.name.clone();
 
-    let resolved_variable = resolve_args_name_chain(module, resolved_func, keyword_with_fields)?;
+    let (res_var, res_type) = resolve_args_name_chain(module, resolved_func, keyword_with_fields)?;
 
     let mut details = String::new();
     let mut docs = String::new();
 
-    let hover_name = btf_item_to_str(&resolved_variable.var, true);
+    let hover_name = btf_item_to_str(&res_type, Some(&res_var));
 
     let c_open;
     let c_close;
@@ -1041,43 +1009,41 @@ fn get_details_and_docs(
         details.push_str(":\n");
     }
 
-    if let Some(var_type) = resolved_variable.var_type {
+    if let Some(actual_type) = res_type.actual_type {
         let s = if is_args {
             &format!("{}struct args\n{{\n", c_open)
         } else {
-            &format!(
-                "{}{}\n{{\n",
-                c_open,
-                btf_item_to_str(&var_type, true).replace("* ", "")
-            )
+            &format!("{}{}\n{{\n", c_open, actual_type.type_name)
         };
         docs.push_str(s);
 
-        // Structure/union members
-        let mut max_type_width = 0;
-        for child in var_type.children_vec.iter() {
-            if child.name == "retval" {
-                continue;
-            }
-            let width = btf_item_to_str(child, false).len();
-            if width > max_type_width {
-                max_type_width = width;
-            }
-        }
+        // TODO
+        /*
+                // Structure/union members
+                let mut max_type_width = 0;
+                for child in actual_type.members.iter() {
+                    if child.name == "retval" {
+                        continue;
+                    }
+                    let width = btf_item_to_str(child, false).len();
+                    if width > max_type_width {
+                        max_type_width = width;
+                    }
+                }
 
-        for child in var_type.children_vec.iter() {
-            if child.name == "retval" {
-                continue;
-            }
-            let s = format!(
-                "        {:<width$} {}; \n",
-                btf_item_to_str(child, false),
-                &child.name,
-                width = max_type_width
-            );
-            docs.push_str(&s);
-        }
-
+                for child in actual_type.members.iter() {
+                    if child.name == "retval" {
+                        continue;
+                    }
+                    let s = format!(
+                        "        {:<width$} {}; \n",
+                        btf_item_to_str(child, false),
+                        &child.name,
+                        width = max_type_width
+                    );
+                    docs.push_str(&s);
+                }
+        */
         docs.push_str(&format!("}};{}", c_close));
     }
 
@@ -1115,11 +1081,11 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
             return empty_data;
         }
 
-        let args_by_btf = find_kfunc_args_by_btf(probe, true);
-        if let Some((_module, resolved_btf)) = args_by_btf {
+        let args_by_btf = find_kfunc_args_by_btf(probe);
+        if let Some((_module, resolved_func)) = args_by_btf {
             data = object! {
                   "result": {
-                      "contents": format!("{}:\n```c\n{}```", probe, func_proto_str(&resolved_btf)),
+                      "contents": format!("{}:\n```c\n{}```", probe, &resolved_func.full_name),
                   },
             };
         }
@@ -1146,7 +1112,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
 
         let (is_kfunc, has_retval) = are_all_kfuncs(&probes_vec);
 
-        let btf_probe_args = find_kfunc_list_arguments(&probes_vec, has_retval);
+        let btf_probe_args = find_kfunc_list_arguments(&probes_vec);
         if btf_probe_args.is_none() {
             return empty_data;
         }
@@ -1226,16 +1192,14 @@ mod tests {
 
     fn compare_btf_and_cmd(s: &str) {
         let args_by_cmd = find_probe_args_by_command(s);
-        let args_by_btf = find_kfunc_args_by_btf(s, true);
+        let args_by_btf = find_kfunc_args_by_btf(s);
 
-        let resolved_btf = if let Some((_module, resolved_btf)) = args_by_btf {
-            resolved_btf
-        } else {
+        let Some((module, resolved_btf)) = args_by_btf else {
             panic!();
         };
 
-        // for (i, c) in resolved_btf.children_vec.iter().enumerate() {
-        //     println!("{i}: '{}'", btf_item_to_str(c, true).trim());
+        // for (i, c) in resolved_btf.args.iter().enumerate() {
+        //     println!("{i}: '{}'", c.name /* btf_item_to_str(c, ).trim()*/);
         // }
 
         let mut n = 0;
@@ -1246,13 +1210,19 @@ mod tests {
                 continue;
             }
 
-            assert!(resolved_btf.children_vec.len() > i - 1);
+            if arg.ends_with("retval") {
+                continue;
+            }
 
-            let btf_item = &resolved_btf.children_vec[i - 1];
-            assert!(arg.trim() == btf_item_to_str(btf_item, true));
+            assert!(resolved_btf.args.len() > i - 1);
+
+            let btf_var = &resolved_btf.args[i - 1];
+            let btf_type = resolve_variable_type(&module, btf_var).unwrap();
+            assert_eq!(arg.trim(), btf_item_to_str(&btf_type, Some(btf_var)));
             n += 1;
         }
-        assert!(resolved_btf.children_vec.len() == n);
+
+        assert!(resolved_btf.args.len() == n);
     }
 
     fn document_content_setup(text: &str, line_nr: usize, char_nr: usize) -> json::JsonValue {
@@ -1471,7 +1441,6 @@ fentry:vmlinux:vfs_writev,
         let json_content = document_content_setup(text, 6, 22);
 
         let result = encode_completion(json_content);
-        println!("{}", result["result"]["items"]);
         assert!(result["result"]["items"].len() == 2);
 
         let fields = vec!["file", "pos"];

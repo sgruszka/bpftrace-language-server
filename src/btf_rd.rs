@@ -4,7 +4,7 @@ use memmap2::{Mmap, MmapOptions};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use std::ops::Deref;
 
@@ -547,9 +547,9 @@ impl BtfTypeTrait for BtfTypeEnum64 {
 
 // For struct/union fields, function parameters, etc ...
 #[derive(Clone)]
-struct BtfVariable {
-    name: String,
-    type_id: u32,
+pub struct BtfVariable {
+    pub name: String,
+    pub type_id: u32,
 }
 
 impl BtfTypeFunc {
@@ -646,11 +646,11 @@ impl AsRef<[u8]> for BtfData {
     }
 }
 
-struct BtfSplit {
+pub struct BtfSplit {
     header: BtfHeader,
     start_id: u32,
     start_str_off: u32,
-    base_split: Option<Rc<BtfSplit>>,
+    base_split: Option<Arc<BtfSplit>>,
     offsets: Vec<u32>,
     data: BtfData,
     functions: HashMap<String, u32>,
@@ -659,7 +659,7 @@ struct BtfSplit {
 pub type Btf = BtfSplit;
 
 impl BtfSplit {
-    fn build(base: Option<Rc<BtfSplit>>, path: &str) -> binrw::BinResult<Self> {
+    fn build(base: Option<Arc<BtfSplit>>, path: &str) -> binrw::BinResult<Self> {
         let (start_id, start_str_off, data, base_split) = match base {
             None => {
                 let file = File::open(path)?;
@@ -863,8 +863,8 @@ pub fn btf_setup_module(module: &str) -> Option<Btf> {
     }
 
     let path = "/sys/kernel/btf/".to_string() + module;
-    let base = Rc::new(btf);
-    if let Ok(split) = BtfSplit::build(Some(Rc::clone(&base)), &path) {
+    let base = Arc::new(btf);
+    if let Ok(split) = BtfSplit::build(Some(Arc::clone(&base)), &path) {
         log_dbg!(BTFRD, "Loaded btf for {}", path);
         return Some(split);
     }
@@ -873,13 +873,48 @@ pub fn btf_setup_module(module: &str) -> Option<Btf> {
 }
 
 pub struct BtfFunction {
-    name: String,
-    proto: String,
-    args: Vec<BtfVariable>,
+    pub name: String,
+    pub full_name: String,
+    pub args: Vec<BtfVariable>,
     type_id: u32,
     ret_type_id: u32,
     proto_id: u32,
 }
+
+// #[allow(clippy::needless_range_loop)]
+// fn func_proto_str(item: &Reso) -> String {
+//     let mut s = String::new();
+//     let params = &item.children_vec;
+//
+//     let mut l = params.len();
+//
+//     if l > 0 && params[l - 1].name == "retval" {
+//         s.push_str(&params[l - 1].type_vec.join(" ").to_string());
+//         l -= 1;
+//     } else {
+//         s.push_str("void");
+//     }
+//
+//     s.push_str(" ");
+//     s.push_str(&item.name);
+//
+//     s.push_str("(");
+//     for i in 0..l {
+//         let p = &params[i];
+//
+//         s.push_str(&p.type_vec.join(" "));
+//         if !s.ends_with("*") {
+//             s.push_str(" ");
+//         }
+//         s.push_str(&p.name);
+//         if i < l - 1 {
+//             s.push_str(", ")
+//         }
+//     }
+//     s.push_str(");");
+//
+//     s
+// }
 
 pub fn btf_resolve_func(btf: &Btf, func_name: &str) -> Option<BtfFunction> {
     log_dbg!(BTFRD, "Looking for function {}", func_name);
@@ -904,7 +939,7 @@ pub fn btf_resolve_func(btf: &Btf, func_name: &str) -> Option<BtfFunction> {
 
     Some(BtfFunction {
         name,
-        proto,
+        full_name: proto,
         args,
         type_id: func.type_id,
         proto_id: func_proto_id,
@@ -920,16 +955,16 @@ pub struct BtfName {
 pub struct BtfResolvedType {
     type_id: u32,
     actual_type_id: u32,
-    type_prefix: String,
-    type_sufix: String,
-    actual_type: Option<BtfComposite>,
+    pub type_prefix: String,
+    pub type_sufix: String,
+    pub actual_type: Option<BtfComposite>,
 }
 
 // Struct/Union
 pub struct BtfComposite {
     type_id: u32,
-    type_name: String,
-    members: Vec<BtfVariable>,
+    pub type_name: String,
+    pub members: Vec<BtfVariable>,
 }
 
 pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
@@ -1107,7 +1142,7 @@ fn inner_iterate_over_names_chain(
     Some(cur_var)
 }
 
-fn btf_iterate_over_names_chain(
+pub fn btf_iterate_over_names_chain(
     btf: &Btf,
     func: &BtfFunction,
     name_chain_str: &str,
@@ -1131,9 +1166,10 @@ fn btf_iterate_over_names_chain(
         if name_chain[0] == "retval()" || name_chain[0] == "retval" {
             is_retval = true;
             name_chain.remove(0);
+            name_chain.remove(0); // -> or .
         } else if name_chain[0] == "args" && name_chain[1] == "." {
             name_chain.remove(0);
-            name_chain.remove(0);
+            name_chain.remove(0); // .
         } else {
             return None;
         }
@@ -1171,14 +1207,14 @@ fn btf_iterate_over_names_chain(
         };
         let func_args = BtfComposite {
             type_id: func.proto_id,
-            type_name: func.proto.clone(),
+            type_name: func.full_name.clone(),
             members: func.args.clone(),
         };
         let cur_type = BtfResolvedType {
             type_id: func.type_id,
             actual_type_id: func.proto_id,
             type_prefix: func.name.clone(),
-            type_sufix: func.proto.clone(),
+            type_sufix: func.full_name.clone(),
             actual_type: Some(func_args),
         };
         return Some((cur_var, cur_type));
@@ -1286,8 +1322,8 @@ mod tests {
 
     #[test]
     fn test_vmlinux_rt2x00() {
-        let base = Rc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
-        let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
+        let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
+        let split = BtfSplit::build(Some(Arc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
 
         let btf_type = base.type_from_id(1708).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&base);
@@ -1304,8 +1340,8 @@ mod tests {
 
     #[test]
     fn test_vmlinux_array() {
-        let base = Rc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
-        let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
+        let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
+        let split = BtfSplit::build(Some(Arc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
 
         let btf_type = split.type_from_id(140495).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split);
@@ -1322,8 +1358,8 @@ mod tests {
 
     #[test]
     fn test_vmlinux_func_proto() {
-        let base = Rc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
-        let split = BtfSplit::build(Some(Rc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
+        let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
+        let split = BtfSplit::build(Some(Arc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
 
         let btf_type = split.type_from_id(140995).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split);
@@ -1372,7 +1408,7 @@ mod tests {
         assert_eq!(f.name, "alloc_pid");
         // TODO spaces after "*"
         assert_eq!(
-            f.proto,
+            f.full_name,
             "struct pid * alloc_pid(struct pid_namespace * ns, pid_t * set_tid, size_t set_tid_size)"
         );
         assert_eq!(f.args.len(), 3);
