@@ -11,7 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub mod btf_mod;
 mod btf_rd;
 mod cmd_mod;
 mod completion;
