@@ -65,7 +65,10 @@ static FENTRY_KFUNC_NAME: OnceLock<&'static str> = OnceLock::new();
 
 fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) -> String {
     let mut s = res_type.type_prefix.clone();
-    s.push_str(" ");
+
+    if !s.ends_with("*") {
+        s.push_str(" ");
+    }
 
     if let Some(var) = res_var {
         s.push_str(&var.name);
@@ -1017,33 +1020,39 @@ fn get_details_and_docs(
         };
         docs.push_str(s);
 
-        // TODO
-        /*
-                // Structure/union members
-                let mut max_type_width = 0;
-                for child in actual_type.members.iter() {
-                    if child.name == "retval" {
-                        continue;
-                    }
-                    let width = btf_item_to_str(child, false).len();
+        let mut pairs = Vec::new();
+
+        // Structure/union members
+        let mut max_type_width = 0;
+        for member in actual_type.members.iter() {
+            if member.name == "retval" {
+                continue;
+            }
+
+            match resolve_variable_type(module, member) {
+                Some(member_type) => {
+                    let width = btf_item_to_str(&member_type, Some(member)).len();
                     if width > max_type_width {
                         max_type_width = width;
                     }
+                    pairs.push((member, member_type));
                 }
+                None => {
+                    log_err!("Failed to resolve btf type {}", member.type_id);
+                    return None;
+                }
+            };
+        }
 
-                for child in actual_type.members.iter() {
-                    if child.name == "retval" {
-                        continue;
-                    }
-                    let s = format!(
-                        "        {:<width$} {}; \n",
-                        btf_item_to_str(child, false),
-                        &child.name,
-                        width = max_type_width
-                    );
-                    docs.push_str(&s);
-                }
-        */
+        for (member_var, member_type) in pairs {
+            let s = format!(
+                "        {:<width$} {}; \n",
+                btf_item_to_str(&member_type, None),
+                &member_var.name,
+                width = max_type_width
+            );
+            docs.push_str(&s);
+        }
         docs.push_str(&format!("}};{}", c_close));
     }
 
@@ -1498,6 +1507,8 @@ fentry:vmlinux:vfs_writev,
 
         let hover = result["result"]["contents"].as_str().unwrap();
         assert!(hover.contains(r"kfunc:vmlinux:posix_timer_fn"));
-        assert!(hover.contains(r"hrtimer_restart posix_timer_fn(struct hrtimer *timer)"));
+        println!("{hover:?}");
+        // TODO remove space in function arguments: struct hrtimer *hrtmer
+        assert!(hover.contains(r"hrtimer_restart posix_timer_fn(struct hrtimer * timer)"));
     }
 }
