@@ -114,6 +114,10 @@ impl BtfRawType {
         u32_get_field!(self.info, 24, 28)
     }
 
+    fn get_kind_flag(&self) -> u32 {
+        u32_get_field!(self.info, 31, 31)
+    }
+
     fn get_vlen(&self) -> u32 {
         u32_get_field!(self.info, 0, 15)
     }
@@ -374,6 +378,18 @@ impl BtfTypeTrait for BtfTypeEnum {
 impl BtfTypeTrait for BtfTypeFwd {
     fn kind_specific_size(&self) -> u64 {
         0
+    }
+
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
+        let flag = self.btf_raw_type.get_kind_flag();
+        let mut name = if flag == 0 {
+            "struct ".to_owned()
+        } else {
+            "union ".to_owned()
+        };
+
+        name.push_str(split.get_type_name(&self.btf_raw_type));
+        (name, "".to_owned())
     }
 }
 
@@ -970,6 +986,9 @@ pub struct BtfComposite {
 pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
     let mut is_composite = false;
     let btf_type = btf.type_from_id(type_id).ok()?;
+
+    // TODO: for BtfTypeFwd we do not have actual type_id (struct or union),
+    // we will need to resovle by name
 
     let mut id = type_id;
     loop {
