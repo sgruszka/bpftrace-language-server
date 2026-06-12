@@ -1046,9 +1046,10 @@ fn get_details_and_docs(
 
         for (member_var, member_type) in pairs {
             let s = format!(
-                "        {:<width$} {}; \n",
-                btf_item_to_str(&member_type, None),
+                "        {:<width$} {}{}; \n",
+                &member_type.type_prefix,
                 &member_var.name,
+                &member_type.type_sufix,
                 width = max_type_width
             );
             docs.push_str(&s);
