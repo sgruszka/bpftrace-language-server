@@ -545,6 +545,21 @@ impl BtfTypeTrait for BtfTypeTypeTag {
     fn kind_specific_size(&self) -> u64 {
         0
     }
+
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
+        let sub_type_id = self.btf_raw_type.get_type_id();
+        let sub_type_raw = split.raw_type_from_id(sub_type_id).unwrap();
+        let sub_type = inner_to_btf_type(sub_type_raw, sub_type_id).unwrap();
+        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
+
+        let name = split.get_type_name(&self.btf_raw_type);
+
+        let mut prefix = sub_prefix;
+        prefix.push_str(" __");
+        prefix.push_str(name);
+
+        (prefix.to_owned(), sub_sufix.to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeEnum64 {
@@ -998,7 +1013,8 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
             BtfType::Volatile(v) => v.btf_raw_type.get_type_id(),
             BtfType::Restrict(r) => r.btf_raw_type.get_type_id(),
             BtfType::Ptr(p) => p.btf_raw_type.get_type_id(),
-            BtfType::Typedef(t) => t.btf_raw_type.get_type_id(),
+            BtfType::Typedef(td) => td.btf_raw_type.get_type_id(),
+            BtfType::TypeTag(tt) => tt.btf_raw_type.get_type_id(),
             // TODO: Func / Func Proto // TypeTag ...
             BtfType::Array(_) => {
                 let (split, mut off) = btf.offset_from_id(id);
