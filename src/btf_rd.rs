@@ -307,9 +307,20 @@ impl BtfTypeTrait for BtfTypePointer {
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let mut prefix = sub_prefix;
-        prefix.push_str(" *");
+        let mut sufix;
+        match sub_type {
+            BtfType::FuncProto(_) => {
+                prefix.push_str(" (*");
+                sufix = ")".to_string();
+                sufix.push_str(&sub_sufix);
+            }
+            _ => {
+                prefix.push_str(" *");
+                sufix = sub_sufix;
+            }
+        }
 
-        (prefix.to_owned(), sub_sufix.to_owned())
+        (prefix.to_owned(), sufix.to_owned())
     }
 }
 
@@ -495,7 +506,11 @@ impl BtfTypeTrait for BtfTypeFuncProto {
 
             let name = this_split.get_name(raw_param.name_off);
 
-            func_proto.push_str(&format!("{} {}{}", sub_prefix, name, sub_sufix));
+            if !name.is_empty() || !sub_sufix.is_empty() {
+                func_proto.push_str(&format!("{} {}{}", sub_prefix, name, sub_sufix));
+            } else {
+                func_proto.push_str(&sub_prefix);
+            };
 
             if p < vlen - 1 {
                 func_proto.push_str(", ");

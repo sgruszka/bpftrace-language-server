@@ -227,6 +227,7 @@ fn items_from_resolved_btf(
             } else {
                 ""
             };
+
             let completion = object! {
                 "label": m.name.clone(),
                 "kind" : 5,
@@ -1038,7 +1039,7 @@ fn get_details_and_docs(
 
             match resolve_variable_type(module, member) {
                 Some(member_type) => {
-                    let width = btf_item_to_str(&member_type, Some(member)).len();
+                    let width = member_type.type_prefix.len() + 1;
                     if width > max_type_width {
                         max_type_width = width;
                     }
@@ -1052,13 +1053,26 @@ fn get_details_and_docs(
         }
 
         for (member_var, member_type) in pairs {
-            let s = format!(
-                "        {:<width$} {}{}; \n",
-                &member_type.type_prefix,
-                &member_var.name,
-                &member_type.type_sufix,
-                width = max_type_width
-            );
+            let s = if member_type.type_prefix.ends_with("(*") {
+                // Hack function pointer
+                let type_prefix = member_type.type_prefix.replace("(*", "");
+                format!(
+                    "        {:<width$} (*{}{}; \n",
+                    type_prefix,
+                    &member_var.name,
+                    &member_type.type_sufix,
+                    width = max_type_width
+                )
+            } else {
+                format!(
+                    "        {:<width$} {}{}; \n",
+                    &member_type.type_prefix,
+                    &member_var.name,
+                    &member_type.type_sufix,
+                    width = max_type_width
+                )
+            };
+
             docs.push_str(&s);
         }
         docs.push_str(&format!("}};{}", c_close));
