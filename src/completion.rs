@@ -110,7 +110,7 @@ fn resolve_args_name_chain(
     None
 }
 
-fn resolve_variable_type(module: &String, var: &BtfVariable) -> Option<BtfResolvedType> {
+fn resolve_variable_type(module: &str, var: &BtfVariable) -> Option<BtfResolvedType> {
     let module_btf_map = MODULE_BTF_MAP.lock().unwrap();
     let btf = module_btf_map.get(module)?;
 
@@ -208,21 +208,29 @@ fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
     None
 }
 
-fn items_from_resolved_btf(btf_tuple: &(BtfVariable, BtfResolvedType)) -> json::JsonValue {
+fn items_from_resolved_btf(
+    module: &str,
+    btf_tuple: &(BtfVariable, BtfResolvedType),
+) -> json::JsonValue {
     let mut items = json::JsonValue::new_array();
 
     let (_res_var, res_type) = btf_tuple;
 
     if let Some(actual_type) = &res_type.actual_type {
         for m in actual_type.members.iter() {
-            // TODO
             if m.name == "retval" {
                 continue;
             }
+
+            let detail = if let Some(member_type) = resolve_variable_type(module, m) {
+                &btf_item_to_str(&member_type, Some(m))
+            } else {
+                ""
+            };
             let completion = object! {
                 "label": m.name.clone(),
                 "kind" : 5,
-                "detail" : "TODO", // btf_item_to_str(child, false),
+                "detail" : detail,
                 // TODO
                 // "documentation" : field_type,
             };
@@ -311,16 +319,15 @@ fn encode_completion_for_args_or_retval(
         // On first line of probe args is kfunc module and name
         probe_args_iter.next();
         items_from_probe_args(probe_args_iter)
-    } else if let Some(next_items) =
-        probes_compl
-            .btf_probe_args
-            .and_then(|(module, resolved_func)| {
-                resolve_args_name_chain(&module, &resolved_func, args_with_fields)
-            })
-    {
-        // For debug:
-        // log_dbg!(COMPL, "Found arguments using btf:\n{:?}", next_items);
-        items_from_resolved_btf(&next_items)
+    } else if let Some((module, resolved_func)) = probes_compl.btf_probe_args {
+        if let Some(next_items) = resolve_args_name_chain(&module, &resolved_func, args_with_fields)
+        {
+            // For debug:
+            // log_dbg!(COMPL, "Found arguments using btf:\n{:?}", next_items);
+            items_from_resolved_btf(&module, &next_items)
+        } else {
+            json::JsonValue::new_array()
+        }
     } else {
         json::JsonValue::new_array()
     };
