@@ -78,7 +78,7 @@ struct BtfRawType {
 #[derive(Debug, BinRead)]
 struct BtfRawArray {
     elem_type: u32,
-    index_type: u32,
+    _index_type: u32,
     nelems: u32,
 }
 
@@ -92,7 +92,7 @@ struct BtfRawParam {
 struct BtfRawMember {
     name_off: u32,
     type_id: u32,
-    offset: u32,
+    _offset: u32,
 }
 
 macro_rules! u32_get_field {
@@ -134,6 +134,7 @@ macro_rules! define_btf_types {
         ),* $(,)?
     ) => {
         $(
+            #[allow(dead_code)]
             #[derive(Debug)]
             struct $struct_name {
                 btf_raw_type: BtfRawType,
@@ -1082,6 +1083,7 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
     })
 }
 
+#[allow(unused)]
 pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
     log_dbg!(
         BTFRD,
