@@ -303,8 +303,13 @@ impl BtfTypeTrait for BtfTypePointer {
 
     fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type_raw = split.raw_type_from_id(sub_type_id).unwrap();
-        let sub_type = inner_to_btf_type(sub_type_raw, sub_type_id).unwrap();
+        let sub_type = match split.type_from_id(sub_type_id) {
+            Ok(t) => t,
+            Err(e) => {
+                log_err!("Failed to get type for id {} with error {}", sub_type_id, e);
+                return ("".to_owned(), "".to_owned());
+            }
+        };
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let mut prefix = sub_prefix;
@@ -335,7 +340,17 @@ impl BtfTypeTrait for BtfTypeArray {
         off += 12;
         let raw_array: BtfRawArray = split.read_raw_struct(off).unwrap();
 
-        let sub_type = split.type_from_id(raw_array.elem_type).unwrap();
+        let sub_type = match split.type_from_id(raw_array.elem_type) {
+            Ok(t) => t,
+            Err(e) => {
+                log_err!(
+                    "Failed to get type for id {} with error {}",
+                    raw_array.elem_type,
+                    e
+                );
+                return ("".to_owned(), "".to_owned());
+            }
+        };
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let mut sufix = sub_sufix;
@@ -564,8 +579,7 @@ impl BtfTypeTrait for BtfTypeTypeTag {
 
     fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type_raw = split.raw_type_from_id(sub_type_id).unwrap();
-        let sub_type = inner_to_btf_type(sub_type_raw, sub_type_id).unwrap();
+        let sub_type = split.type_from_id(sub_type_id).unwrap();
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let name = split.get_type_name(&self.btf_raw_type);
@@ -600,7 +614,7 @@ pub struct BtfVariable {
 }
 
 impl BtfTypeFunc {
-    fn parameters(self: &Self, this_split: &BtfSplit) -> Vec<BtfVariable> {
+    fn parameters(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
         let func_proto_id = self.btf_raw_type.get_type_id();
 
         let (split, mut off) = this_split.offset_from_id(func_proto_id);
@@ -625,7 +639,7 @@ impl BtfTypeFunc {
 }
 
 impl BtfTypeStruct {
-    fn members(self: &Self, this_split: &BtfSplit) -> Vec<BtfVariable> {
+    fn members(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
         let (split, mut off) = this_split.offset_from_id(self.type_id);
         off += 12;
 
@@ -648,7 +662,7 @@ impl BtfTypeStruct {
 
 // TODO: Merge with BtfTypeStruct
 impl BtfTypeUnion {
-    fn members(self: &Self, this_split: &BtfSplit) -> Vec<BtfVariable> {
+    fn members(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
         let (split, mut off) = this_split.offset_from_id(self.type_id);
         off += 12;
 
