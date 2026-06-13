@@ -521,7 +521,17 @@ impl BtfTypeTrait for BtfTypeFuncProto {
             let raw_param: BtfRawParam = split.read_raw_struct(off).unwrap();
             off += 8;
 
-            let sub_type = this_split.type_from_id(raw_param.type_id).unwrap();
+            let sub_type = match split.type_from_id(raw_param.type_id) {
+                Ok(t) => t,
+                Err(e) => {
+                    log_err!(
+                        "Failed to get type for id {} with error {}",
+                        raw_param.type_id,
+                        e
+                    );
+                    return ("".to_owned(), "".to_owned());
+                }
+            };
             let (sub_prefix, sub_sufix) = sub_type.string_format(this_split);
 
             let name = this_split.get_name(raw_param.name_off);
@@ -541,7 +551,13 @@ impl BtfTypeTrait for BtfTypeFuncProto {
 
         let ret_type_id = self.btf_raw_type.get_type_id();
 
-        let ret_sub_type = this_split.type_from_id(ret_type_id).unwrap();
+        let ret_sub_type = match split.type_from_id(ret_type_id) {
+            Ok(t) => t,
+            Err(e) => {
+                log_err!("Failed to get type for id {} with error {}", ret_type_id, e);
+                return ("".to_owned(), "".to_owned());
+            }
+        };
         let (mut ret_type, ret_sufix) = ret_sub_type.string_format(this_split);
         if !ret_sufix.is_empty() {
             ret_type.push_str(" ");
