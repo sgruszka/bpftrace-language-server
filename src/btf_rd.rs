@@ -433,31 +433,46 @@ impl BtfTypeTrait for BtfTypeTypedef {
     }
 }
 
+fn ptr_qualifier_string_format(
+    split: &BtfSplit,
+    sub_type_id: u32,
+    qualifier: &str,
+) -> (String, String) {
+    let sub_type = match split.type_from_id(sub_type_id) {
+        Ok(t) => t,
+        Err(e) => {
+            log_err!("Failed to get type for id {} with error {}", sub_type_id, e);
+            return ("".to_owned(), "".to_owned());
+        }
+    };
+
+    let (sub_prefix, sub_sufix) = sub_type.string_format(split);
+
+    let prefix = match sub_type {
+        BtfType::Ptr(_) => {
+            let mut prefix = sub_prefix;
+            prefix.push_str(qualifier);
+            prefix
+        }
+        _ => {
+            let mut prefix = qualifier.to_owned();
+            prefix.push_str(" ");
+            prefix.push_str(&sub_prefix);
+            prefix
+        }
+    };
+
+    (prefix, sub_sufix.to_owned())
+}
+
 impl BtfTypeTrait for BtfTypeVolatile {
     fn kind_specific_size(&self) -> u64 {
         0
     }
 
     fn string_format(&self, split: &BtfSplit) -> (String, String) {
-        // TODO: merge with "const"
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type = split.type_from_id(sub_type_id).unwrap();
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
-
-        let prefix = match sub_type {
-            BtfType::Ptr(_) => {
-                let mut prefix = sub_prefix;
-                prefix.push_str("volatile");
-                prefix
-            }
-            _ => {
-                let mut prefix = "volatile ".to_owned();
-                prefix.push_str(&sub_prefix);
-                prefix
-            }
-        };
-
-        (prefix, sub_sufix.to_owned())
+        ptr_qualifier_string_format(split, sub_type_id, "volatile")
     }
 }
 
@@ -468,29 +483,18 @@ impl BtfTypeTrait for BtfTypeConst {
 
     fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type = split.type_from_id(sub_type_id).unwrap();
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
-
-        let prefix = match sub_type {
-            BtfType::Ptr(_) => {
-                let mut prefix = sub_prefix;
-                prefix.push_str("const");
-                prefix
-            }
-            _ => {
-                let mut prefix = "const ".to_owned();
-                prefix.push_str(&sub_prefix);
-                prefix
-            }
-        };
-
-        (prefix, sub_sufix.to_owned())
+        ptr_qualifier_string_format(split, sub_type_id, "const")
     }
 }
 
 impl BtfTypeTrait for BtfTypeRestrict {
     fn kind_specific_size(&self) -> u64 {
         0
+    }
+
+    fn string_format(&self, split: &BtfSplit) -> (String, String) {
+        let sub_type_id = self.btf_raw_type.get_type_id();
+        ptr_qualifier_string_format(split, sub_type_id, "restrict")
     }
 }
 
