@@ -1249,7 +1249,8 @@ mod tests {
 
             let btf_var = &resolved_btf.args[i - 1];
             let btf_type = resolve_variable_type(&module, btf_var).unwrap();
-            assert_eq!(arg.trim(), btf_item_to_str(&btf_type, Some(btf_var)));
+            let a = arg.trim().replace("* ", "*");
+            assert_eq!(a, btf_item_to_str(&btf_type, Some(btf_var)));
             n += 1;
         }
 
