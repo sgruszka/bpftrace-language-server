@@ -95,6 +95,11 @@ struct BtfRawMember {
     _offset: u32,
 }
 
+#[derive(Debug, BinRead)]
+struct BtfRawInt {
+    encoding: u32,
+}
+
 macro_rules! u32_get_field {
     ($value:expr, $from:literal, $to:literal) => {{
         const _: () = assert!($to >= 0 && $to <= 31);
@@ -123,6 +128,10 @@ impl BtfRawType {
     }
 
     fn get_type_id(&self) -> u32 {
+        self.union_size_type
+    }
+
+    fn get_size(&self) -> u32 {
         self.union_size_type
     }
 }
@@ -288,11 +297,31 @@ impl BtfTypeTrait for BtfTypeInteger {
         4
     }
 
-    fn string_format(&self, split: &BtfSplit) -> (String, String) {
-        let name = split.get_type_name(&self.btf_raw_type).to_owned();
-        // TODO: bitfields ;
+    fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
+        let name = this_split.get_type_name(&self.btf_raw_type).to_owned();
+        let size = self.btf_raw_type.get_size();
 
-        (name.to_owned(), "".to_owned())
+        let (split, mut off) = this_split.offset_from_id(self.type_id);
+        off += 12;
+
+        let raw_int_res: binrw::BinResult<BtfRawInt> = split.read_raw_struct(off);
+        let raw_int = match raw_int_res {
+            Ok(ri) => ri,
+            Err(e) => {
+                log_err!("Failed to read raw_int at {off} with {e}");
+                return ("".to_owned(), "".to_owned());
+            }
+        };
+
+        // TODO: for struct/union members this is encoded in BtfRawMember offsed field
+        let bits = raw_int.encoding & 0xffu32;
+        let sufix = if bits > 0 && bits < size {
+            format!(":{bits}")
+        } else {
+            "".to_owned()
+        };
+
+        (name.to_owned(), sufix)
     }
 }
 
