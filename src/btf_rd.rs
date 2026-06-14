@@ -338,7 +338,15 @@ impl BtfTypeTrait for BtfTypeArray {
     fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
         let (split, mut off) = this_split.offset_from_id(self.type_id);
         off += 12;
-        let raw_array: BtfRawArray = split.read_raw_struct(off).unwrap();
+
+        let raw_array_res: binrw::BinResult<BtfRawArray> = split.read_raw_struct(off);
+        let raw_array = match raw_array_res {
+            Ok(ra) => ra,
+            Err(e) => {
+                log_err!("Failed to read raw_array at {off} with {e}");
+                return ("".to_owned(), "".to_owned());
+            }
+        };
 
         let sub_type = match split.type_from_id(raw_array.elem_type) {
             Ok(t) => t,
@@ -518,8 +526,15 @@ impl BtfTypeTrait for BtfTypeFuncProto {
 
         let vlen = self.btf_raw_type.get_vlen();
         for p in 0..vlen {
-            let raw_param: BtfRawParam = split.read_raw_struct(off).unwrap();
+            let raw_param_res: binrw::BinResult<BtfRawParam> = split.read_raw_struct(off);
             off += 8;
+            let raw_param = match raw_param_res {
+                Ok(rp) => rp,
+                Err(e) => {
+                    log_err!("Failed to read raw_param at {off} with {e}");
+                    return ("".to_owned(), "".to_owned());
+                }
+            };
 
             let sub_type = match split.type_from_id(raw_param.type_id) {
                 Ok(t) => t,
@@ -638,15 +653,30 @@ impl BtfTypeFunc {
         let func_proto_id = self.btf_raw_type.get_type_id();
 
         let (split, mut off) = this_split.offset_from_id(func_proto_id);
-        let raw_func_proto: BtfRawType = split.read_raw_struct(off).unwrap();
+
+        let raw_func_proto_res: binrw::BinResult<BtfRawType> = split.read_raw_struct(off);
         off += 12;
+        let raw_func_proto = match raw_func_proto_res {
+            Ok(rfp) => rfp,
+            Err(e) => {
+                log_err!("Failed to read raw_func_proto at {off} with {e}");
+                return Vec::new();
+            }
+        };
 
         let mut params: Vec<BtfVariable> = Vec::new();
 
         let vlen = raw_func_proto.get_vlen();
         for _ in 0..vlen {
-            let raw_param: BtfRawParam = split.read_raw_struct(off).unwrap();
+            let raw_param_res: binrw::BinResult<BtfRawParam> = split.read_raw_struct(off);
             off += 8;
+            let raw_param = match raw_param_res {
+                Ok(rp) => rp,
+                Err(e) => {
+                    log_err!("Failed to read raw_param at {off} with {e}");
+                    return Vec::new();
+                }
+            };
 
             let name = this_split.get_name(raw_param.name_off).to_owned();
             let type_id = raw_param.type_id;
@@ -667,8 +697,15 @@ impl BtfTypeStruct {
 
         let vlen = self.btf_raw_type.get_vlen();
         for _ in 0..vlen {
-            let raw_member: BtfRawMember = split.read_raw_struct(off).unwrap();
+            let raw_member_res: binrw::BinResult<BtfRawMember> = split.read_raw_struct(off);
             off += 12;
+            let raw_member = match raw_member_res {
+                Ok(rm) => rm,
+                Err(e) => {
+                    log_err!("Failed to read raw_member at {off} with {e}");
+                    return Vec::new();
+                }
+            };
 
             let name = this_split.get_name(raw_member.name_off).to_owned();
             let type_id = raw_member.type_id;
@@ -1069,8 +1106,15 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
             BtfType::Array(_) => {
                 let (split, mut off) = btf.offset_from_id(id);
                 off += 12;
-                let raw_array: BtfRawArray = split.read_raw_struct(off).ok()?;
 
+                let raw_array_res: binrw::BinResult<BtfRawArray> = split.read_raw_struct(off);
+                let raw_array = match raw_array_res {
+                    Ok(ra) => ra,
+                    Err(e) => {
+                        log_err!("Failed to read raw_array at {off} with {e}");
+                        return None;
+                    }
+                };
                 raw_array.elem_type
             }
             BtfType::Struct(_) => {
