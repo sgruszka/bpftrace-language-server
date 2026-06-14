@@ -435,8 +435,6 @@ impl BtfTypeTrait for BtfTypeTypedef {
 
     fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let name = split.get_type_name(&self.btf_raw_type).to_owned();
-        // TODO: bitfields ;
-
         (name.to_owned(), "".to_owned())
     }
 }
@@ -614,7 +612,13 @@ impl BtfTypeTrait for BtfTypeTypeTag {
 
     fn string_format(&self, split: &BtfSplit) -> (String, String) {
         let sub_type_id = self.btf_raw_type.get_type_id();
-        let sub_type = split.type_from_id(sub_type_id).unwrap();
+        let sub_type = match split.type_from_id(sub_type_id) {
+            Ok(t) => t,
+            Err(e) => {
+                log_err!("Failed to get type for id {sub_type_id} with error {e}");
+                return ("".to_owned(), "".to_owned());
+            }
+        };
         let (sub_prefix, sub_sufix) = sub_type.string_format(split);
 
         let name = split.get_type_name(&self.btf_raw_type);
