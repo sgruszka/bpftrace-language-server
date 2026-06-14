@@ -692,55 +692,43 @@ impl BtfTypeFunc {
     }
 }
 
+fn composite_members(this_split: &BtfSplit, type_id: u32, vlen: u32) -> Vec<BtfVariable> {
+    let (split, mut off) = this_split.offset_from_id(type_id);
+    off += 12;
+
+    let mut members: Vec<BtfVariable> = Vec::new();
+
+    for _ in 0..vlen {
+        let raw_member_res: binrw::BinResult<BtfRawMember> = split.read_raw_struct(off);
+        off += 12;
+        let raw_member = match raw_member_res {
+            Ok(rm) => rm,
+            Err(e) => {
+                log_err!("Failed to read raw_member at {off} with {e}");
+                return Vec::new();
+            }
+        };
+
+        let name = this_split.get_name(raw_member.name_off).to_owned();
+
+        members.push(BtfVariable {
+            name,
+            type_id: raw_member.type_id,
+        });
+    }
+
+    members
+}
+
 impl BtfTypeStruct {
     fn members(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
-        let (split, mut off) = this_split.offset_from_id(self.type_id);
-        off += 12;
-
-        let mut members: Vec<BtfVariable> = Vec::new();
-
-        let vlen = self.btf_raw_type.get_vlen();
-        for _ in 0..vlen {
-            let raw_member_res: binrw::BinResult<BtfRawMember> = split.read_raw_struct(off);
-            off += 12;
-            let raw_member = match raw_member_res {
-                Ok(rm) => rm,
-                Err(e) => {
-                    log_err!("Failed to read raw_member at {off} with {e}");
-                    return Vec::new();
-                }
-            };
-
-            let name = this_split.get_name(raw_member.name_off).to_owned();
-            let type_id = raw_member.type_id;
-
-            members.push(BtfVariable { name, type_id });
-        }
-
-        members
+        composite_members(this_split, self.type_id, self.btf_raw_type.get_vlen())
     }
 }
 
-// TODO: Merge with BtfTypeStruct
 impl BtfTypeUnion {
     fn members(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
-        let (split, mut off) = this_split.offset_from_id(self.type_id);
-        off += 12;
-
-        let mut members: Vec<BtfVariable> = Vec::new();
-
-        let vlen = self.btf_raw_type.get_vlen();
-        for _ in 0..vlen {
-            let raw_member: BtfRawMember = split.read_raw_struct(off).unwrap();
-            off += 12;
-
-            let name = this_split.get_name(raw_member.name_off).to_owned();
-            let type_id = raw_member.type_id;
-
-            members.push(BtfVariable { name, type_id });
-        }
-
-        members
+        composite_members(this_split, self.type_id, self.btf_raw_type.get_vlen())
     }
 }
 
