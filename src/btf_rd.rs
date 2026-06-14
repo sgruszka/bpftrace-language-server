@@ -969,7 +969,14 @@ impl BtfSplit {
 
     fn find_function(&self, func_name: &str) -> Option<BtfTypeFunc> {
         let id = self.functions.get(func_name)?;
-        let btf_type = self.type_from_id(*id).ok()?;
+
+        let btf_type = match self.type_from_id(*id) {
+            Ok(t) => t,
+            Err(e) => {
+                log_err!("Failed to get type for id {} with error {}", *id, e);
+                return None;
+            }
+        };
 
         match btf_type {
             BtfType::Func(f) => Some(f),
@@ -1046,6 +1053,7 @@ pub fn btf_resolve_func(btf: &Btf, func_name: &str) -> Option<BtfFunction> {
 
     let func_proto_id = func.btf_raw_type.get_type_id();
     let func_proto_raw = btf.raw_type_from_id(func_proto_id).ok()?;
+    // TODO print error
     let ret_type_id = func_proto_raw.get_type_id();
     let func_proto = inner_to_btf_type(func_proto_raw, func_proto_id).ok()?;
     let (ret_type, args) = func_proto.string_format(btf);
@@ -1091,14 +1099,28 @@ pub struct BtfComposite {
 
 pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
     let mut is_composite = false;
-    let btf_type = btf.type_from_id(type_id).ok()?;
+
+    let btf_type = match btf.type_from_id(type_id) {
+        Ok(t) => t,
+        Err(e) => {
+            log_err!("Failed to get type for id {} with error {}", type_id, e);
+            return None;
+        }
+    };
 
     // TODO: for BtfTypeFwd we do not have actual type_id (struct or union),
     // we will need to resovle by name
 
     let mut id = type_id;
     loop {
-        let btf_sub_type = btf.type_from_id(id).ok()?;
+        let btf_sub_type = match btf.type_from_id(id) {
+            Ok(t) => t,
+            Err(e) => {
+                log_err!("Failed to get type for id {} with error {}", id, e);
+                return None;
+            }
+        };
+
         let sub_id = match btf_sub_type {
             BtfType::Const(c) => c.btf_raw_type.get_type_id(),
             BtfType::Volatile(v) => v.btf_raw_type.get_type_id(),
@@ -1135,7 +1157,14 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
     }
 
     let actual_type = if is_composite {
-        let comp_type = btf.type_from_id(id).ok()?;
+        let comp_type = match btf.type_from_id(id) {
+            Ok(t) => t,
+            Err(e) => {
+                log_err!("Failed to get type for id {} with error {}", id, e);
+                return None;
+            }
+        };
+
         let (prefix, sufix) = comp_type.string_format(btf);
         assert_eq!(sufix, "");
 
