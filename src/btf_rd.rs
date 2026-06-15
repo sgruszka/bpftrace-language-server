@@ -1003,18 +1003,28 @@ impl BtfSplit {
 }
 
 pub fn btf_setup_module(module: &str) -> Option<Btf> {
-    let btf = BtfSplit::build(None, "/sys/kernel/btf/vmlinux").ok()?;
+    let vmlinux_btf;
+    let module_btf;
+    if cfg!(test) && !cfg!(feature = "live_btf_tests") {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/");
+        vmlinux_btf = path.to_owned() + "vmlinux.btf";
+        module_btf = path.to_owned() + module + ".btf";
+    } else {
+        let path = "/sys/kernel/btf/";
+        vmlinux_btf = path.to_owned() + "vmlinux";
+        module_btf = path.to_owned() + module;
+    }
+
+    let btf = BtfSplit::build(None, &vmlinux_btf).ok()?;
     if module.is_empty() || module == "vmlinux" {
         return Some(btf);
     }
 
-    let path = "/sys/kernel/btf/".to_string() + module;
     let base = Arc::new(btf);
-    if let Ok(split) = BtfSplit::build(Some(Arc::clone(&base)), &path) {
-        log_dbg!(BTFRD, "Loaded btf for {}", path);
+    if let Ok(split) = BtfSplit::build(Some(Arc::clone(&base)), &module_btf) {
+        log_dbg!(BTFRD, "Loaded btf for {}", module_btf);
         return Some(split);
     }
-
     None
 }
 
@@ -1500,6 +1510,7 @@ mod tests {
         assert_eq!(prefix, "const struct inode_operations *");
     }
 
+    #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_vmlinux_rt2x00() {
         let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
@@ -1518,6 +1529,7 @@ mod tests {
         assert_eq!(prefix, "struct device *const");
     }
 
+    #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_vmlinux_array() {
         let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
@@ -1536,6 +1548,7 @@ mod tests {
         // TODO test array[N][M]
     }
 
+    #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_vmlinux_func_proto() {
         let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
@@ -1644,16 +1657,10 @@ mod tests {
         assert_eq!(union.members.len(), 2);
     }
 
+    #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_resolve_ieee80211_hw_array_in_struct() {
-        // This test requires mac80211 module to be loaded
-        let btf = match btf_setup_module("mac80211") {
-            Some(btf) => btf,
-            None => {
-                eprintln!("\x1b[33mskipped\x1b[0m: mac80211 module not loaded");
-                return;
-            }
-        };
+        let btf = btf_setup_module("mac80211").unwrap();
         let func = btf_resolve_func(&btf, "ieee80211_register_hw").unwrap();
 
         assert_eq!(func.args[0].name, "hw");
@@ -1671,15 +1678,15 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_tcp_check_req_retval() {
+    fn test_resolve_alloc_worqueue_noprof() {
         let btf = btf_setup_module("vmlinux").unwrap();
-        let base = btf_resolve_func(&btf, "tcp_check_req").unwrap();
+        let base = btf_resolve_func(&btf, "alloc_workqueue_noprof").unwrap();
 
         let (resolved_var, resolved_type) =
             btf_iterate_over_names_chain(&btf, &base, "retval").unwrap();
 
         assert_eq!(resolved_var.name, "retval");
-        assert_eq!(resolved_type.type_prefix, "struct sock *");
+        assert_eq!(resolved_type.type_prefix, "struct workqueue_struct *");
 
         assert!(resolved_type
             .actual_type
@@ -1687,7 +1694,7 @@ mod tests {
             .unwrap()
             .members
             .iter()
-            .any(|v| v.name == "sk_receive_queue"));
+            .any(|v| v.name == "mutex"));
 
         assert!(resolved_type
             .actual_type
@@ -1695,7 +1702,7 @@ mod tests {
             .unwrap()
             .members
             .iter()
-            .any(|child| child.name == "sk_socket"));
+            .any(|child| child.name == "pwqs"));
     }
 
     #[test]

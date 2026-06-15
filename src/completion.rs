@@ -1226,6 +1226,7 @@ mod tests {
         let args_by_btf = find_kfunc_args_by_btf(s);
 
         let Some((module, resolved_btf)) = args_by_btf else {
+            println!("{s}");
             panic!();
         };
 
@@ -1295,12 +1296,16 @@ mod tests {
 
     #[test]
     fn test_find_probe_args() {
-        let probes = vec![
+        let mut probes = vec![
             "kfunc:vmlinux:posixtimer_free_timer",
-            "kfunc:vmlinux:acpi_unregister_gsi",
-            "kfunc:vmlinux:acpi_register_gsi",
             "kfunc:vmlinux:vfs_open",
         ];
+
+        if cfg!(feature = "live_btf_tests") {
+            probes.push("kfunc:vmlinux:acpi_unregister_gsi");
+            probes.push("kfunc:vmlinux:acpi_register_gsi");
+        }
+
         preload_probes_args(&probes);
         for p in probes {
             compare_btf_and_cmd(p);
@@ -1449,14 +1454,14 @@ mod tests {
     }
 
     #[test]
-    fn test_args_completion_for_two_tcp_probes() {
-        let text = r#" fentry:vmlinux:tcp_ack, fentry:vmlinux:tcp_mt { args. }"#;
+    fn test_args_completion_for_two_vfs_write_probes() {
+        let text = r#" fentry:vmlinux:vfs_write, fentry:vmlinux:vfs_writev { args. }"#;
         let json_content = document_content_setup(text, 0, text.len() - 2);
 
         let result = encode_completion(json_content);
-        assert!(result["result"]["items"].len() == 1);
+        assert!(result["result"]["items"].len() == 2);
 
-        let fields = vec!["skb"];
+        let fields = vec!["file", "pos"];
         check_completion_resutls(result, fields);
     }
 
