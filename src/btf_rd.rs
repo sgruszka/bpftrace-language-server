@@ -278,9 +278,7 @@ fn inner_to_btf_type(btf_raw_type: BtfRawType, type_id: u32) -> Result<BtfType, 
 #[enum_dispatch]
 trait BtfTypeTrait {
     fn kind_specific_size(&self) -> u64;
-    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
-        ("".to_owned(), "".to_owned())
-    }
+    fn string_format(&self, _split: &BtfSplit) -> (String, String);
 }
 
 impl BtfTypeTrait for BtfTypeVoid {
@@ -537,6 +535,11 @@ impl BtfTypeTrait for BtfTypeFunc {
     fn kind_specific_size(&self) -> u64 {
         0
     }
+
+    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
+        log_err!("string_format() implemented for BtfTypeFunc");
+        ("".to_owned(), "".to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeFuncProto {
@@ -614,6 +617,11 @@ impl BtfTypeTrait for BtfTypeVar {
     fn kind_specific_size(&self) -> u64 {
         4
     }
+
+    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
+        log_err!("string_format() implemented for BtfTypeVar");
+        ("".to_owned(), "".to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeDatasec {
@@ -621,16 +629,32 @@ impl BtfTypeTrait for BtfTypeDatasec {
         let vlen = self.btf_raw_type.get_vlen() as u64;
         vlen * 12
     }
+
+    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
+        log_err!("string_format() implemented for BtfTypeDatasec");
+        ("".to_owned(), "".to_owned())
+    }
 }
 
 impl BtfTypeTrait for BtfTypeFloat {
     fn kind_specific_size(&self) -> u64 {
         0
     }
+
+    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
+        log_err!("string_format() implemented for BtfTypeFloat");
+        ("".to_owned(), "".to_owned())
+    }
 }
+
 impl BtfTypeTrait for BtfTypeDeclTag {
     fn kind_specific_size(&self) -> u64 {
         4
+    }
+
+    fn string_format(&self, _split: &BtfSplit) -> (String, String) {
+        log_err!("string_format() implemented for BtfTypeDeclTag");
+        ("".to_owned(), "".to_owned())
     }
 }
 
