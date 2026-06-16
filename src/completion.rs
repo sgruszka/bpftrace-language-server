@@ -1,7 +1,7 @@
 use json::{self, object};
 use std::collections::HashMap;
 use std::str::Lines;
-use std::sync::{LazyLock, Mutex, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::Instant;
 use tree_sitter::Node;
 
@@ -56,7 +56,7 @@ impl From<CompletionItemKind> for json::JsonValue {
 static PROBES_ARGS_MAP: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-static MODULE_BTF_MAP: LazyLock<Mutex<HashMap<String, Btf>>> =
+static MODULE_BTF_MAP: LazyLock<Mutex<HashMap<String, Arc<Btf>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
