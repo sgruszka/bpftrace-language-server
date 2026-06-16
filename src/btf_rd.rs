@@ -1840,4 +1840,28 @@ mod tests {
         let resolved_fail = btf_iterate_over_names_chain(&btf, &base, "args.path.dentry");
         assert!(resolved_fail.is_none());
     }
+
+    #[test]
+    fn test_resolve_fuse() {
+        let btf = btf_setup_module("fuse").unwrap();
+
+        let base = btf_resolve_func(&btf, "fuse_dentry_delete").unwrap();
+        assert!(base.name == "fuse_dentry_delete");
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "retval").unwrap();
+        assert_eq!(resolved_var.name, "retval");
+        assert_eq!(resolved_type.type_prefix, "int");
+
+        assert!(resolved_type.actual_type.is_none());
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.dentry").unwrap();
+        assert_eq!(resolved_var.name, "dentry");
+        assert_eq!(resolved_type.type_prefix, "const struct dentry *");
+
+        let (resolved_var, resolved_type) =
+            btf_iterate_over_names_chain(&btf, &base, "args.dentry->d_flags").unwrap();
+        assert_eq!(resolved_var.name, "d_flags");
+        assert_eq!(resolved_type.type_prefix, "unsigned int");
+    }
 }
