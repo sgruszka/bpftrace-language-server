@@ -862,20 +862,24 @@ impl BtfSplit {
             let size = btf_kind_type.kind_specific_size();
 
             if let BtfType::Func(_) = btf_kind_type {
-                // TODO: common code with get_type_name()
-                let start_off = header.hdr_len + header.str_off;
-                let mut ptr = data.as_ptr() as *const c_char;
-                let mut name_pos = start_off + name_off;
-                if let Some(ref base_split) = base_split {
-                    if name_pos < start_str_off {
-                        ptr = base_split.data.as_ptr() as *const c_char;
+                let name = if name_off < start_str_off {
+                    if let Some(ref base_split) = base_split {
+                        inner_get_name(base_split, name_off)
                     } else {
-                        name_pos -= start_str_off;
+                        return Err(binrw::Error::AssertFail {
+                            pos: 0,
+                            message: format!("Failed to resolve name offset {} ", name_off),
+                        });
                     }
-                }
-                assert!((name_pos as usize) < data.len());
+                } else {
+                    let start_off = header.hdr_len + header.str_off;
+                    let name_pos = start_off + name_off - start_str_off;
+                    let ptr = data.as_ptr() as *const c_char;
+                    assert!((name_pos as usize) < data.len());
 
-                let name = unsafe { CStr::from_ptr(ptr.add(name_pos as usize)).to_str().unwrap() };
+                    unsafe { CStr::from_ptr(ptr.add(name_pos as usize)).to_str().unwrap() }
+                };
+
                 functions.insert(name.to_owned(), type_id);
             }
 
