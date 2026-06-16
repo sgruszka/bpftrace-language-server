@@ -1039,8 +1039,16 @@ fn btf_setup_vmlinux_btf() -> Option<Arc<Btf>> {
         "/sys/kernel/btf/vmlinux"
     };
 
-    let btf = BtfSplit::build(None, vmlinux_btf).ok()?;
-    Some(Arc::new(btf))
+    match BtfSplit::build(None, vmlinux_btf) {
+        Ok(btf) => {
+            log_dbg!(BTFRD, "Loaded vmlinux BTF from {}", vmlinux_btf);
+            Some(Arc::new(btf))
+        }
+        Err(e) => {
+            log_err!("Failed to build vmlinux BTF from {vmlinux_btf} with error {e}");
+            None
+        }
+    }
 }
 
 pub fn btf_setup_module(module: &str) -> Option<Arc<Btf>> {
@@ -1060,11 +1068,16 @@ pub fn btf_setup_module(module: &str) -> Option<Arc<Btf>> {
         return Some(vmlinux_btf_ref.clone());
     }
 
-    if let Ok(split) = BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), &module_btf) {
-        log_dbg!(BTFRD, "Loaded btf for {}", module_btf);
-        return Some(Arc::new(split));
+    match BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), &module_btf) {
+        Ok(split) => {
+            log_dbg!(BTFRD, "Loaded btf for {}", module_btf);
+            Some(Arc::new(split))
+        }
+        Err(e) => {
+            log_err!("Failed to build module {module} BTF from {module_btf} with error {e}");
+            None
+        }
     }
-    None
 }
 
 pub struct BtfFunction {
