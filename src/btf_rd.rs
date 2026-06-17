@@ -826,9 +826,16 @@ impl BtfSplit {
         let (start_id, start_str_off, data, base_split) = match base {
             None => {
                 let file = File::open(path)?;
-                // copy_read_only do PROT_READ, MAP_PRIVATE mmap
-                let btf_mmap = unsafe { MmapOptions::new().map_copy_read_only(&file)? };
-                let data = BtfData::MemoryMap(btf_mmap);
+
+                let data =
+                    // copy_read_only do PROT_READ, MAP_PRIVATE mmap
+                    if let Ok(btf_mmap) = unsafe { MmapOptions::new().map_copy_read_only(&file) } {
+                        BtfData::MemoryMap(btf_mmap)
+                    } else {
+                        let vec: Vec<u8> = std::fs::read(path)?;
+                        BtfData::Vector(vec)
+                    };
+
                 (1, 0, data, None)
             }
             Some(base_split) => {
