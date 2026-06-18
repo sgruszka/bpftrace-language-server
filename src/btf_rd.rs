@@ -1571,59 +1571,41 @@ mod tests {
         let btf_type = split.type_from_id(120).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct inode_operations *");
+
+        let btf_type = split.type_from_id(1801).unwrap();
+        let (prefix, _sufix) = btf_type.string_format(&split);
+        assert_eq!(prefix, "const struct mm_struct *const");
+
+        let btf_type = split.type_from_id(1804).unwrap();
+        let (prefix, _sufix) = btf_type.string_format(&split);
+        assert_eq!(prefix, "struct file *const");
     }
 
-    #[cfg(feature = "live_btf_tests")]
-    #[test]
-    fn test_vmlinux_rt2x00() {
-        let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
-        let split = BtfSplit::build(Some(Arc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
-
-        let btf_type = base.type_from_id(1708).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&base);
-        assert_eq!(prefix, "const struct device *");
-
-        let btf_type = split.type_from_id(140493).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
-        assert_eq!(prefix, "const struct device *const");
-
-        let btf_type = split.type_from_id(140494).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
-        assert_eq!(prefix, "struct device *const");
-    }
-
-    #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_vmlinux_array() {
-        let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
-        let split = BtfSplit::build(Some(Arc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
+        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
 
-        let btf_type = split.type_from_id(140495).unwrap();
+        let btf_type = split.type_from_id(336).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split);
-        assert_eq!(prefix, "int");
-        assert_eq!(sufix, "[10]");
+        assert_eq!(prefix, "struct percpu_counter");
+        assert_eq!(sufix, "[4]");
 
-        let btf_type = split.type_from_id(140496).unwrap();
+        let btf_type = split.type_from_id(335).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split);
-        assert_eq!(prefix, "const struct device *");
-        assert_eq!(sufix, "[2]");
+        assert_eq!(prefix, "unsigned long");
+        assert_eq!(sufix, "[50]");
 
         // TODO test array[N][M]
     }
 
-    #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_vmlinux_func_proto() {
-        let base = Arc::new(BtfSplit::build(None, "/sys/kernel/btf/vmlinux").unwrap());
-        let split = BtfSplit::build(Some(Arc::clone(&base)), "/sys/kernel/btf/rt2x00lib").unwrap();
+        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
 
-        let btf_type = split.type_from_id(140995).unwrap();
+        let btf_type = split.type_from_id(28257).unwrap();
         let (prefix, sufix) = btf_type.string_format(&split);
-        assert_eq!(prefix, "void");
-        assert_eq!(
-            sufix,
-            "(struct sk_buff * skb, struct txentry_desc * txdesc)"
-        );
+        assert_eq!(prefix, "struct mm_struct *");
+        assert_eq!(sufix, "(struct task_struct * task, unsigned int mode)");
     }
 
     #[test]
@@ -1720,29 +1702,9 @@ mod tests {
         assert_eq!(union.members.len(), 2);
     }
 
-    #[cfg(feature = "live_btf_tests")]
-    #[test]
-    fn test_resolve_ieee80211_hw_array_in_struct() {
-        let btf = btf_setup_module("mac80211").unwrap();
-        let func = btf_resolve_func(&btf, "ieee80211_register_hw").unwrap();
-
-        assert_eq!(func.args[0].name, "hw");
-        let ieee80211_hw_ptr = btf_resolve_type(&btf, func.args[0].type_id).unwrap();
-        assert_eq!(ieee80211_hw_ptr.type_prefix, "struct ieee80211_hw *");
-
-        let ieee80211_hw = ieee80211_hw_ptr.actual_type.unwrap();
-        assert_eq!(ieee80211_hw.type_name, "struct ieee80211_hw");
-        assert_eq!(ieee80211_hw.members[0].name, "conf");
-        assert_eq!(ieee80211_hw.members[1].name, "wiphy");
-
-        let (_owner, owner_type) =
-            btf_iterate_over_names_chain(&btf, &func, "args.hw->wiphy->mtx.owner").unwrap();
-        assert_eq!(owner_type.type_prefix, "atomic_long_t");
-    }
-
     #[test]
     fn test_resolve_alloc_worqueue_noprof() {
-        let btf = btf_setup_module("vmlinux").unwrap();
+        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
         let base = btf_resolve_func(&btf, "alloc_workqueue_noprof").unwrap();
 
         let (resolved_var, resolved_type) =
@@ -1771,7 +1733,7 @@ mod tests {
     #[test]
     fn test_iterate_over_mixed_chain() {
         // alloc_pid: ns->rcu.next->func
-        let btf = btf_setup_module("vmlinux").unwrap();
+        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
 
         let base = btf_resolve_func(&btf, "alloc_pid").unwrap();
 
@@ -1796,7 +1758,8 @@ mod tests {
 
     #[test]
     fn test_resolve_k_itimer_union() {
-        let btf = btf_setup_module("vmlinux").unwrap();
+        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+
         let base = btf_resolve_func(&btf, "posixtimer_send_sigqueue").unwrap();
         let (resolved_var, resolved_type) =
             btf_iterate_over_names_chain(&btf, &base, "args.tmr->it").unwrap();
@@ -1821,7 +1784,7 @@ mod tests {
     #[test]
     fn test_resolve_vfs_open() {
         // vfs_open: path->dentry->d_inode->i_uid
-        let btf = btf_setup_module("vmlinux").unwrap();
+        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
 
         let base = btf_resolve_func(&btf, "vfs_open").unwrap();
         assert!(base.name == "vfs_open");
