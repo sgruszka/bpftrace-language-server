@@ -1348,9 +1348,9 @@ mod tests {
     }
 
     #[test]
-    fn test_probes_completion_for_modules() {
-        for text in vec!["kfunc:", "kretfunc:", "fentry:", "fexit:"].into_iter() {
-            let json_content = document_content_setup(text, 0, text.len() - 1);
+    fn test_probes_completion_for_vmlinux() {
+        for text in vec!["kfunc:v", "kretfunc:v", "fentry:v", "fexit:v"].into_iter() {
+            let json_content = document_content_setup(text, 0, text.len());
 
             let result = encode_completion(json_content);
             assert!(result["result"]["items"].len() > 0);
@@ -1360,6 +1360,37 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_probes_completion_for_modules() {
+        for text in vec!["kfunc:", "kretfunc:", "fentry:", "fexit:"].into_iter() {
+            let json_content = document_content_setup(text, 0, text.len());
+
+            let result = encode_completion(json_content);
+            assert!(result["result"]["items"].len() > 0);
+
+            let mut modules = Vec::new();
+
+            let output = Command::new("lsmod").output().unwrap();
+            let mod_list = String::from_utf8(output.stdout).unwrap();
+            let mut count = 0;
+            for line in mod_list.lines() {
+                if count == 0 {
+                    continue;
+                }
+
+                let module = line.split_whitespace().next().unwrap();
+                modules.push(module);
+
+                // encode completion limitation is 200 entries
+                count += 1;
+                if count > 200 {
+                    break;
+                }
+            }
+
+            check_completion_resutls(result, modules);
+        }
+    }
     #[test]
     fn test_probes_completion_for_vfs_functions() {
         let text = "kfunc:vmlinux:vfs_";
