@@ -616,7 +616,7 @@ fn encode_completion_for_line(
                     COMPL,
                     "Adding complete item: {} : {}",
                     label,
-                    item["detail"].to_string()
+                    item["detail"]
                 );
 
                 let _ = items.push(item);
