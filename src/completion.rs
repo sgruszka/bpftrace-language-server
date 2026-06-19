@@ -1193,7 +1193,7 @@ mod tests {
         };
 
         if all_probes_args.is_empty() {
-            log_err!("No arguments for probe {}", probes_str);
+            println!("No arguments for probe {}", probes_str);
             return;
         }
 
@@ -1355,7 +1355,6 @@ mod tests {
             let result = encode_completion(json_content);
             assert!(result["result"]["items"].len() > 0);
 
-            // TODO other items than vmlinux? Use 'lsmod' ?
             check_completion_resutls(result, vec!["vmlinux"]);
         }
     }
