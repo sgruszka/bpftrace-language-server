@@ -1067,9 +1067,11 @@ fn get_details_and_docs(
     } else if keyword_with_fields == "retval" {
         details.push_str(&format!("Return value of {}():\n", func_name));
         docs.push_str(&format!("{}{};{}\n", c_open, hover_name, c_close));
-    } else {
+    } else if res_type.actual_type.is_some() {
         details = hover_name;
         details.push_str(":\n");
+    } else {
+        details = format!("{}{};{}\n", c_open, hover_name, c_close)
     }
 
     if let Some(actual_type) = res_type.actual_type {
