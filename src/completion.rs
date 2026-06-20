@@ -8,7 +8,7 @@ use tree_sitter::Node;
 use crate::btf_rd::{
     btf_iterate_over_names_chain, btf_resolve_func, btf_resolve_type, btf_setup_module,
 };
-use crate::btf_rd::{Btf, BtfFunction, BtfResolvedType, BtfVariable};
+use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
 use crate::cmd_mod::bpftrace_command;
 use crate::gen::completion::{bpftrace_probe_providers, bpftrace_stdlib_functions};
@@ -981,6 +981,58 @@ pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(String, BtfFu
     Some((module, resolved_func))
 }
 
+// Structure/union members
+fn members_to_string(module: &str, actual_type: &BtfComposite) -> String {
+    let mut pairs = Vec::new();
+    let mut out = String::new();
+
+    let mut max_type_width = 0;
+    for member in actual_type.members.iter() {
+        if member.name == "retval" {
+            continue;
+        }
+
+        match resolve_variable_type(module, member) {
+            Some(member_type) => {
+                let width = member_type.type_prefix.len() + 1;
+                if width > max_type_width {
+                    max_type_width = width;
+                }
+                pairs.push((member, member_type));
+            }
+            None => {
+                log_err!("Failed to resolve btf type {}", member.type_id);
+                return "".to_owned();
+            }
+        };
+    }
+
+    for (member_var, member_type) in pairs {
+        let s = if member_type.type_prefix.ends_with("(*") {
+            // Hack function pointer
+            let type_prefix = member_type.type_prefix.replace("(*", "");
+            format!(
+                "        {:<width$} (*{}{}; \n",
+                type_prefix,
+                &member_var.name,
+                &member_type.type_sufix,
+                width = max_type_width
+            )
+        } else {
+            format!(
+                "        {:<width$} {}{}; \n",
+                &member_type.type_prefix,
+                &member_var.name,
+                &member_type.type_sufix,
+                width = max_type_width
+            )
+        };
+        out.push_str(&s);
+    }
+
+    out
+}
+
 // For args and retval
 fn get_details_and_docs(
     probes_compl: &ProbesCompletion,
@@ -1027,54 +1079,7 @@ fn get_details_and_docs(
             &format!("{}{}\n{{\n", c_open, actual_type.type_name)
         };
         docs.push_str(s);
-
-        let mut pairs = Vec::new();
-
-        // Structure/union members
-        let mut max_type_width = 0;
-        for member in actual_type.members.iter() {
-            if member.name == "retval" {
-                continue;
-            }
-
-            match resolve_variable_type(module, member) {
-                Some(member_type) => {
-                    let width = member_type.type_prefix.len() + 1;
-                    if width > max_type_width {
-                        max_type_width = width;
-                    }
-                    pairs.push((member, member_type));
-                }
-                None => {
-                    log_err!("Failed to resolve btf type {}", member.type_id);
-                    return None;
-                }
-            };
-        }
-
-        for (member_var, member_type) in pairs {
-            let s = if member_type.type_prefix.ends_with("(*") {
-                // Hack function pointer
-                let type_prefix = member_type.type_prefix.replace("(*", "");
-                format!(
-                    "        {:<width$} (*{}{}; \n",
-                    type_prefix,
-                    &member_var.name,
-                    &member_type.type_sufix,
-                    width = max_type_width
-                )
-            } else {
-                format!(
-                    "        {:<width$} {}{}; \n",
-                    &member_type.type_prefix,
-                    &member_var.name,
-                    &member_type.type_sufix,
-                    width = max_type_width
-                )
-            };
-
-            docs.push_str(&s);
-        }
+        docs.push_str(&members_to_string(module, &actual_type));
         docs.push_str(&format!("}};{}", c_close));
     }
 
