@@ -1129,8 +1129,9 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         // log_dbg!(HOVER, "Probe {} with args:\n{}", probe, probe_args);
 
         let lterm = |c: char| -> bool { c.is_whitespace() || c == '{' || c == '(' };
-        let rterm =
-            |c: char| -> bool { c.is_whitespace() || c == '}' || c == ')' || c == '.' || c == '-' };
+        let rterm = |c: char| -> bool {
+            c.is_whitespace() || c == '}' || c == ')' || c == '.' || c == '-' || c == ';'
+        };
         let mut found = find_hover_str(line_str, char_nr, lterm, rterm);
         log_dbg!(HOVER, "Hover found args string {}", found);
 
