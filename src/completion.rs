@@ -507,7 +507,7 @@ fn bpftrace_get_traces_list() -> Option<String> {
         start.elapsed()
     );
 
-    log_dbg!(COMPL, "List of available traces: \n{traces}\n");
+    log_vdbg!(COMPL, "List of available traces: \n{traces}\n");
     Some(traces)
 }
 
