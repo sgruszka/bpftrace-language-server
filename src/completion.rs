@@ -982,55 +982,114 @@ pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(String, BtfFu
 }
 
 // Structure/union members
-fn members_to_string(module: &str, actual_type: &BtfComposite) -> String {
-    let mut pairs = Vec::new();
-    let mut out = String::new();
-
+fn members_to_lines(
+    module: &str,
+    actual_type: &BtfComposite,
+    indent: usize,
+    need_field_aligment: bool,
+    lines: &mut Vec<(usize, bool, bool, String, String, String)>,
+) -> usize {
     let mut max_type_width = 0;
     for member in actual_type.members.iter() {
-        if member.name == "retval" {
+        let Some(member_type) = resolve_variable_type(module, member) else {
+            log_err!("Failed to resolve BTF type {}", member.type_id);
             continue;
+        };
+
+        // Anonymous union/member
+        if member_type.type_prefix == "union " || member_type.type_prefix == "struct " {
+            if let Some(sub_type) = member_type.actual_type.as_ref() {
+                lines.push((
+                    indent,
+                    false,
+                    false,
+                    format!("{}{{", member_type.type_prefix),
+                    "".to_string(),
+                    "".to_string(),
+                ));
+
+                members_to_lines(module, sub_type, indent + 1, false, lines);
+
+                lines.push((
+                    indent,
+                    !member.name.is_empty() && need_field_aligment,
+                    true,
+                    "}".to_string(),
+                    if member.name.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!(" {}", member.name)
+                    },
+                    member_type.type_sufix,
+                ));
+
+                continue;
+            } else {
+                log_err!(
+                    "Failed to get anonymous struct/union members for id {} (actual type id {})",
+                    member_type.type_id,
+                    member_type.actual_type_id,
+                );
+                continue;
+            }
+        } else if need_field_aligment {
+            let width = member_type.type_prefix.len() + 1;
+            if width > max_type_width {
+                max_type_width = width;
+            }
         }
 
-        match resolve_variable_type(module, member) {
-            Some(member_type) => {
-                let width = member_type.type_prefix.len() + 1;
-                if width > max_type_width {
-                    max_type_width = width;
-                }
-                pairs.push((member, member_type));
-            }
-            None => {
-                log_err!("Failed to resolve btf type {}", member.type_id);
-                return "".to_owned();
-            }
-        };
-    }
+        let left_indent = indent;
+        let type_name;
+        let var_name;
+        let type_sufix = member_type.type_sufix;
 
-    for (member_var, member_type) in pairs {
-        let s = if member_type.type_prefix.ends_with("(*") {
-            // Hack function pointer
-            let type_prefix = member_type.type_prefix.replace("(*", "");
-            format!(
-                "        {:<width$} (*{}{}; \n",
-                type_prefix,
-                &member_var.name,
-                &member_type.type_sufix,
-                width = max_type_width
-            )
+        if member_type.type_prefix.ends_with("(*") {
+            // Function pointer;
+            type_name = member_type.type_prefix.replace("(*", "");
+            var_name = format!(" (*{}", member.name);
         } else {
-            format!(
-                "        {:<width$} {}{}; \n",
-                &member_type.type_prefix,
-                &member_var.name,
-                &member_type.type_sufix,
-                width = max_type_width
-            )
-        };
-        out.push_str(&s);
+            type_name = member_type.type_prefix;
+            var_name = format!(" {}", member.name);
+        }
+
+        lines.push((
+            left_indent,
+            need_field_aligment,
+            true,
+            type_name,
+            var_name,
+            type_sufix,
+        ))
     }
 
-    out
+    max_type_width
+}
+
+// Structure/union members
+fn members_to_string(module: &str, actual_type: &BtfComposite) -> String {
+    let mut lines = Vec::new();
+    let mut out_str = String::new();
+
+    let max_type_width = members_to_lines(module, actual_type, 1, true, &mut lines);
+
+    for l in lines {
+        let (indent, alignment, semicolon, type_name, var_name, type_sufix) = l;
+        let line_str = format!(
+            "{:<left_indent$}{:<width$}{}{}{}\n",
+            "",
+            type_name,
+            var_name,
+            type_sufix,
+            if semicolon { ";" } else { "" },
+            left_indent = indent * 8,
+            width = if alignment { max_type_width } else { 0 }
+        );
+
+        out_str.push_str(&line_str);
+    }
+
+    out_str
 }
 
 // For args and retval

@@ -1170,10 +1170,8 @@ pub struct BtfName {
 }
 
 pub struct BtfResolvedType {
-    #[allow(unused)]
-    type_id: u32,
-    #[allow(unused)]
-    actual_type_id: u32,
+    pub type_id: u32,
+    pub actual_type_id: u32,
     pub type_prefix: String,
     pub type_sufix: String,
     pub actual_type: Option<BtfComposite>,
