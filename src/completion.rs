@@ -1636,4 +1636,72 @@ fentry:vmlinux:vfs_writev,
         // TODO remove space in function arguments: struct hrtimer *hrtmer
         assert!(hover.contains(r"hrtimer_restart posix_timer_fn(struct hrtimer * timer)"));
     }
+
+    #[test]
+    fn test_hover_for_args() {
+        let text = r"
+fentry:vmlinux:find_ge_pid {
+  print(args);
+}";
+        let json_content = document_content_setup(text, 2, 10);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains(r"Arguments of find_ge_pid():"));
+        assert!(hover.contains("struct args {"));
+        assert!(hover.contains("int nr"));
+        assert!(hover.contains("struct pid_namespace * ns"));
+    }
+
+    #[test]
+    fn test_hover_for_retval() {
+        let text = r"
+fexit:vmlinux:find_ge_pid {
+  print(retval);
+}";
+        let json_content = document_content_setup(text, 2, 10);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains(r"Return value of find_ge_pid():"));
+        assert!(hover.contains("refcount_t count;"));
+        assert!(hover.contains("unsigned int level;"));
+        assert!(hover.contains("spinlock_t lock;"));
+        assert!(hover.contains("struct hlist_head inodes"));
+    }
+
+    #[test]
+    fn test_hover_for_fs_pin_struct() {
+        let text = r"
+fentry:vmlinux:find_ge_pid {
+  print(args.ns);
+}";
+        let json_content = document_content_setup(text, 2, 14);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains(r"struct pid_namespace {"));
+        assert!(hover.contains("struct idr idr;"));
+        assert!(hover.contains("struct callback_head rcu;"));
+        assert!(hover.contains("struct pid_namespace * parent;"));
+        assert!(hover.contains("unsigned int level;"));
+    }
 }
