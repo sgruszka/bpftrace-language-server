@@ -207,6 +207,42 @@ fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
 
     None
 }
+fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
+    res_type.type_prefix == "struct " || res_type.type_prefix == "union "
+}
+
+fn add_items_from_btf_member(module: &str, member: &BtfVariable, items: &mut json::JsonValue) {
+    if let Some(member_type) = resolve_variable_type(module, member) {
+        if is_anonymous_type(&member_type) {
+            if let Some(actual_type) = member_type.actual_type {
+                for m in actual_type.members.iter() {
+                    add_items_from_btf_member(module, m, items);
+                }
+            } else {
+                log_err!(
+                    "No actual_type for anonymous container, type_id {} actual_type_id {}",
+                    member_type.type_id,
+                    member_type.actual_type_id
+                );
+            }
+        } else {
+            let detail = btf_item_to_str(&member_type, Some(member));
+            let completion = object! {
+                "label": member.name.clone(),
+                "kind" : 5,
+                "detail" : detail,
+                // "documentation" : field_type,
+            };
+            let _ = items.push(completion);
+        }
+    } else {
+        let completion = object! {
+            "label": member.name.clone(),
+            "kind" : 5,
+        };
+        let _ = items.push(completion);
+    }
+}
 
 fn items_from_resolved_btf(
     module: &str,
@@ -216,28 +252,14 @@ fn items_from_resolved_btf(
 
     let (_res_var, res_type) = btf_tuple;
 
-    if let Some(actual_type) = &res_type.actual_type {
-        for m in actual_type.members.iter() {
-            if m.name == "retval" {
-                continue;
-            }
+    let Some(actual_type) = &res_type.actual_type else {
+        return items;
+    };
 
-            let detail = if let Some(member_type) = resolve_variable_type(module, m) {
-                &btf_item_to_str(&member_type, Some(m))
-            } else {
-                ""
-            };
-
-            let completion = object! {
-                "label": m.name.clone(),
-                "kind" : 5,
-                "detail" : detail,
-                // TODO
-                // "documentation" : field_type,
-            };
-            let _ = items.push(completion);
-        }
+    for m in actual_type.members.iter() {
+        add_items_from_btf_member(module, m, &mut items);
     }
+
     items
 }
 
@@ -996,8 +1018,7 @@ fn members_to_lines(
             continue;
         };
 
-        // Anonymous union/member
-        if member_type.type_prefix == "union " || member_type.type_prefix == "struct " {
+        if is_anonymous_type(&member_type) {
             if let Some(sub_type) = member_type.actual_type.as_ref() {
                 lines.push((
                     indent,

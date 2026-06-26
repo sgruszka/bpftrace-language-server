@@ -1347,8 +1347,28 @@ fn chain_str_to_tokens(names_chain: &str) -> Vec<&str> {
     res
 }
 
-fn find_member<'a>(composite: &'a BtfComposite, member_name: &str) -> Option<&'a BtfVariable> {
-    composite.members.iter().find(|m| m.name == *member_name)
+fn find_member(btf: &Btf, composite: &BtfComposite, member_name: &str) -> Option<BtfVariable> {
+    for m in composite.members.iter() {
+        if m.name == *member_name {
+            return Some(m.clone());
+        }
+
+        if m.name.is_empty() {
+            let Some(anonymous_type) = btf_resolve_type(btf, m.type_id) else {
+                continue;
+            };
+
+            let Some(actual_type) = anonymous_type.actual_type else {
+                continue;
+            };
+
+            if let Some(member) = find_member(btf, &actual_type, member_name) {
+                return Some(member.clone());
+            }
+        }
+    }
+
+    None
 }
 
 fn inner_iterate_over_names_chain(
@@ -1389,7 +1409,7 @@ fn inner_iterate_over_names_chain(
 
         let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
         let composite = cur_type.actual_type?;
-        let member = find_member(&composite, member_name)?;
+        let member = find_member(btf, &composite, member_name)?;
 
         cur_var = member.clone();
     }
@@ -1436,8 +1456,8 @@ pub fn btf_iterate_over_names_chain(
         let cur_type = btf_resolve_type(btf, func.ret_type_id)?;
         if let Some(first_name) = name_chain.first() {
             let actual_type = cur_type.actual_type?;
-            if let Some(first_param) = find_member(&actual_type, first_name) {
-                let cur_var = inner_iterate_over_names_chain(btf, first_param, &name_chain)?;
+            if let Some(first_param) = find_member(btf, &actual_type, first_name) {
+                let cur_var = inner_iterate_over_names_chain(btf, &first_param, &name_chain)?;
                 let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
                 return Some((cur_var, cur_type));
             }
