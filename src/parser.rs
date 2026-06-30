@@ -152,6 +152,31 @@ fn location_within_query_match<'t>(
 
     None
 }
+
+pub fn is_location_function_call<'t>(
+    text: &str,
+    action_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let query_str = r#"
+    [
+        (call_expression
+          function: (identifier) @func_identifier)
+    ]
+    "#;
+
+    let query = match Query::new(&tree_sitter_bpftrace::LANGUAGE.into(), query_str) {
+        Ok(q) => q,
+        Err(e) => {
+            log_err!("Tree-sitter error: {}", e);
+            return None;
+        }
+    };
+
+    location_within_query_match(text, action_node, &query, line_nr, char_nr)
+}
+
 pub fn find_error_location<'t>(
     text: &str,
     root_node: &Node<'t>,
@@ -669,6 +694,10 @@ kfunc:vmlinux:posix_timer_fn {
         let probes = find_probes_for_action(&action, text);
         assert_eq!(probes.len(), 1);
         assert_eq!(probes[0], "kfunc:vmlinux:posix_timer_fn");
+
+        let func_call = is_location_function_call(text, &action, 4, 8).unwrap();
+        assert_eq!(func_call.kind(), "identifier");
+        assert_eq!(func_call.utf8_text(text.as_bytes()).unwrap(), "printf");
     }
 
     #[test]
