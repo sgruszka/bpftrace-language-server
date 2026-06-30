@@ -126,28 +126,15 @@ pub fn find_syntax_location<'t>(
     (SyntaxLocation::SourceFile, tree.root_node())
 }
 
-pub fn find_error_location<'t>(
+fn location_within_query_match<'t>(
     text: &str,
     root_node: &Node<'t>,
+    query: &Query,
     line_nr: usize,
     char_nr: usize,
 ) -> Option<Node<'t>> {
-    let query_str = r#"
-    [
-        (ERROR) @ERROR
-    ]
-    "#;
-
-    let query = match Query::new(&tree_sitter_bpftrace::LANGUAGE.into(), query_str) {
-        Ok(q) => q,
-        Err(e) => {
-            log_err!("Tree-sitter error: {}", e);
-            return None;
-        }
-    };
-
     let mut query_cursor = QueryCursor::new();
-    let mut matches = query_cursor.matches(&query, *root_node, text.as_bytes());
+    let mut matches = query_cursor.matches(query, *root_node, text.as_bytes());
 
     'matches_loop: while let Some(m) = matches.next() {
         for cap in m.captures {
@@ -164,6 +151,28 @@ pub fn find_error_location<'t>(
     }
 
     None
+}
+pub fn find_error_location<'t>(
+    text: &str,
+    root_node: &Node<'t>,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let query_str = r#"
+    [
+        (ERROR) @ERROR;
+    ]
+    "#;
+
+    let query = match Query::new(&tree_sitter_bpftrace::LANGUAGE.into(), query_str) {
+        Ok(q) => q,
+        Err(e) => {
+            log_err!("Tree-sitter error: {}", e);
+            return None;
+        }
+    };
+
+    location_within_query_match(text, root_node, &query, line_nr, char_nr)
 }
 
 pub fn find_errors<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
