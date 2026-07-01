@@ -11,7 +11,7 @@ pub const HOVER: u32 = 1 << 4;
 pub const BTFRD: u32 = 1 << 5;
 pub const PARSE: u32 = 1 << 6;
 
-#[macro_export()]
+#[macro_export]
 macro_rules! log_err {
     ($fmt:expr) => {
         let msg = format!($fmt);
@@ -29,7 +29,7 @@ macro_rules! log_err {
     };
 }
 
-#[macro_export()]
+#[macro_export]
 macro_rules! log_dbg {
     ($type:expr, $fmt:expr) => {
         let msg = format!($fmt);
@@ -47,7 +47,7 @@ macro_rules! log_dbg {
     };
 }
 
-#[macro_export()]
+#[macro_export]
 macro_rules! log_vdbg {
     ($type:expr, $fmt:expr) => {
         if $crate::log_mod::is_verbose() {
