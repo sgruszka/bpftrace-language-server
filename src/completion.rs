@@ -1168,6 +1168,89 @@ fn get_details_and_docs(
     Some((details, docs))
 }
 
+fn encode_hover_for_function(
+    node: &Node,
+    text: &str,
+    _line_str: &str,
+    _char_nr: usize,
+) -> json::JsonValue {
+    let empty_data = object! {};
+
+    let mut items = json::JsonValue::new_array();
+    bpftrace_stdlib_functions(&mut items);
+
+    let Ok(func) = node.utf8_text(text.as_bytes()) else {
+        return empty_data;
+    };
+
+    let Some(func_item) = items.members().find(|item| item["label"] == func) else {
+        return empty_data;
+    };
+
+    log_dbg!(HOVER, "Hover for function '{}'", func);
+
+    let details = func_item["detail"].to_string();
+    let docs = &func_item["documentation"]["value"];
+
+    let hover = details + "\n" + &docs.to_string();
+    log_vdbg!(HOVER, "Hover:\n{:?}", hover);
+
+    object! {
+          "result": {
+              "contents": hover,
+          },
+    }
+}
+
+fn encode_hover_for_field_expression(
+    node: &Node,
+    text: &str,
+    line_str: &str,
+    char_nr: usize,
+) -> json::JsonValue {
+    let empty_data = object! {};
+
+    let lterm = |c: char| -> bool { c.is_whitespace() || c == '{' || c == '(' };
+    let rterm = |c: char| -> bool {
+        c.is_whitespace() || c == '}' || c == ')' || c == '.' || c == '-' || c == ';'
+    };
+    let mut found = find_hover_str(line_str, char_nr, lterm, rterm);
+    log_dbg!(HOVER, "Hover found args string {}", found);
+
+    if found == "args" {
+        found.push('.');
+    }
+
+    let probes_vec = parser::find_probes_for_action(node, text);
+    log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
+
+    let (is_kfunc, has_retval) = are_all_kfuncs(&probes_vec);
+
+    let btf_probe_args = find_kfunc_list_arguments(&probes_vec);
+    if btf_probe_args.is_none() {
+        return empty_data;
+    }
+    let probes_compl = ProbesCompletion {
+        probes_vec,
+        btf_probe_args,
+        is_kfunc,
+        has_retval,
+    };
+
+    let Some((details, docs)) = get_details_and_docs(&probes_compl, &found, true) else {
+        return empty_data;
+    };
+
+    let hover = details + &docs;
+    log_vdbg!(HOVER, "Hover:\n{:?}", hover);
+
+    object! {
+          "result": {
+              "contents": hover,
+          },
+    }
+}
+
 pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
     log_dbg!(HOVER, "Received hover with data {}", content);
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
@@ -1209,51 +1292,16 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         }
     } else if loc == SyntaxLocation::Action {
         // TODO handle probes with wildcard
-        // TODO better printing for function args and retval
 
         // TODO: non BTF probes i.e. tracepoints
         // let probe_args = find_probe_args_by_command(&probe);
         // log_dbg!(HOVER, "Probe {} with args:\n{}", probe, probe_args);
 
-        let lterm = |c: char| -> bool { c.is_whitespace() || c == '{' || c == '(' };
-        let rterm = |c: char| -> bool {
-            c.is_whitespace() || c == '}' || c == ')' || c == '.' || c == '-' || c == ';'
-        };
-        let mut found = find_hover_str(line_str, char_nr, lterm, rterm);
-        log_dbg!(HOVER, "Hover found args string {}", found);
-
-        if found == "args" {
-            found.push('.');
+        if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr) {
+            data = encode_hover_for_function(&func, text, line_str, char_nr);
+        } else {
+            data = encode_hover_for_field_expression(&node, text, line_str, char_nr);
         }
-
-        let probes_vec = parser::find_probes_for_action(&node, text);
-        log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
-
-        let (is_kfunc, has_retval) = are_all_kfuncs(&probes_vec);
-
-        let btf_probe_args = find_kfunc_list_arguments(&probes_vec);
-        if btf_probe_args.is_none() {
-            return empty_data;
-        }
-        let probes_compl = ProbesCompletion {
-            probes_vec,
-            btf_probe_args,
-            is_kfunc,
-            has_retval,
-        };
-
-        let Some((details, docs)) = get_details_and_docs(&probes_compl, &found, true) else {
-            return empty_data;
-        };
-
-        let hover = details + &docs;
-        log_vdbg!(HOVER, "Hover:\n{:?}", hover);
-
-        data = object! {
-              "result": {
-                  "contents": hover,
-              },
-        };
     }
 
     data
