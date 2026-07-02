@@ -817,6 +817,8 @@ pub struct BtfSplit {
     offsets: Vec<u32>,
     data: BtfData,
     functions: HashMap<String, u32>,
+    structs: HashMap<String, u32>,
+    unions: HashMap<String, u32>,
 }
 
 pub type Btf = BtfSplit;
@@ -857,9 +859,11 @@ impl BtfSplit {
         let mut read = 0;
 
         let mut functions: HashMap<String, u32> = HashMap::new();
+        let mut structs: HashMap<String, u32> = HashMap::new();
+        let mut unions: HashMap<String, u32> = HashMap::new();
 
         while read < header.type_len {
-            let cur_pos = reader.stream_position()? as u32; // TODO fix usize to u32
+            let cur_pos = reader.stream_position()? as u32;
             offsets.push(cur_pos);
             let type_id = start_id + (offsets.len() as u32) - 1;
 
@@ -868,7 +872,7 @@ impl BtfSplit {
             let btf_kind_type = inner_to_btf_type(btf_type, type_id)?;
             let size = btf_kind_type.kind_specific_size();
 
-            if let BtfType::Func(_) = btf_kind_type {
+            let get_type_name = || {
                 let name = if name_off < start_str_off {
                     if let Some(ref base_split) = base_split {
                         inner_get_name(base_split, name_off)
@@ -887,7 +891,30 @@ impl BtfSplit {
                     unsafe { CStr::from_ptr(ptr.add(name_pos as usize)).to_str().unwrap() }
                 };
 
-                functions.insert(name.to_owned(), type_id);
+                Ok(name)
+            };
+
+            match btf_kind_type {
+                BtfType::Func(_) => {
+                    let name = get_type_name()?;
+                    if !name.is_empty() {
+                        functions.insert(name.to_owned(), type_id);
+                    }
+                }
+
+                BtfType::Struct(_) => {
+                    let name = get_type_name()?;
+                    if !name.is_empty() {
+                        structs.insert(name.to_owned(), type_id);
+                    }
+                }
+                BtfType::Union(_) => {
+                    let name = get_type_name()?;
+                    if !name.is_empty() {
+                        unions.insert(name.to_owned(), type_id);
+                    }
+                }
+                _ => (),
             }
 
             reader.seek(SeekFrom::Current(size as i64))?;
@@ -903,6 +930,8 @@ impl BtfSplit {
             offsets,
             data,
             functions,
+            structs,
+            unions,
         })
     }
 }
@@ -1527,6 +1556,8 @@ mod tests {
         let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
         assert_eq!(split.offsets.len(), 37691);
         assert_eq!(split.functions.len(), 15944);
+        assert_eq!(split.structs.len(), 2448);
+        assert_eq!(split.unions.len(), 59);
     }
 
     #[test]
@@ -1576,6 +1607,9 @@ mod tests {
         let btf_type = split.type_from_id(23).unwrap();
         let (prefix, _sufix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct kernel_param");
+
+        let type_id = split.structs["kernel_param"];
+        assert_eq!(type_id, 23);
     }
 
     #[test]
@@ -1699,6 +1733,7 @@ mod tests {
 
         let inode_struct = inode_ptr.actual_type.unwrap();
         assert_eq!(inode_struct.type_name, "struct inode");
+        assert_eq!(btf.structs["inode"], 110);
 
         assert_eq!(inode_struct.members[0].name, "i_mode");
         assert_eq!(inode_struct.members[10].name, "i_ino");
