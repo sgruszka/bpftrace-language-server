@@ -1311,6 +1311,16 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
     })
 }
 
+pub fn btf_resolve_struct(btf: &Btf, name: &str) -> Option<BtfResolvedType> {
+    let type_id = btf.structs.get(name)?;
+    btf_resolve_type(btf, *type_id)
+}
+
+pub fn btf_resolve_union(btf: &Btf, name: &str) -> Option<BtfResolvedType> {
+    let type_id = btf.unions.get(name)?;
+    btf_resolve_type(btf, *type_id)
+}
+
 #[allow(unused)]
 pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
     log_dbg!(
@@ -1903,5 +1913,25 @@ mod tests {
             btf_iterate_over_names_chain(&btf, &base, "args.dentry->d_flags").unwrap();
         assert_eq!(resolved_var.name, "d_flags");
         assert_eq!(resolved_type.type_prefix, "unsigned int");
+    }
+
+    #[test]
+    fn test_resolve_union_and_struct() {
+        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let resolved_type = btf_resolve_struct(&btf, "inode").unwrap();
+
+        let actual_type = resolved_type.actual_type.unwrap();
+        assert_eq!(actual_type.type_name, "struct inode");
+        assert_eq!(actual_type.members[0].name, "i_mode");
+
+        let resolved_type = btf_resolve_union(&btf, "bpf_iter_link_info").unwrap();
+        let actual_type = resolved_type.actual_type.unwrap();
+        assert_eq!(actual_type.type_name, "union bpf_iter_link_info");
+        assert_eq!(actual_type.members[0].name, "map");
+        assert_eq!(actual_type.members[0].type_id, 7835);
+        assert_eq!(actual_type.members[1].name, "cgroup");
+        assert_eq!(actual_type.members[1].type_id, 7836);
+        assert_eq!(actual_type.members[2].name, "task");
+        assert_eq!(actual_type.members[2].type_id, 7837);
     }
 }
