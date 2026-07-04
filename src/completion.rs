@@ -1671,6 +1671,33 @@ fentry:vmlinux:vfs_writev,
         check_completion_resutls(result, fields);
     }
 
+    #[cfg(feature = "live_btf_tests")]
+    #[test]
+    fn test_cma_tracepoint_page_completion() {
+        let text = r#"
+tracepoint:cma:cma_release {
+  print(args.page->
+}
+"#;
+        let json_content = document_content_setup(text, 2, 19);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() > 0);
+
+        let fields = vec![
+            "pp",
+            "pp_magic",
+            "lru",
+            "flags",
+            "mapping",
+            "callback_head",
+            "page_type",
+            "private",
+            "_refcount",
+        ];
+        check_completion_resutls(result, fields);
+    }
+
     #[test]
     fn test_missing_right_bracket_action() {
         let text = r#"t:syscalls:sys_enter_bpf { args."#;
