@@ -6,7 +6,7 @@ use std::time::Instant;
 use tree_sitter::Node;
 
 use crate::btf_rd::{
-    btf_iterate_over_names_chain, btf_resolve_func, btf_resolve_type, btf_setup_module,
+    btf_iterate_function_args, btf_resolve_func, btf_resolve_type, btf_setup_module,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -102,7 +102,7 @@ fn resolve_args_name_chain(
 
     if let Some(resolved_tuple) = module_btf_map
         .get(module)
-        .and_then(|btf| btf_iterate_over_names_chain(btf, resolved_func, this_argument))
+        .and_then(|btf| btf_iterate_function_args(btf, resolved_func, this_argument))
     {
         return Some(resolved_tuple);
     }

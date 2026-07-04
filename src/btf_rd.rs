@@ -1456,7 +1456,7 @@ fn inner_iterate_over_names_chain(
     Some(cur_var)
 }
 
-pub fn btf_iterate_over_names_chain(
+pub fn btf_iterate_function_args(
     btf: &Btf,
     func: &BtfFunction,
     name_chain_str: &str,
@@ -1775,7 +1775,7 @@ mod tests {
         let base = btf_resolve_func(&btf, "alloc_workqueue_noprof").unwrap();
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "retval").unwrap();
+            btf_iterate_function_args(&btf, &base, "retval").unwrap();
 
         assert_eq!(resolved_var.name, "retval");
         assert_eq!(resolved_type.type_prefix, "struct workqueue_struct *");
@@ -1805,12 +1805,12 @@ mod tests {
         let base = btf_resolve_func(&btf, "alloc_pid").unwrap();
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.ns->rcu.next").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.ns->rcu.next").unwrap();
         assert!(resolved_var.name == "next");
         assert!(resolved_type.actual_type.unwrap().members[0].name == "next");
 
         let (resolved_var, _resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.ns->rcu.func").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.ns->rcu.func").unwrap();
         assert_eq!(resolved_var.name, "func");
         // TODO
         // assert_eq!(resolved_type.type_prefix, "void *");
@@ -1819,7 +1819,7 @@ mod tests {
         //     "void (*)( struct callback_head * )"
         // );
 
-        let resolved_fail = btf_iterate_over_names_chain(&btf, &base, "args.ns->rcu->next");
+        let resolved_fail = btf_iterate_function_args(&btf, &base, "args.ns->rcu->next");
         assert!(resolved_fail.is_none());
     }
 
@@ -1829,7 +1829,7 @@ mod tests {
 
         let base = btf_resolve_func(&btf, "posixtimer_send_sigqueue").unwrap();
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.tmr->it").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.tmr->it").unwrap();
 
         assert_eq!(resolved_var.name, "it");
         assert_eq!(resolved_type.type_prefix, "union ");
@@ -1857,7 +1857,7 @@ mod tests {
         assert!(base.name == "vfs_open");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.").unwrap();
         assert_eq!(resolved_var.name, "vfs_open");
 
         let members = resolved_type.actual_type.unwrap().members;
@@ -1866,13 +1866,13 @@ mod tests {
         assert_eq!(members[1].name, "file");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "retval").unwrap();
+            btf_iterate_function_args(&btf, &base, "retval").unwrap();
         assert_eq!(resolved_var.name, "retval");
         assert_eq!(resolved_type.type_prefix, "int");
         assert!(resolved_type.actual_type.is_none());
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.path").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.path").unwrap();
         assert_eq!(resolved_var.name, "path");
         assert_eq!(resolved_type.type_prefix, "const struct path *");
         let actual_type = resolved_type.actual_type.unwrap();
@@ -1880,14 +1880,14 @@ mod tests {
         assert_eq!(actual_type.members[0].name, "mnt");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.path->dentry->d_inode").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.path->dentry->d_inode").unwrap();
         assert_eq!(resolved_var.name, "d_inode");
         assert_eq!(resolved_type.type_prefix, "struct inode *");
         let actual_type = resolved_type.actual_type.unwrap();
         assert_eq!(actual_type.type_name, "struct inode");
         assert_eq!(actual_type.members[0].name, "i_mode");
 
-        let resolved_fail = btf_iterate_over_names_chain(&btf, &base, "args.path.dentry");
+        let resolved_fail = btf_iterate_function_args(&btf, &base, "args.path.dentry");
         assert!(resolved_fail.is_none());
     }
 
@@ -1899,18 +1899,18 @@ mod tests {
         assert!(base.name == "fuse_dentry_delete");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "retval").unwrap();
+            btf_iterate_function_args(&btf, &base, "retval").unwrap();
         assert_eq!(resolved_var.name, "retval");
         assert_eq!(resolved_type.type_prefix, "int");
 
         assert!(resolved_type.actual_type.is_none());
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.dentry").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.dentry").unwrap();
         assert_eq!(resolved_var.name, "dentry");
         assert_eq!(resolved_type.type_prefix, "const struct dentry *");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_over_names_chain(&btf, &base, "args.dentry->d_flags").unwrap();
+            btf_iterate_function_args(&btf, &base, "args.dentry->d_flags").unwrap();
         assert_eq!(resolved_var.name, "d_flags");
         assert_eq!(resolved_type.type_prefix, "unsigned int");
     }
