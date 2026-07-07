@@ -1456,6 +1456,22 @@ fn inner_iterate_over_names_chain(
     Some(cur_var)
 }
 
+pub fn btf_iterate_members(
+    btf: &Btf,
+    comp: &BtfComposite,
+    name_chain_str: &str,
+) -> Option<(BtfVariable, BtfResolvedType)> {
+    let name_chain = chain_str_to_tokens(name_chain_str);
+
+    let first_name = name_chain.first()?;
+    let first_param = comp.members.iter().find(|p| p.name == *first_name)?;
+
+    let cur_var = inner_iterate_over_names_chain(btf, first_param, &name_chain)?;
+    let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+
+    Some((cur_var, cur_type))
+}
+
 pub fn btf_iterate_function_args(
     btf: &Btf,
     func: &BtfFunction,
@@ -1916,7 +1932,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_union_and_struct() {
+    fn test_resolve_inode_struct() {
         let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
         let resolved_type = btf_resolve_struct(&btf, "inode").unwrap();
 
@@ -1924,7 +1940,16 @@ mod tests {
         assert_eq!(actual_type.type_name, "struct inode");
         assert_eq!(actual_type.members[0].name, "i_mode");
 
+        let (res_var, res_type) = btf_iterate_members(&btf, &actual_type, "i_sb->s_bdi").unwrap();
+        assert_eq!(res_var.name, "s_bdi");
+        assert_eq!(res_type.type_prefix, "struct backing_dev_info *");
+    }
+
+    #[test]
+    fn test_resolve_btf_iter_link_info_union() {
+        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
         let resolved_type = btf_resolve_union(&btf, "bpf_iter_link_info").unwrap();
+
         let actual_type = resolved_type.actual_type.unwrap();
         assert_eq!(actual_type.type_name, "union bpf_iter_link_info");
         assert_eq!(actual_type.members[0].name, "map");
@@ -1933,5 +1958,9 @@ mod tests {
         assert_eq!(actual_type.members[1].type_id, 7836);
         assert_eq!(actual_type.members[2].name, "task");
         assert_eq!(actual_type.members[2].type_id, 7837);
+
+        let (res_var, res_type) = btf_iterate_members(&btf, &actual_type, "task.tid").unwrap();
+        assert_eq!(res_var.name, "tid");
+        assert_eq!(res_type.type_prefix, "__u32");
     }
 }
