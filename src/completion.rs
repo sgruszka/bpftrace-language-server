@@ -6,7 +6,8 @@ use std::time::Instant;
 use tree_sitter::Node;
 
 use crate::btf_rd::{
-    btf_iterate_function_args, btf_resolve_func, btf_resolve_type, btf_setup_module,
+    btf_iterate_function_args, btf_iterate_members, btf_resolve_func, btf_resolve_struct,
+    btf_resolve_type, btf_resolve_union, btf_setup_module,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -78,7 +79,61 @@ fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) ->
     s
 }
 
-fn resolve_args_name_chain(
+fn resolve_container_members(
+    probe_args_iter: Lines,
+    this_argument: &str,
+) -> Option<(BtfVariable, BtfResolvedType)> {
+    let btf = find_btf_module("vmlinux")?;
+
+    for arg in probe_args_iter {
+        let mut tokens = arg.split_whitespace();
+        let mut res_type = None;
+
+        while let Some(tk) = tokens.next() {
+            if tk == "struct" {
+                let Some(struct_name) = tokens.next() else {
+                    continue;
+                };
+
+                let Some(st) =
+                    btf_resolve_struct(&btf, struct_name).and_then(|res_type| res_type.actual_type)
+                else {
+                    continue;
+                };
+                res_type = Some(st);
+                break;
+            }
+
+            if tk == "union" {
+                let Some(union_name) = tokens.next() else {
+                    continue;
+                };
+
+                let Some(un) =
+                    btf_resolve_union(&btf, union_name).and_then(|res_type| res_type.actual_type)
+                else {
+                    continue;
+                };
+                res_type = Some(un);
+                break;
+            }
+        }
+
+        let Some(actual_type) = res_type else {
+            continue;
+        };
+
+        let Some(var_name) = tokens.last() else {
+            continue;
+        };
+
+        return btf_iterate_members(&btf, var_name, &actual_type, this_argument);
+    }
+
+    None
+}
+
+fn resolve_function_args(
     module: &String,
     resolved_func: &BtfFunction,
     this_argument: &str,
@@ -173,19 +228,7 @@ fn find_probe_args_by_command(probe: &str) -> String {
     probe_args
 }
 
-fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
-    let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
-    log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
-
-    if kfunc_vec.len() != 3 {
-        return None;
-    }
-
-    let module = kfunc_vec[1];
-    if module.is_empty() {
-        return None;
-    }
-
+fn find_btf_module(module: &str) -> Option<Arc<Btf>> {
     let mut module_btf_map = MODULE_BTF_MAP.lock().unwrap();
 
     let this_btf;
@@ -201,7 +244,25 @@ fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
         }
     }
 
-    if let Some(ret) = btf_resolve_func(this_btf, kfunc_vec[2]) {
+    Some(this_btf.clone())
+}
+
+fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
+    let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
+    log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
+
+    if kfunc_vec.len() != 3 {
+        return None;
+    }
+
+    let module = kfunc_vec[1];
+    if module.is_empty() {
+        return None;
+    }
+
+    let btf = find_btf_module(module)?;
+
+    if let Some(ret) = btf_resolve_func(&btf, kfunc_vec[2]) {
         return Some((module.to_string(), ret));
     }
 
@@ -335,16 +396,24 @@ fn encode_completion_for_args_or_retval(
     let probes_vec = &probes_compl.probes_vec;
     let probe = probes_vec.first()?;
 
-    let items = if args_with_fields.ends_with("args.") && !probes_compl.is_kfunc {
+    let items = if !probes_compl.is_kfunc {
         let probe_args = find_probe_args_by_command(probe);
         let mut probe_args_iter = probe_args.lines();
 
         // On first line of probe args is kfunc module and name
         probe_args_iter.next();
-        items_from_probe_args(probe_args_iter)
-    } else if let Some((module, resolved_func)) = probes_compl.btf_probe_args {
-        if let Some(next_items) = resolve_args_name_chain(&module, &resolved_func, args_with_fields)
+
+        if args_with_fields.ends_with("args.") {
+            items_from_probe_args(probe_args_iter)
+        } else if let Some(next_items) =
+            resolve_container_members(probe_args_iter, args_with_fields)
         {
+            items_from_resolved_btf("vmlinux", &next_items)
+        } else {
+            json::JsonValue::new_array()
+        }
+    } else if let Some((module, resolved_func)) = probes_compl.btf_probe_args {
+        if let Some(next_items) = resolve_function_args(&module, &resolved_func, args_with_fields) {
             // For debug:
             // log_dbg!(COMPL, "Found arguments using btf:\n{:?}", next_items);
             items_from_resolved_btf(&module, &next_items)
@@ -1123,7 +1192,7 @@ fn get_details_and_docs(
 
     let func_name = resolved_func.name.clone();
 
-    let (res_var, res_type) = resolve_args_name_chain(module, resolved_func, keyword_with_fields)?;
+    let (res_var, res_type) = resolve_function_args(module, resolved_func, keyword_with_fields)?;
 
     let mut details = String::new();
     let mut docs = String::new();
@@ -1695,7 +1764,7 @@ tracepoint:cma:cma_release {
             "private",
             "_refcount",
         ];
-        check_completion_resutls(result, fields);
+        check_completion_resutls(result.clone(), fields);
     }
 
     #[test]

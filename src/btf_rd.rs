@@ -1458,15 +1458,47 @@ fn inner_iterate_over_names_chain(
 
 pub fn btf_iterate_members(
     btf: &Btf,
+    first_field: &str,
     comp: &BtfComposite,
     name_chain_str: &str,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
-    let name_chain = chain_str_to_tokens(name_chain_str);
+    // Chain starts with "args.first_field->"
+    if !name_chain_str.starts_with("args.") {
+        return None;
+    }
+    let mut name_chain = chain_str_to_tokens(name_chain_str);
+    if name_chain.len() < 4 {
+        return None;
+    }
 
-    let first_name = name_chain.first()?;
-    let first_param = comp.members.iter().find(|p| p.name == *first_name)?;
+    name_chain.remove(0); // 'args'
+    name_chain.remove(0); // '.'
 
-    let cur_var = inner_iterate_over_names_chain(btf, first_param, &name_chain)?;
+    let first_name = name_chain[0];
+    if first_name != first_field {
+        return None;
+    }
+    name_chain.remove(0); // 'first_field
+
+    // Only pointers
+    let first_op = name_chain[0];
+    if first_op != "->" {
+        return None;
+    }
+    name_chain.remove(0); // '->'
+
+    let cur_var = if name_chain.is_empty() {
+        BtfVariable {
+            name: first_field.to_string(),
+            // We don't have pointer type_id, use struct/union type_id
+            type_id: comp.type_id,
+        }
+    } else {
+        let second_name = name_chain[0];
+        let first_param = comp.members.iter().find(|p| p.name == *second_name)?;
+        inner_iterate_over_names_chain(btf, first_param, &name_chain)?
+    };
+
     let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
 
     Some((cur_var, cur_type))
@@ -1940,7 +1972,8 @@ mod tests {
         assert_eq!(actual_type.type_name, "struct inode");
         assert_eq!(actual_type.members[0].name, "i_mode");
 
-        let (res_var, res_type) = btf_iterate_members(&btf, &actual_type, "i_sb->s_bdi").unwrap();
+        let (res_var, res_type) =
+            btf_iterate_members(&btf, "INODE", &actual_type, "args.INODE->i_sb->s_bdi").unwrap();
         assert_eq!(res_var.name, "s_bdi");
         assert_eq!(res_type.type_prefix, "struct backing_dev_info *");
     }
@@ -1959,7 +1992,8 @@ mod tests {
         assert_eq!(actual_type.members[2].name, "task");
         assert_eq!(actual_type.members[2].type_id, 7837);
 
-        let (res_var, res_type) = btf_iterate_members(&btf, &actual_type, "task.tid").unwrap();
+        let (res_var, res_type) =
+            btf_iterate_members(&btf, "iter", &actual_type, "args.iter->task.tid").unwrap();
         assert_eq!(res_var.name, "tid");
         assert_eq!(res_type.type_prefix, "__u32");
     }
