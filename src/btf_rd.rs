@@ -1410,7 +1410,7 @@ fn find_member(btf: &Btf, composite: &BtfComposite, member_name: &str) -> Option
     None
 }
 
-fn inner_iterate_over_names_chain(
+fn iterate_over_names_chain(
     btf: &Btf,
     first_var: &BtfVariable,
     name_chain: &Vec<&str>,
@@ -1496,7 +1496,7 @@ pub fn btf_iterate_members(
     } else {
         let second_name = name_chain[0];
         let first_param = comp.members.iter().find(|p| p.name == *second_name)?;
-        inner_iterate_over_names_chain(btf, first_param, &name_chain)?
+        iterate_over_names_chain(btf, first_param, &name_chain)?
     };
 
     let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
@@ -1544,7 +1544,7 @@ pub fn btf_iterate_function_args(
         if let Some(first_name) = name_chain.first() {
             let actual_type = cur_type.actual_type?;
             if let Some(first_param) = find_member(btf, &actual_type, first_name) {
-                let cur_var = inner_iterate_over_names_chain(btf, &first_param, &name_chain)?;
+                let cur_var = iterate_over_names_chain(btf, &first_param, &name_chain)?;
                 let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
                 return Some((cur_var, cur_type));
             }
@@ -1557,7 +1557,7 @@ pub fn btf_iterate_function_args(
         }
     } else if let Some(first_name) = name_chain.first() {
         if let Some(first_param) = func.args.iter().find(|p| p.name == *first_name) {
-            let cur_var = inner_iterate_over_names_chain(btf, first_param, &name_chain)?;
+            let cur_var = iterate_over_names_chain(btf, first_param, &name_chain)?;
             let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
             return Some((cur_var, cur_type));
         }
