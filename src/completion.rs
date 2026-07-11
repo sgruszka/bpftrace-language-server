@@ -1291,26 +1291,51 @@ fn encode_hover_for_field_expression(
     }
 
     let probes_vec = parser::find_probes_for_action(node, text);
+    let Some(probe) = probes_vec.first() else {
+        return empty_data;
+    };
+
     log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
 
     let (is_kfunc, has_retval) = are_all_kfuncs(&probes_vec);
 
-    let btf_probe_args = find_kfunc_list_arguments(&probes_vec);
-    if btf_probe_args.is_none() {
+    let hover = if is_kfunc {
+        let btf_probe_args = find_kfunc_list_arguments(&probes_vec);
+        if btf_probe_args.is_none() {
+            return empty_data;
+        }
+        let probes_compl = ProbesCompletion {
+            probes_vec,
+            btf_probe_args,
+            is_kfunc,
+            has_retval,
+        };
+
+        let Some((details, docs)) = get_details_and_docs(&probes_compl, &found, true) else {
+            return empty_data;
+        };
+
+        details + &docs
+    } else if found == "args." {
+        let probe_args = find_probe_args_by_command(probe);
+        let mut probe_args_iter = probe_args.lines();
+        // On first line of probe args is kfunc module and name
+        probe_args_iter.next();
+
+        let details = format!("Arguments of {}:\n", probe);
+        let mut docs = String::new();
+
+        docs.push_str("```c\nstruct args {\n");
+        for arg in probe_args_iter {
+            docs.push_str(&format!("{};\n", arg));
+        }
+        docs.push_str("};```");
+
+        details + &docs
+    } else {
         return empty_data;
-    }
-    let probes_compl = ProbesCompletion {
-        probes_vec,
-        btf_probe_args,
-        is_kfunc,
-        has_retval,
     };
 
-    let Some((details, docs)) = get_details_and_docs(&probes_compl, &found, true) else {
-        return empty_data;
-    };
-
-    let hover = details + &docs;
     log_vdbg!(HOVER, "Hover:\n{:?}", hover);
 
     object! {
