@@ -1894,4 +1894,27 @@ fentry:vmlinux:find_ge_pid {
         assert!(hover.contains("struct pid_namespace * parent;"));
         assert!(hover.contains("unsigned int level;"));
     }
+
+    #[test]
+    fn test_hover_for_tracepoint_args() {
+        let text = r"
+tracepoint:dma:dma_alloc {
+  print(args);
+}";
+        let json_content = document_content_setup(text, 2, 10);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains(r"Arguments of tracepoint:dma:dma_alloc:"));
+        assert!(hover.contains("struct args {"));
+        assert!(hover.contains("u64 dma_addr;"));
+        assert!(hover.contains("size_t size;"));
+        assert!(hover.contains("enum dma_data_direction dir;"));
+    }
 }
