@@ -461,7 +461,7 @@ fn add_action_block_variables(
     items: &mut json::JsonValue,
 ) {
     let variables = parser::find_variables_for_action(node, text, line_nr, char_nr);
-    log_dbg!(COMPL, "Comletion: found variables {variables:?}");
+    log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
     for var in variables {
         let item = object! {
@@ -477,7 +477,7 @@ fn add_action_block_variables(
 
 fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) {
     let macros = parser::find_source_file_macros_for_action(node, text);
-    log_dbg!(COMPL, "Comletion: found macros {macros:?}");
+    log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
     // TODO add parameters
     for mac in macros {
