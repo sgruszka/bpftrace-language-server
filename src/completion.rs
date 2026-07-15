@@ -949,7 +949,7 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
         }
     }
 
-    if loc != SyntaxLocation::Comment {
+    if loc == SyntaxLocation::SourceFile || loc == SyntaxLocation::ProbesList {
         let up_to_char = char_nr.saturating_add(1);
         let line_head = if let Some(splited_line) = line_str.split_at_checked(up_to_char) {
             let (head, _tail) = splited_line;
