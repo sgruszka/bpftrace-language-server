@@ -529,7 +529,7 @@ pub fn find_location(tree: &Tree, line_nr: usize, char_nr: usize) -> SyntaxLocat
 pub fn is_args_or_retval(line_str: &str, char_nr: usize) -> Option<String> {
     let line_upto_char = line_str.get(0..=char_nr)?;
 
-    let mut words = line_upto_char.rsplit([' ', '[', '{', '(', ',']);
+    let mut words = line_upto_char.rsplit([' ', '\t', '[', '{', '(', ',']);
     let last_word = words.next()?;
 
     if last_word.starts_with("args.") {
