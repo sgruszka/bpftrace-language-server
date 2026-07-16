@@ -11,6 +11,7 @@ pub enum SyntaxLocation {
     ProbesList,
     Predicate,
     Action,
+    MacroDefinition,
 }
 
 #[derive(PartialEq)]
@@ -57,6 +58,7 @@ fn node_to_syntax_location(node: &Node) -> SyntaxLocation {
         "probes_list" => SyntaxLocation::ProbesList,
         "predicate" => SyntaxLocation::Predicate,
         "action" => SyntaxLocation::Action,
+        "macro_definition" => SyntaxLocation::MacroDefinition,
         _ => SyntaxLocation::SourceFile,
     }
 }
@@ -74,6 +76,7 @@ pub fn find_syntax_location<'t>(
         (action) @action
         (block_comment) @block_comment
         (line_comment) @line_comment
+        (macro_definition) @macro_definition
     ]
     "#;
 
@@ -509,6 +512,7 @@ pub fn find_location(tree: &Tree, line_nr: usize, char_nr: usize) -> SyntaxLocat
             "probes_list" => SyntaxLocation::ProbesList,
             "predicate" => SyntaxLocation::Predicate,
             "action" => SyntaxLocation::Action,
+            "macro_definition" => SyntaxLocation::MacroDefinition,
             _ => SyntaxLocation::SourceFile,
         };
 
