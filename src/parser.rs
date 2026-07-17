@@ -180,6 +180,20 @@ pub fn is_location_function_call<'t>(
     location_within_query_match(text, action_node, &query, line_nr, char_nr)
 }
 
+pub fn is_location_macro_body<'t>(
+    macro_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let block_node = macro_node.child_by_field_name("body")?;
+
+    let pos = postition_relative_to_node(&block_node, line_nr, char_nr);
+    if pos == Position::Within {
+        return Some(block_node);
+    }
+
+    None
+}
 pub fn find_error_location<'t>(
     text: &str,
     root_node: &Node<'t>,
@@ -429,12 +443,10 @@ fn node_to_source_file(n: Node) -> Option<Node> {
     Some(source_file)
 }
 
-pub fn find_source_file_macros_for_action(action: &Node, text: &str) -> Vec<String> {
-    assert_eq!(action.kind(), "action");
-
+pub fn find_source_file_macros_for_node(this_node: &Node, text: &str) -> Vec<String> {
     let mut macros = Vec::new();
 
-    let Some(source_file) = node_to_source_file(*action) else {
+    let Some(source_file) = node_to_source_file(*this_node) else {
         return macros;
     };
     assert_eq!(source_file.kind(), "source_file");
@@ -869,7 +881,7 @@ macro add_two(y) {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let macros = find_source_file_macros_for_action(&action, text);
+        let macros = find_source_file_macros_for_node(&action, text);
         assert_eq!(macros.len(), 2);
         assert_eq!(macros[0], "add_one");
         assert_eq!(macros[1], "add_two");

@@ -476,7 +476,7 @@ fn add_action_block_variables(
 }
 
 fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) {
-    let macros = parser::find_source_file_macros_for_action(node, text);
+    let macros = parser::find_source_file_macros_for_node(node, text);
     log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
     // TODO add parameters
@@ -567,6 +567,32 @@ fn encode_completion_for_action(
     if !probes_compl.probes_vec.is_empty() {
         add_args_and_retval_keywords(&probes_compl, &mut items);
     }
+
+    let is_incomplete = false; // Currently we provide complete list
+    let data = object! {
+        "result": {
+            "isIncomplete": is_incomplete,
+            "items": items,
+        }
+    };
+
+    Some(data)
+}
+
+fn encode_completion_for_macro(
+    text: &str,
+    node: &Node,
+    _line_nr: usize,
+    _char_nr: usize,
+) -> Option<json::JsonValue> {
+    log_dbg!(COMPL, "Complete for macro");
+
+    let mut items = json::JsonValue::new_array();
+
+    bpftrace_stdlib_functions(&mut items);
+    add_action_block_keywords(&mut items);
+    // add_action_block_variables(node, text, line_nr, char_nr, &mut items);
+    add_source_file_macros(node, text, &mut items);
 
     let is_incomplete = false; // Currently we provide complete list
     let data = object! {
@@ -946,6 +972,14 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
                     return data;
                 }
             }
+        }
+    }
+
+    if loc == SyntaxLocation::MacroDefinition {
+        if let Some(data) = parser::is_location_macro_body(&node, line_nr, char_nr)
+            .and_then(|block_node| encode_completion_for_macro(text, &block_node, line_nr, char_nr))
+        {
+            return data;
         }
     }
 
