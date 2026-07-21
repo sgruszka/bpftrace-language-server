@@ -327,7 +327,7 @@ fn add_scratch_variables_for_node(
     }
 }
 
-fn add_source_file_map_variables_for_action(action: &Node, text: &str, results: &mut Vec<String>) {
+fn add_source_file_map_variables_for_block(action: &Node, text: &str, results: &mut Vec<String>) {
     let Some(source_file) = node_to_source_file(*action) else {
         return;
     };
@@ -411,18 +411,18 @@ fn add_variables_for_block(
     }
 }
 
-pub fn find_variables_for_action(
-    action: &Node,
+pub fn find_variables_for_block(
+    node: &Node,
     text: &str,
     line_nr: usize,
     char_nr: usize,
 ) -> Vec<String> {
-    assert_eq!(action.kind(), "action");
+    assert!(node.kind() == "action" || node.kind() == "block");
 
     let mut results = Vec::new();
 
-    add_variables_for_block(action, text, line_nr, char_nr, &mut results);
-    add_source_file_map_variables_for_action(action, text, &mut results);
+    add_variables_for_block(node, text, line_nr, char_nr, &mut results);
+    add_source_file_map_variables_for_block(node, text, &mut results);
 
     results
 }
@@ -752,7 +752,7 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_variables_for_action(&action, text, 3, 4);
+        let variables = find_variables_for_block(&action, text, 3, 4);
         assert_eq!(variables.len(), 2);
         assert_eq!(variables[0], "$x");
         assert_eq!(variables[1], "$y");
@@ -780,7 +780,7 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_variables_for_action(&action, text, 10, 0);
+        let variables = find_variables_for_block(&action, text, 10, 0);
         assert_eq!(variables.len(), 3);
         assert_eq!(variables[0], "$x");
         assert_eq!(variables[1], "$y");
@@ -802,7 +802,7 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_variables_for_action(&action, text, 3, 10);
+        let variables = find_variables_for_block(&action, text, 3, 10);
         assert_eq!(variables.len(), 1);
         assert_eq!(variables[0], "$i");
     }
@@ -826,7 +826,7 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_variables_for_action(&action, text, 8, 0);
+        let variables = find_variables_for_block(&action, text, 8, 0);
         assert_eq!(variables.len(), 4);
         assert_eq!(variables[0], "@a[,]");
         assert_eq!(variables[1], "@b[]");
@@ -853,7 +853,7 @@ tracepoint:syscalls:sys_exit_wait4
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_variables_for_action(&action, text, 8, 0);
+        let variables = find_variables_for_block(&action, text, 8, 0);
         assert_eq!(variables.len(), 2);
         assert_eq!(variables[0], "@out[]");
         assert_eq!(variables[1], "@stamp[]");

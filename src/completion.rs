@@ -435,7 +435,7 @@ fn encode_completion_for_args_or_retval(
     Some(data)
 }
 
-pub fn add_action_block_keywords(items: &mut json::JsonValue) {
+fn add_block_keywords(items: &mut json::JsonValue) {
     let keywords = [
         "break", "continue", "else", "for", "if", "let", "offsetof", "return", "sizeof", "unroll",
         "while",
@@ -453,14 +453,14 @@ pub fn add_action_block_keywords(items: &mut json::JsonValue) {
     }
 }
 
-fn add_action_block_variables(
+fn add_block_variables(
     node: &Node,
     text: &str,
     line_nr: usize,
     char_nr: usize,
     items: &mut json::JsonValue,
 ) {
-    let variables = parser::find_variables_for_action(node, text, line_nr, char_nr);
+    let variables = parser::find_variables_for_block(node, text, line_nr, char_nr);
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
     for var in variables {
@@ -547,6 +547,19 @@ fn add_args_and_retval_keywords(probes_compl: &ProbesCompletion, items: &mut jso
     add_args(probes_compl, probes_compl.is_kfunc, items);
 }
 
+fn add_completion_items_for_block(
+    text: &str,
+    node: &Node,
+    line_nr: usize,
+    char_nr: usize,
+    items: &mut json::JsonValue,
+) {
+    bpftrace_stdlib_functions(items);
+    add_block_keywords(items);
+    add_block_variables(node, text, line_nr, char_nr, items);
+    add_source_file_macros(node, text, items);
+}
+
 fn encode_completion_for_action(
     text: &str,
     node: &Node,
@@ -559,10 +572,7 @@ fn encode_completion_for_action(
     // TODO preload btf module
     let mut items = json::JsonValue::new_array();
 
-    bpftrace_stdlib_functions(&mut items);
-    add_action_block_keywords(&mut items);
-    add_action_block_variables(node, text, line_nr, char_nr, &mut items);
-    add_source_file_macros(node, text, &mut items);
+    add_completion_items_for_block(text, node, line_nr, char_nr, &mut items);
 
     if !probes_compl.probes_vec.is_empty() {
         add_args_and_retval_keywords(&probes_compl, &mut items);
@@ -582,17 +592,14 @@ fn encode_completion_for_action(
 fn encode_completion_for_macro(
     text: &str,
     node: &Node,
-    _line_nr: usize,
-    _char_nr: usize,
+    line_nr: usize,
+    char_nr: usize,
 ) -> Option<json::JsonValue> {
     log_dbg!(COMPL, "Complete for macro");
 
     let mut items = json::JsonValue::new_array();
 
-    bpftrace_stdlib_functions(&mut items);
-    add_action_block_keywords(&mut items);
-    // add_action_block_variables(node, text, line_nr, char_nr, &mut items);
-    add_source_file_macros(node, text, &mut items);
+    add_completion_items_for_block(text, node, line_nr, char_nr, &mut items);
 
     let is_incomplete = false; // Currently we provide complete list
     let data = object! {
