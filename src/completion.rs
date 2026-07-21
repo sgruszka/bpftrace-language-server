@@ -459,8 +459,13 @@ fn add_block_variables(
     line_nr: usize,
     char_nr: usize,
     items: &mut json::JsonValue,
+    map_variables: bool,
 ) {
-    let variables = parser::find_variables_for_block(node, text, line_nr, char_nr);
+    let variables = if map_variables {
+        parser::find_map_variables_for_block(node, text)
+    } else {
+        parser::find_scratch_variables_for_block(node, text, line_nr, char_nr)
+    };
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
     for var in variables {
@@ -552,12 +557,18 @@ fn add_completion_items_for_block(
     node: &Node,
     line_nr: usize,
     char_nr: usize,
+    line_str: &str,
     items: &mut json::JsonValue,
 ) {
-    bpftrace_stdlib_functions(items);
-    add_block_keywords(items);
-    add_block_variables(node, text, line_nr, char_nr, items);
-    add_source_file_macros(node, text, items);
+    if line_str.ends_with("$") {
+        add_block_variables(node, text, line_nr, char_nr, items, false);
+    } else if line_str.ends_with("@") {
+        add_block_variables(node, text, line_nr, char_nr, items, true);
+    } else {
+        bpftrace_stdlib_functions(items);
+        add_block_keywords(items);
+        add_source_file_macros(node, text, items);
+    }
 }
 
 fn encode_completion_for_action(
@@ -565,6 +576,7 @@ fn encode_completion_for_action(
     node: &Node,
     line_nr: usize,
     char_nr: usize,
+    line_str: &str,
     probes_compl: ProbesCompletion,
 ) -> Option<json::JsonValue> {
     log_dbg!(COMPL, "Complete for action block");
@@ -572,8 +584,7 @@ fn encode_completion_for_action(
     // TODO preload btf module
     let mut items = json::JsonValue::new_array();
 
-    add_completion_items_for_block(text, node, line_nr, char_nr, &mut items);
-
+    add_completion_items_for_block(text, node, line_nr, char_nr, line_str, &mut items);
     if !probes_compl.probes_vec.is_empty() {
         add_args_and_retval_keywords(&probes_compl, &mut items);
     }
@@ -594,12 +605,13 @@ fn encode_completion_for_macro(
     node: &Node,
     line_nr: usize,
     char_nr: usize,
+    line_str: &str,
 ) -> Option<json::JsonValue> {
     log_dbg!(COMPL, "Complete for macro");
 
     let mut items = json::JsonValue::new_array();
 
-    add_completion_items_for_block(text, node, line_nr, char_nr, &mut items);
+    add_completion_items_for_block(text, node, line_nr, char_nr, line_str, &mut items);
 
     let is_incomplete = false; // Currently we provide complete list
     let data = object! {
@@ -957,7 +969,7 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
             }
         } else {
             if let Some(data) =
-                encode_completion_for_action(text, &node, line_nr, char_nr, probes_compl)
+                encode_completion_for_action(text, &node, line_nr, char_nr, line_str, probes_compl)
             {
                 return data;
             }
@@ -983,8 +995,10 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
     }
 
     if loc == SyntaxLocation::MacroDefinition {
-        if let Some(data) = parser::is_location_macro_body(&node, line_nr, char_nr)
-            .and_then(|block_node| encode_completion_for_macro(text, &block_node, line_nr, char_nr))
+        if let Some(data) =
+            parser::is_location_macro_body(&node, line_nr, char_nr).and_then(|block_node| {
+                encode_completion_for_macro(text, &block_node, line_nr, char_nr, line_str)
+            })
         {
             return data;
         }
