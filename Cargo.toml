@@ -9,8 +9,9 @@ live_btf_tests = []
 
 [dependencies]
 json = "0.12.4"
-tree-sitter = "0.25"
-tree-sitter-bpftrace = "0.3.3"
+tree-sitter = "=0.24.7"
+tree-sitter-bpftrace = {git = "https://github.com/sgruszka/tree-sitter-bpftrace" , branch="tree-sitter-24" }
 binrw = "0.15"
 enum_dispatch = "0.3"
 memmap2 = "0.9.10"
+streaming-iterator = "0.1.9"
