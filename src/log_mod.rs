@@ -142,7 +142,9 @@ pub fn is_verbose() -> bool {
 }
 
 pub fn log_fn(txt: &str) {
-    if let Some(logger) = LOGGER.get() {
+    if cfg!(test) {
+        println!("{}", txt);
+    } else if let Some(logger) = LOGGER.get() {
         let mut f = OpenOptions::new()
             .append(true)
             .create(true)
@@ -154,7 +156,9 @@ pub fn log_fn(txt: &str) {
 }
 
 pub fn log_cond_fn(this_mask: u32, txt: &str) {
-    if let Some(logger) = LOGGER.get() {
+    if cfg!(test) {
+        println!("{}", txt);
+    } else if let Some(logger) = LOGGER.get() {
         if (logger.mask & this_mask) == 0 {
             return;
         }
