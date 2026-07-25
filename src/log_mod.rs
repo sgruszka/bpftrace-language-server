@@ -1,7 +1,8 @@
 use std::env;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::Write;
-use std::sync::OnceLock;
+use std::sync::{mpsc, OnceLock};
+use std::thread;
 
 pub const PROTO: u32 = 1 << 0;
 pub const DIAGN: u32 = 1 << 1;
@@ -17,14 +18,14 @@ macro_rules! log_err {
         let msg = format!($fmt);
         let prefix = format!("{} {}:", file!(), line!());
         let full_msg = format!("{:<20} {}", prefix, msg);
-        log_mod::log_fn(&full_msg);
+        log_mod::log_fn(full_msg);
     };
     ($fmt:expr, $( $arg:tt )* ) => {
         {
         let msg = format!($fmt, $( $arg )* );
         let prefix = format!("{} {}:", file!(), line!());
         let full_msg = format!("{:<20} {}", prefix, msg);
-        log_mod::log_fn(&full_msg);
+        log_mod::log_fn(full_msg);
         }
     };
 }
@@ -35,14 +36,14 @@ macro_rules! log_dbg {
         let msg = format!($fmt);
         let prefix = format!("{} {}:", file!(), line!());
         let full_msg = format!("{:<20} {}", prefix, msg);
-        log_mod::log_cond_fn($type, &full_msg);
+        log_mod::log_cond_fn($type, full_msg);
     };
     ($type:expr, $fmt:expr, $( $arg:tt )* ) => {
         {
         let msg = format!($fmt, $( $arg )* );
         let prefix = format!("{} {}:", file!(), line!());
         let full_msg = format!("{:<20} {}", prefix, msg);
-        log_mod::log_cond_fn($type, &full_msg);
+        log_mod::log_cond_fn($type, full_msg);
         }
     };
 }
@@ -54,7 +55,7 @@ macro_rules! log_vdbg {
             let msg = format!($fmt);
             let prefix = format!("{} {}:", file!(), line!());
             let full_msg = format!("{:<20} {}", prefix, msg);
-            $crate::log_mod::log_cond_fn($type, &full_msg);
+            $crate::log_mod::log_cond_fn($type, full_msg);
         }
     };
 
@@ -64,22 +65,20 @@ macro_rules! log_vdbg {
             let msg = format!($fmt, $( $arg )* );
             let prefix = format!("{} {}:", file!(), line!());
             let full_msg = format!("{:<20} {}", prefix, msg);
-            $crate::log_mod::log_cond_fn($type, &full_msg);
+            $crate::log_mod::log_cond_fn($type, full_msg);
             }
         }
     };
 }
 
-#[derive(Debug)]
 pub struct Logger {
-    name: String,
     mask: u32,
     verbose_debug: u32,
+    sender: mpsc::Sender<String>,
 }
 
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 
-// TODO: handle errors without expect()
 pub fn create_logger(filename: &str) -> Result<(), std::io::Error> {
     let verbose_level = match env::var("BPFTRACE_LS_LOG_VERBOSE") {
         Ok(val) => val.parse::<u32>().unwrap_or(0),
@@ -121,16 +120,29 @@ pub fn create_logger(filename: &str) -> Result<(), std::io::Error> {
         }
         Err(_) => DEFAULT_MASK,
     };
+
+    let mut log_file = File::create(filename)?;
+    let (tx, rx) = mpsc::channel::<String>();
+
+    let _logger_thread = thread::spawn(move || {
+        while let Ok(msg) = rx.recv() {
+            let _r = log_file.write_all(msg.as_bytes());
+            let _r = log_file.write_all("\n".as_bytes());
+        }
+    });
+
     LOGGER
         .set(Logger {
-            name: filename.to_string(),
             mask,
             verbose_debug: verbose_level,
+            sender: tx,
         })
-        .expect("Was already initalized");
-    // Create / truncate the file every time we run
-    let _f = File::create(filename)?;
-    Ok(())
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "Logger already initialized",
+            )
+        })
 }
 
 pub fn is_verbose() -> bool {
@@ -141,33 +153,22 @@ pub fn is_verbose() -> bool {
     }
 }
 
-pub fn log_fn(txt: &str) {
+pub fn log_fn(txt: String) {
     if cfg!(test) {
         println!("{}", txt);
     } else if let Some(logger) = LOGGER.get() {
-        let mut f = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&logger.name)
-            .expect("Need to open a file");
-        let _r = f.write_all(txt.as_bytes());
-        let _r = f.write_all("\n".as_bytes());
+        let _ = logger.sender.send(txt);
     }
 }
 
-pub fn log_cond_fn(this_mask: u32, txt: &str) {
+pub fn log_cond_fn(this_mask: u32, txt: String) {
     if cfg!(test) {
         println!("{}", txt);
     } else if let Some(logger) = LOGGER.get() {
         if (logger.mask & this_mask) == 0 {
             return;
         }
-        let mut f = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&logger.name)
-            .expect("Need to open a file");
-        let _r = f.write_all(txt.as_bytes());
-        let _r = f.write_all("\n".as_bytes());
+
+        let _ = logger.sender.send(txt);
     }
 }

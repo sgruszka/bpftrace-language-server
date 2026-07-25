@@ -1971,6 +1971,5 @@ tracepoint:dma:dma_alloc {
         assert!(hover.contains("u64 dma_addr;"));
         assert!(hover.contains("size_t size;"));
         assert!(hover.contains("enum dma_data_direction dir;"));
-        assert!(hover.contains("XXX"));
     }
 }
