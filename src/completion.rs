@@ -651,7 +651,7 @@ pub fn init_available_traces() {
     let _ = AVAILABE_TRACES.get_or_init(bpftrace_get_traces_list);
 }
 
-fn encode_completion_for_line(
+fn encode_completion_for_probe_list(
     prefix: &str,
     line_str: &str,
     short_prefix: Option<&str>,
@@ -789,15 +789,52 @@ pub fn add_empty_line_keywords(items: &mut json::JsonValue) {
     }
 }
 
-fn encode_completion_for_empty_line() -> json::JsonValue {
+fn add_map_declarations(items: &mut json::JsonValue) {
+    let item = object! {
+        "label": r#"hash"#,
+        "kind" : CompletionItemKind::Function
+    };
+    let _ = items.push(item);
+
+    let item = object! {
+        "label": r#"lruhash"#,
+        "kind" : CompletionItemKind::Function
+    };
+    let _ = items.push(item);
+
+    let item = object! {
+        "label": r#"percpuhash"#,
+        "kind" : CompletionItemKind::Function
+    };
+    let _ = items.push(item);
+
+    let item = object! {
+        "label": r#"percpulruhash"#,
+        "kind" : CompletionItemKind::Function
+    };
+    let _ = items.push(item);
+}
+
+fn encode_completion_for_new_line(line_str: &str) -> json::JsonValue {
     let mut items = json::JsonValue::new_array();
 
-    bpftrace_probe_providers(&mut items);
-    add_empty_line_keywords(&mut items);
+    let line = line_str.trim();
+
+    // Do not complete when entering macro name
+    if line.starts_with("macro") {
+        return encode_no_completion();
+    // I.e. let @map = percpuhash()
+    } else if line.starts_with("let") && line.contains("=") {
+        add_map_declarations(&mut items);
+    // Do not complete after space or some special symbol/number, only for single word
+    } else if line.is_empty() || line.chars().all(|c| c.is_alphabetic()) {
+        bpftrace_probe_providers(&mut items);
+        add_empty_line_keywords(&mut items);
+    }
 
     let data = object! {
         "result": {
-            "isIncomplete": false,
+            "isIncomplete": true,
             "items": items,
         }
     };
@@ -817,7 +854,7 @@ fn encode_no_completion() -> json::JsonValue {
     empty_data
 }
 
-fn encode_completion_for_probes(line_str: &str) -> json::JsonValue {
+fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
     let prefixes = [
         ("begin", None),
         ("end", None),
@@ -839,12 +876,12 @@ fn encode_completion_for_probes(line_str: &str) -> json::JsonValue {
         ("fexit", Some("fr")),
     ];
 
-    if !line_str.is_empty() {
+    if !line_str.trim().is_empty() {
         for prefix in prefixes.iter() {
             if !line_str.trim().starts_with(prefix.0) {
                 continue;
             }
-            if let Some(data) = encode_completion_for_line(prefix.0, line_str, None) {
+            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, None) {
                 return data;
             }
         }
@@ -864,13 +901,13 @@ fn encode_completion_for_probes(line_str: &str) -> json::JsonValue {
                 continue;
             }
 
-            if let Some(data) = encode_completion_for_line(prefix.0, line_str, prefix.1) {
+            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, prefix.1) {
                 return data;
             }
         }
     }
 
-    encode_completion_for_empty_line()
+    encode_completion_for_new_line(line_str)
 }
 
 fn unpack_text_document_info(content: json::JsonValue) -> (String, usize, usize) {
@@ -1012,7 +1049,7 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
         };
 
         log_dbg!(COMPL, "Complete for line head: '{line_head}'");
-        return encode_completion_for_probes(line_head);
+        return encode_completion_for_line(line_head);
     }
 
     encode_no_completion()
@@ -1610,7 +1647,7 @@ mod tests {
     }
 
     #[test]
-    fn test_probes_completion_for_empty_line() {
+    fn test_probes_completion_for_new_line() {
         let json_content = document_content_setup("", 0, 0);
 
         let result = encode_completion(json_content);
