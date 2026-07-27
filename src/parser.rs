@@ -14,6 +14,8 @@ pub enum SyntaxLocation {
     Predicate,
     Action,
     MacroDefinition,
+    MapDeclaration,
+    ConfigBlock,
 }
 
 #[derive(PartialEq)]
@@ -61,6 +63,8 @@ fn node_to_syntax_location(node: &Node) -> SyntaxLocation {
         "predicate" => SyntaxLocation::Predicate,
         "action" => SyntaxLocation::Action,
         "macro_definition" => SyntaxLocation::MacroDefinition,
+        "map_declaration" => SyntaxLocation::MapDeclaration,
+        "config_block" => SyntaxLocation::ConfigBlock,
         _ => SyntaxLocation::SourceFile,
     }
 }
@@ -79,6 +83,8 @@ pub fn find_syntax_location<'t>(
         (block_comment) @block_comment
         (line_comment) @line_comment
         (macro_definition) @macro_definition
+        (map_declaration) @map_declaration
+        (config_block) @config_block
     ]
     "#;
 
@@ -526,17 +532,7 @@ pub fn find_location(tree: &Tree, line_nr: usize, char_nr: usize) -> SyntaxLocat
     // TODO! This might not work correctly when there are errors in syntax tree
 
     loop {
-        let loc = match node.kind() {
-            "source_file" => SyntaxLocation::SourceFile,
-            "block_comment" => SyntaxLocation::Comment,
-            "line_comment" => SyntaxLocation::Comment,
-            "probes_list" => SyntaxLocation::ProbesList,
-            "predicate" => SyntaxLocation::Predicate,
-            "action" => SyntaxLocation::Action,
-            "macro_definition" => SyntaxLocation::MacroDefinition,
-            _ => SyntaxLocation::SourceFile,
-        };
-
+        let loc = node_to_syntax_location(&node);
         if loc != SyntaxLocation::SourceFile {
             return loc;
         }
