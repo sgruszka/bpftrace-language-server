@@ -758,7 +758,6 @@ fn encode_completion_for_line(
                 let _ = items.push(item);
                 count -= 1;
                 if count < 0 {
-                    is_incomplete = true;
                     break;
                 }
             }
@@ -767,7 +766,7 @@ fn encode_completion_for_line(
 
     let data = object! {
         "result": {
-            "isIncomplete": is_incomplete,
+            "isIncomplete": true,
             "items": items,
         }
     };
