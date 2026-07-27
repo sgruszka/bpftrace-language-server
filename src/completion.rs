@@ -670,7 +670,6 @@ fn encode_completion_for_line(
     };
 
     let mut items = json::JsonValue::new_array();
-    let mut is_incomplete = false;
 
     let max_count = 200;
     let mut count = max_count;
