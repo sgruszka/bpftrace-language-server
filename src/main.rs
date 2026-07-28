@@ -547,7 +547,7 @@ fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
     let resp = data.dump();
     Some(format!(
         "Content-Length: {}\r\n\r\n{}\r\n",
-        resp.len(),
+        resp.len() + 2,
         resp
     ))
 }
@@ -571,7 +571,7 @@ fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
     data["jasonrpc"] = JSON_RPC_VERSION.into();
 
     let resp = data.dump();
-    format!("Content-Length: {}\r\n\r\n{}\n", resp.len(), resp)
+    format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp)
 }
 
 fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
