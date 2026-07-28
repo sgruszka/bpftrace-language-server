@@ -155,18 +155,27 @@ Default: true
 
 Controls whether maps are printed on exit. Set to `false` in order to change the default behavior and not automatically print maps at program exit.
 
-### unstable features
-
-These are the list of unstable features:
-- `unstable_tseries` - feature flag for time series map type
-- `unstable_dw_ustack` - feature flag for DWARF-based user-space stack unwinding
-
-All of these accept the following options:
+### unstable_tseries
 
 Default: warn
 
+Feature flag for time series map type.
+
+The possible options are:
 - `error` - fail if this feature is used
 - `warn` - enable feature but print a warning
 - `enable` - enable feature
 
-###
+### unstable_dw_ustack
+
+Default: warn
+
+Feature flag for DWARF-based user-space stack unwinding
+
+The possible options are:
+- `error` - fail if this feature is used
+- `warn` - enable feature but print a warning
+- `enable` - enable feature
+
+### END
+

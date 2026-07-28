@@ -5,6 +5,7 @@ include!("build/gen.rs");
 fn main() {
     println!("cargo:rerun-if-changed=build/stdlib.md");
     println!("cargo:rerun-if-changed=build/language.md");
+    println!("cargo:rerun-if-changed=build/config_variables.md");
     // println!("cargo:rerun-if-changed=src/gen/");
 
     let mut text = r#"
