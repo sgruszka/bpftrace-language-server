@@ -12,7 +12,9 @@ use crate::btf_rd::{
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
 use crate::cmd_mod::bpftrace_command;
-use crate::gen::completion::{bpftrace_probe_providers, bpftrace_stdlib_functions};
+use crate::gen::completion::{
+    bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_functions,
+};
 use crate::log_mod::{self, COMPL, HOVER};
 use crate::parser::{self, SyntaxLocation};
 use crate::DOCUMENTS_STATE;
@@ -910,6 +912,19 @@ fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
     encode_completion_for_new_line(line_str)
 }
 
+fn encode_completion_for_config_block() -> json::JsonValue {
+    let mut items = json::JsonValue::new_array();
+
+    bpftrace_config_variables(&mut items);
+
+    object! {
+        "result": {
+            "isIncomplete": false,
+            "items": items,
+        }
+    }
+}
+
 fn unpack_text_document_info(content: json::JsonValue) -> (String, usize, usize) {
     let uri = content["params"]["textDocument"]["uri"].to_string();
 
@@ -1050,6 +1065,10 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
 
         log_dbg!(COMPL, "Complete for line head: '{line_head}'");
         return encode_completion_for_line(line_head);
+    }
+
+    if loc == SyntaxLocation::ConfigBlock {
+        return encode_completion_for_config_block();
     }
 
     encode_no_completion()
