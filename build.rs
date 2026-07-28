@@ -15,9 +15,11 @@ use json::object;
 
     let probes_md = fs::read_to_string("build/language.md").expect("Read failed");
     let stdlib_md = fs::read_to_string("build/stdlib.md").expect("Read failed");
+    let conf_vars_md = fs::read_to_string("build/config_variables.md").expect("Read failed");
 
     text.push_str(&gen_completion_probes(&probes_md));
     text.push_str(&gen_completion_stdlib(&stdlib_md));
+    text.push_str(&gen_completion_config_variables(&conf_vars_md));
 
     fs::write("src/gen/completion.rs", text).expect("Write failed");
 }

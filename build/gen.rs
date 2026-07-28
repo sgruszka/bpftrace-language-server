@@ -185,3 +185,38 @@ pub fn bpftrace_stdlib_functions(items: &mut json::JsonValue) {
 
     text
 }
+
+fn gen_completion_config_variables(stdlib_md: &str) -> String {
+    let mut doc_item = DocItem::default();
+    let mut collected_item = false;
+    let mut after_label = false;
+
+    let mut text = r#"
+pub fn bpftrace_config_variables(items: &mut json::JsonValue) {
+    "#
+    .to_string();
+
+    for line in stdlib_md.lines() {
+        if line.trim().starts_with("### ") {
+            if collected_item {
+                add_json_obj(&mut text, &doc_item, 6);
+            }
+
+            doc_item = DocItem::default();
+            doc_item.label = line[4..].to_string();
+            collected_item = true;
+
+            after_label = true;
+            continue;
+        }
+
+        if after_label {
+            doc_item.full_info.push_str(line);
+            doc_item.full_info.push('\n');
+        }
+    }
+
+    text.push_str("}");
+
+    text
+}
