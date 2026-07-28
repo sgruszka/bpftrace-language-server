@@ -1874,6 +1874,24 @@ fentry:vmlinux:vfs_writev,
         check_completion_resutls(result, fields);
     }
 
+    #[test]
+    fn test_config_variables_completion() {
+        let text = r#"config = {  }"#;
+        let json_content = document_content_setup(text, 0, text.len() - 2);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() > 0);
+
+        let fields = vec![
+            "stack_mode",
+            "missing_probes",
+            "log_size",
+            "license",
+            "max_probes",
+            "print_maps_on_exit",
+        ];
+        check_completion_resutls(result, fields);
+    }
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_cma_tracepoint_page_completion() {
