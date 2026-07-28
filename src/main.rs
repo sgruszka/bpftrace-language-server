@@ -76,7 +76,7 @@ impl DocumentsState {
 
 #[derive(Debug)]
 enum LspMessageType {
-    Request,
+    Request(u64),
     Response,
     Notification,
 }
@@ -89,7 +89,6 @@ enum NotificationAction {
 
 struct LspClientMessage {
     msg_type: LspMessageType,
-    id: u64,
     method: String,
     content: json::JsonValue,
     start_time: Instant,
@@ -575,7 +574,7 @@ fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
     format!("Content-Length: {}\r\n\r\n{}\n", resp.len(), resp)
 }
 
-fn decode_message(msg: String) -> (LspMessageType, u64, String, json::JsonValue) {
+fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
     // TODO remove unwrap() and handle errors
     let content = json::parse(&msg).unwrap();
 
@@ -583,23 +582,21 @@ fn decode_message(msg: String) -> (LspMessageType, u64, String, json::JsonValue)
     //let client_info = &content["params"]["clientInfo"];
     //log_dbg!(PROTO, "client Info {}", client_info);
 
-    let mut id = 0;
-    if let Some(num) = content["id"].as_u64() {
-        id = num;
-    }
+    let msg_type;
 
-    let mut msg_type = LspMessageType::Notification;
-    if id != 0 {
+    if let Some(id) = content["id"].as_u64() {
         if !content["result"].is_null() || !content["error"].is_null() {
             msg_type = LspMessageType::Response;
         } else {
-            msg_type = LspMessageType::Request;
+            msg_type = LspMessageType::Request(id);
         }
+    } else {
+        msg_type = LspMessageType::Notification;
     }
 
-    log_dbg!(PROTO, "Received {} {:?} with id {}", method, msg_type, id);
+    log_dbg!(PROTO, "Received {} {:?}", method, msg_type);
 
-    (msg_type, id, method.to_string(), content)
+    (msg_type, method.to_string(), content)
 }
 
 fn recv_message() -> Result<String, i32> {
@@ -682,7 +679,7 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
         match recv_message() {
             Ok(msg) => {
                 let start_time = Instant::now();
-                let (msg_type, id, method, content) = decode_message(msg);
+                let (msg_type, method, content) = decode_message(msg);
 
                 let exit: bool = match &msg_type {
                     LspMessageType::Notification => method == "exit",
@@ -691,7 +688,6 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
 
                 let lsp_client_msg = LspClientMessage {
                     msg_type,
-                    id,
                     method,
                     content,
                     start_time,
@@ -781,14 +777,13 @@ fn handle_client_msg(
 ) -> bool {
     let LspClientMessage {
         msg_type,
-        id,
         method,
         content,
         start_time,
     } = lsp_client_msg;
 
     match msg_type {
-        LspMessageType::Request => {
+        LspMessageType::Request(id) => {
             let s = encode_message(id, &method, content);
             let time_diff = start_time.elapsed();
             log_dbg!(PROTO, "Response time {:?}", time_diff);
@@ -878,10 +873,9 @@ mod tests {
     fn test_decode_message() {
         let msg = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{"general":{"positionEncodings":["utf-16"]}}}}"#;
 
-        let (msg_type, id, method, _content) = decode_message(msg.to_string());
-        assert!(matches!(msg_type, LspMessageType::Request));
+        let (msg_type, method, _content) = decode_message(msg.to_string());
+        assert!(matches!(msg_type, LspMessageType::Request(1)));
 
-        assert!(id == 1);
         assert!(method == "initialize");
     }
 }
