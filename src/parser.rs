@@ -556,7 +556,7 @@ pub fn is_args_or_retval(line_str: &str, char_nr: usize) -> Option<String> {
     let mut words = line_upto_char.rsplit([' ', '\t', '[', '{', '(', ',']);
     let last_word = words.next()?;
 
-    if last_word.starts_with("args.") {
+    if last_word.starts_with("args.") || last_word.starts_with("args->") {
         return Some(last_word.to_string());
     }
 

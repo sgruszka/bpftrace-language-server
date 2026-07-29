@@ -405,7 +405,7 @@ fn encode_completion_for_args_or_retval(
         // On first line of probe args is kfunc module and name
         probe_args_iter.next();
 
-        if args_with_fields.ends_with("args.") {
+        if args_with_fields.ends_with("args.") || args_with_fields.ends_with("args->") {
             items_from_probe_args(probe_args_iter)
         } else if let Some(next_items) =
             resolve_container_members(probe_args_iter, args_with_fields)

@@ -1512,7 +1512,7 @@ pub fn btf_iterate_function_args(
     let mut name_chain = chain_str_to_tokens(name_chain_str);
 
     // Support only args. , retval() , retval as prefixes for name chain
-    if !name_chain_str.starts_with("args.") && !name_chain_str.starts_with("retval") {
+    if !name_chain_str.starts_with("args") && !name_chain_str.starts_with("retval") {
         return None;
     }
 
@@ -1529,7 +1529,7 @@ pub fn btf_iterate_function_args(
             is_retval = true;
             name_chain.remove(0);
             name_chain.remove(0); // -> or .
-        } else if name_chain[0] == "args" && name_chain[1] == "." {
+        } else if name_chain[0] == "args" && (name_chain[1] == "." || name_chain[1] == "->") {
             name_chain.remove(0);
             name_chain.remove(0); // .
         } else {
