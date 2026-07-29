@@ -276,7 +276,7 @@ fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
 
 fn add_items_from_btf_member(module: &str, member: &BtfVariable, items: &mut json::JsonValue) {
     if let Some(member_type) = resolve_variable_type(module, member) {
-        if is_anonymous_type(&member_type) {
+        if member.name.is_empty() && is_anonymous_type(&member_type) {
             if let Some(actual_type) = member_type.actual_type {
                 for m in actual_type.members.iter() {
                     add_items_from_btf_member(module, m, items);
