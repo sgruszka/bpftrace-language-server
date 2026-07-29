@@ -410,7 +410,7 @@ fn add_scratch_variables_for_block(
 
         let child_idx = match node.kind() {
             "assignment_statement" => 0,
-            "declaration_statement" => 0,
+            "declaration_statement" => 1,
             "for_statement" => 1,
             _ => continue,
         };
