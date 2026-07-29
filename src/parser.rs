@@ -747,23 +747,25 @@ begin {
     }
 
     #[test]
-    fn test_find_one_variable_for_action() {
+    fn test_find_variables_for_action() {
         let text = r#"
 begin {
+  let $d: uint8 = 222;
   $x = 10; $y = 1;
   $z =
 }
         "#;
         let tree = setup_syntax_tree(text);
 
-        let (loc, action) = find_syntax_location(text, &tree, 3, 4);
+        let (loc, action) = find_syntax_location(text, &tree, 4, 8);
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_scratch_variables_for_block(&action, text, 3, 4);
-        assert_eq!(variables.len(), 2);
-        assert_eq!(variables[0], "$x");
-        assert_eq!(variables[1], "$y");
+        let variables = find_scratch_variables_for_block(&action, text, 4, 8);
+        assert_eq!(variables.len(), 3);
+        assert_eq!(variables[0], "$d");
+        assert_eq!(variables[1], "$x");
+        assert_eq!(variables[2], "$y");
     }
 
     #[test]
