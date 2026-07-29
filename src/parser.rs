@@ -166,7 +166,7 @@ fn location_within_query_match<'t>(
 
 pub fn is_location_function_call<'t>(
     text: &str,
-    action_node: &'t Node,
+    main_node: &'t Node,
     line_nr: usize,
     char_nr: usize,
 ) -> Option<Node<'t>> {
@@ -185,7 +185,7 @@ pub fn is_location_function_call<'t>(
         }
     };
 
-    location_within_query_match(text, action_node, &query, line_nr, char_nr)
+    location_within_query_match(text, main_node, &query, line_nr, char_nr)
 }
 
 pub fn is_location_macro_body<'t>(

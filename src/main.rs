@@ -20,7 +20,9 @@ pub mod parser;
 #[macro_use]
 pub mod log_mod;
 
-use log_mod::{DIAGN, NOTIF, PROTO};
+use log_mod::{DEFIN, DIAGN, NOTIF, PROTO};
+
+use crate::parser::{find_source_file_macros_for_node, is_location_function_call};
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -95,8 +97,9 @@ macro_rules! get_document_state {
         let text = &$text_doc.text;
 
         let log_str = match $log {
-            COMPL => "Completion",
-            HOVER => "Hover",
+            log_mod::COMPL => "Completion",
+            log_mod::HOVER => "Hover",
+            log_mod::DEFIN => "Definition",
             _ => "",
         };
 
@@ -241,27 +244,57 @@ fn encode_shutdown() -> json::JsonValue {
     data
 }
 
+fn encode_no_definition() -> json::JsonValue {
+    object! { "result": json::JsonValue::Null }
+}
+
 fn encode_definition(content: json::JsonValue) -> json::JsonValue {
-    log_err!("Received definition with data {}", content);
-    let uri = &content["params"]["textDocument"]["uri"].to_string();
+    let (uri, line_nr, char_nr) = unpack_text_document_info(content);
 
-    let position = &content["params"]["position"];
-    let line_nr = position["line"].as_usize().unwrap();
-    let char_nr = position["character"].as_usize().unwrap();
-
-    let new_line_nr = if line_nr > 0 { line_nr - 1 } else { line_nr };
-
-    let data = object! {
-        "result": {
-            "uri": uri.to_string(),
-            "range": {
-                "start": { "line": new_line_nr, "character": char_nr + 8,},
-                "end": {"line": new_line_nr, "character": char_nr + 10, },
-            },
-        },
+    let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
+        return encode_no_definition();
     };
 
-    data
+    let (text, _loc, main_node, _line_str) =
+        get_document_state!(text_doc, line_nr, char_nr, encode_no_definition(), DEFIN);
+
+    if let Some(func_call) = is_location_function_call(text, &main_node, line_nr, char_nr) {
+        let call_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
+        log_dbg!(DEFIN, "Definition for function call: {}", call_name);
+
+        let all_macros = find_source_file_macros_for_node(&main_node, text);
+        log_vdbg!(DEFIN, "{:?}", all_macros);
+
+        for m in all_macros {
+            if m.0 == call_name {
+                let macro_def_node = m.1;
+                let start = macro_def_node.start_position();
+                let end = macro_def_node.end_position();
+                log_dbg!(
+                    DEFIN,
+                    "Found macro defintion at ({},{}) - ({},{})",
+                    start.row,
+                    start.column,
+                    end.row,
+                    end.column,
+                );
+
+                let data = object! {
+                    "result": {
+                        "uri": uri.to_string(),
+                        "range": {
+                            "start": { "line": start.row, "character": start.column,},
+                            "end": {"line": end.row, "character": end.column, },
+                        },
+                    },
+                };
+
+                return data;
+            }
+        }
+    }
+
+    encode_no_definition()
 }
 
 // TODO implement correct codeAction and enable codeActionProvider

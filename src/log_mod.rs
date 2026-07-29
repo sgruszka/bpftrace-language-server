@@ -11,6 +11,7 @@ pub const NOTIF: u32 = 1 << 3;
 pub const HOVER: u32 = 1 << 4;
 pub const BTFRD: u32 = 1 << 5;
 pub const PARSE: u32 = 1 << 6;
+pub const DEFIN: u32 = 1 << 7;
 
 #[macro_export]
 macro_rules! log_err {
@@ -107,6 +108,7 @@ pub fn create_logger(filename: &str) -> Result<(), std::io::Error> {
                         "HOVER" => mask |= HOVER,
                         "BTFRD" => mask |= BTFRD,
                         "PARSE" => mask |= PARSE,
+                        "DEFIN" => mask |= DEFIN,
                         _ => {} // ignore unknown components
                     }
                 }
