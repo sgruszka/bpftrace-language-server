@@ -256,7 +256,7 @@ pub fn find_errors<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
     results
 }
 
-pub fn find_all_map_variables<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
+fn find_all_map_variables<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
     let query_str = r#"
         (assignment_statement
           left: (map_variable) @map.lhs)
@@ -458,7 +458,10 @@ fn node_to_source_file(n: Node) -> Option<Node> {
     Some(source_file)
 }
 
-pub fn find_source_file_macros_for_node(this_node: &Node, text: &str) -> Vec<String> {
+pub fn find_source_file_macros_for_node<'t>(
+    this_node: &'t Node,
+    text: &str,
+) -> Vec<(String, Node<'t>)> {
     let mut macros = Vec::new();
 
     let Some(source_file) = node_to_source_file(*this_node) else {
@@ -473,7 +476,7 @@ pub fn find_source_file_macros_for_node(this_node: &Node, text: &str) -> Vec<Str
                 continue;
             };
             if let Ok(macro_name) = name_node.utf8_text(text.as_bytes()) {
-                macros.push(macro_name.to_owned());
+                macros.push((macro_name.to_owned(), node));
             }
         }
     }
@@ -888,7 +891,7 @@ macro add_two(y) {
 
         let macros = find_source_file_macros_for_node(&action, text);
         assert_eq!(macros.len(), 2);
-        assert_eq!(macros[0], "add_one");
-        assert_eq!(macros[1], "add_two");
+        assert_eq!(macros[0].0, "add_one");
+        assert_eq!(macros[1].0, "add_two");
     }
 }

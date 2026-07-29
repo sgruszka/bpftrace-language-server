@@ -487,9 +487,9 @@ fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) 
     log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
     // TODO add parameters
-    for mac in macros {
+    for m in macros {
         let item = object! {
-            "label": mac.to_owned(),
+            "label": m.0.to_owned(),
             "kind": CompletionItemKind::Function,
             // "detail": "TODO",
             // "documentation": "need better documentation",
