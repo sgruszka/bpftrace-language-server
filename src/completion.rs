@@ -562,9 +562,17 @@ fn add_completion_items_for_block(
     line_str: &str,
     items: &mut json::JsonValue,
 ) {
-    if line_str.ends_with("$") {
+    let up_to_char = char_nr.saturating_add(1);
+    let line_head = if let Some(splited_line) = line_str.split_at_checked(up_to_char) {
+        let (head, _tail) = splited_line;
+        head
+    } else {
+        line_str
+    };
+
+    if line_head.ends_with("$") {
         add_block_variables(node, text, line_nr, char_nr, items, false);
-    } else if line_str.ends_with("@") {
+    } else if line_head.ends_with("@") {
         add_block_variables(node, text, line_nr, char_nr, items, true);
     } else {
         bpftrace_stdlib_functions(items);
