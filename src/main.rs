@@ -946,6 +946,30 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static URI_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn document_content_setup(text: &str, line_nr: usize, char_nr: usize) -> json::JsonValue {
+        let uri = format!(
+            "file:///main_test{}.bt",
+            URI_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+
+        DOCUMENTS_STATE.set(uri.to_string(), text.to_string(), 1);
+
+        object! {
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                },
+                "position": {
+                    "line": line_nr,
+                    "character": char_nr,
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_decode_message() {
         let msg = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{"general":{"positionEncodings":["utf-16"]}}}}"#;
@@ -954,5 +978,27 @@ mod tests {
         assert!(matches!(msg_type, LspMessageType::Request(1)));
 
         assert!(method == "initialize");
+    }
+
+    #[test]
+    fn test_goto_macro_definition() {
+        let text = r#"
+macro print1(x) {
+  print(x);
+}
+macro print2(x, y) {
+  print1(x + y)
+}
+"#;
+        let json_content = document_content_setup(text, 5, 4);
+
+        let result = encode_definition(json_content);
+        let start = &result["result"]["range"]["start"];
+        assert_eq!(start["line"], 1);
+        assert_eq!(start["character"], 0);
+
+        let end = &result["result"]["range"]["end"];
+        assert_eq!(end["line"], 3);
+        assert_eq!(end["character"], 1);
     }
 }
