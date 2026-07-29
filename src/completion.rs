@@ -591,10 +591,9 @@ fn encode_completion_for_action(
         add_args_and_retval_keywords(&probes_compl, &mut items);
     }
 
-    let is_incomplete = false; // Currently we provide complete list
     let data = object! {
         "result": {
-            "isIncomplete": is_incomplete,
+            "isIncomplete": true,
             "items": items,
         }
     };
