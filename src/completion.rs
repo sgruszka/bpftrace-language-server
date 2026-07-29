@@ -17,7 +17,7 @@ use crate::gen::completion::{
 };
 use crate::log_mod::{self, COMPL, HOVER};
 use crate::parser::{self, SyntaxLocation};
-use crate::DOCUMENTS_STATE;
+use crate::{get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_err, log_vdbg};
 
 #[allow(unused)]
@@ -923,49 +923,6 @@ fn encode_completion_for_config_block() -> json::JsonValue {
             "items": items,
         }
     }
-}
-
-fn unpack_text_document_info(content: json::JsonValue) -> (String, usize, usize) {
-    let uri = content["params"]["textDocument"]["uri"].to_string();
-
-    let position = &content["params"]["position"];
-
-    let line_nr = position["line"].as_usize().unwrap_or_default();
-    let char_nr = position["character"].as_usize().unwrap_or_default();
-
-    (uri, line_nr, char_nr)
-}
-
-macro_rules! get_document_state {
-    ($text_doc:ident, $line_nr:ident, $char_nr:ident, $none:expr, $log:ident) => {{
-        let Some(tree) = &$text_doc.syntax_tree else {
-            return $none;
-        };
-
-        let text = &$text_doc.text;
-
-        let log_str = match $log {
-            COMPL => "Completion",
-            HOVER => "Hover",
-            _ => "",
-        };
-
-        let line_str = text.lines().nth($line_nr).unwrap_or_default();
-        log_dbg!(
-            $log,
-            "{} for line {}: '{}', char at {}: '{}'",
-            log_str,
-            $line_nr,
-            line_str,
-            $char_nr,
-            line_str.chars().nth($char_nr).unwrap_or_default()
-        );
-
-        let (loc, node) = parser::find_syntax_location(text, tree, $line_nr, $char_nr);
-        log_dbg!($log, "{}: found syntax location: {:?}", log_str, loc);
-
-        (text, loc, node, line_str)
-    }};
 }
 
 struct ProbesCompletion {
