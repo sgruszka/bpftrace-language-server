@@ -701,6 +701,22 @@ tracepoint:syscalls:sys_enter_openat {
     }
 
     #[test]
+    fn test_syntax_location_for_missing_semicolon() {
+        let text = r#"
+kfunc:vmlinux:posix_timer_fn {
+  x
+  printf("IN_HARDIRQ %d\n", args.timer->base->cpu_base->in_hrtirq);
+  printf("IS_HARD %d\n", args.timer->is_hard);
+}
+"#;
+        let tree = setup_syntax_tree(text);
+
+        let (loc, action) = find_syntax_location(text, &tree, 2, 2);
+        assert_eq!(loc, SyntaxLocation::Action);
+        assert_eq!(action.kind(), "action");
+    }
+
+    #[test]
     fn test_multiline_probe_for_action() {
         let text = r#"
 kfunc:vmlinux:posix_timer_fn {
