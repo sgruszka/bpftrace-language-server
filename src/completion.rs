@@ -6,8 +6,8 @@ use std::time::Instant;
 use tree_sitter::Node;
 
 use crate::btf_rd::{
-    btf_iterate_function_args, btf_iterate_members, btf_resolve_func, btf_resolve_struct,
-    btf_resolve_type, btf_resolve_union, btf_setup_module,
+    btf_iterate_function_args, btf_iterate_members, btf_module_get, btf_resolve_func,
+    btf_resolve_struct, btf_resolve_type, btf_resolve_union,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -59,9 +59,6 @@ impl From<CompletionItemKind> for json::JsonValue {
 static PROBES_ARGS_MAP: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-static MODULE_BTF_MAP: LazyLock<Mutex<HashMap<String, Arc<Btf>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
 static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
 
 static FENTRY_KFUNC_NAME: OnceLock<&'static str> = OnceLock::new();
@@ -89,7 +86,7 @@ fn resolve_container_members(
     probe_args_iter: Lines,
     this_argument: &str,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
-    let btf = find_btf_module("vmlinux")?;
+    let btf = btf_module_get("vmlinux")?;
 
     for arg in probe_args_iter {
         let mut tokens = arg.split_whitespace();
@@ -195,25 +192,6 @@ fn find_probe_args_by_command(probe: &str) -> String {
     probe_args
 }
 
-fn find_btf_module(module: &str) -> Option<Arc<Btf>> {
-    let mut module_btf_map = MODULE_BTF_MAP.lock().unwrap();
-
-    let this_btf;
-    if let Some(btf) = module_btf_map.get(module) {
-        this_btf = btf;
-    } else {
-        log_dbg!(COMPL, "Looking for btf for module: {}", module);
-        if let Some(btf) = btf_setup_module(module) {
-            module_btf_map.insert(module.to_string(), btf);
-            this_btf = module_btf_map.get(module).unwrap();
-        } else {
-            return None;
-        }
-    }
-
-    Some(this_btf.clone())
-}
-
 fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, Arc<Btf>, BtfFunction)> {
     let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
     log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
@@ -227,7 +205,7 @@ fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, Arc<Btf>, BtfFunction)
         return None;
     }
 
-    let btf = find_btf_module(module)?;
+    let btf = btf_module_get(module)?;
 
     if let Some(ret) = btf_resolve_func(&btf, kfunc_vec[2]) {
         return Some((module.to_string(), btf, ret));
@@ -375,7 +353,7 @@ fn encode_completion_for_args_or_retval(
         } else if let Some(next_items) =
             resolve_container_members(probe_args_iter, args_with_fields)
         {
-            if let Some(btf) = btf_setup_module("vmlinux") {
+            if let Some(btf) = btf_module_get("vmlinux") {
                 items_from_resolved_btf(btf, &next_items)
             } else {
                 json::JsonValue::new_array()

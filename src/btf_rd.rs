@@ -4,7 +4,7 @@ use memmap2::{Mmap, MmapOptions};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use std::ops::Deref;
 
@@ -1099,7 +1099,12 @@ fn btf_setup_vmlinux_btf() -> Option<Arc<Btf>> {
     }
 }
 
-pub fn btf_setup_module(module: &str) -> Option<Arc<Btf>> {
+static MODULE_BTF_MAP: LazyLock<Mutex<HashMap<String, Arc<Btf>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn btf_module_get(module: &str) -> Option<Arc<Btf>> {
+    log_dbg!(BTFRD, "Looking for btf for module: {}", module);
+
     let module_btf = if cfg!(test) && !cfg!(feature = "live_btf_tests") {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/");
         path.to_owned() + module + ".btf"
@@ -1109,6 +1114,7 @@ pub fn btf_setup_module(module: &str) -> Option<Arc<Btf>> {
     };
 
     let Some(vmlinux_btf_ref) = VMLINUX_BTF.get_or_init(btf_setup_vmlinux_btf) else {
+        log_err!("Failed to setup vmlinux BTF");
         return None;
     };
 
@@ -1116,14 +1122,23 @@ pub fn btf_setup_module(module: &str) -> Option<Arc<Btf>> {
         return Some(vmlinux_btf_ref.clone());
     }
 
-    match BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), &module_btf) {
-        Ok(split) => {
-            log_dbg!(BTFRD, "Loaded btf for {}", module_btf);
-            Some(Arc::new(split))
-        }
-        Err(e) => {
-            log_err!("Failed to build module {module} BTF from {module_btf} with error {e}");
-            None
+    let mut module_btf_map = MODULE_BTF_MAP.lock().unwrap();
+
+    if let Some(btf) = module_btf_map.get(module) {
+        Some(btf.clone())
+    } else {
+        match BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), &module_btf) {
+            Ok(split) => {
+                log_dbg!(BTFRD, "Loaded BTF from {module_btf}");
+
+                let btf = Arc::new(split);
+                module_btf_map.insert(module.to_string(), btf.clone());
+                Some(btf.clone())
+            }
+            Err(e) => {
+                log_err!("Failed to build module {module} BTF from {module_btf} with error {e}");
+                None
+            }
         }
     }
 }
@@ -1607,10 +1622,10 @@ mod tests {
 
     #[test]
     fn test_load_module() {
-        let btf1 = btf_setup_module("vmlinux");
+        let btf1 = btf_module_get("vmlinux");
         assert!(btf1.is_some());
 
-        let btf2 = btf_setup_module("Xblabla713h");
+        let btf2 = btf_module_get("Xblabla713h");
         assert!(btf2.is_none());
     }
 
@@ -1769,7 +1784,7 @@ mod tests {
 
     #[test]
     fn test_resolve_alloc_pid() {
-        let btf = btf_setup_module("vmlinux").unwrap();
+        let btf = btf_module_get("vmlinux").unwrap();
 
         let f = btf_resolve_func(&btf, "alloc_pid").unwrap();
         assert_eq!(f.name, "alloc_pid");
@@ -1956,7 +1971,7 @@ mod tests {
 
     #[test]
     fn test_resolve_fuse() {
-        let btf = btf_setup_module("fuse").unwrap();
+        let btf = btf_module_get("fuse").unwrap();
 
         let base = btf_resolve_func(&btf, "fuse_dentry_delete").unwrap();
         assert!(base.name == "fuse_dentry_delete");
