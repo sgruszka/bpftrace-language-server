@@ -92,7 +92,7 @@ struct BtfRawParam {
 struct BtfRawMember {
     name_off: u32,
     type_id: u32,
-    _offset: u32,
+    offset: u32,
 }
 
 #[derive(Debug, BinRead)]
@@ -311,7 +311,6 @@ impl BtfTypeTrait for BtfTypeInteger {
             }
         };
 
-        // TODO: for struct/union members this is encoded in BtfRawMember offsed field
         let bits = raw_int.encoding & 0xffu32;
         let sufix = if bits > 0 && bits < size {
             format!(":{bits}")
@@ -703,6 +702,7 @@ impl BtfTypeTrait for BtfTypeEnum64 {
 pub struct BtfVariable {
     pub name: String,
     pub type_id: u32,
+    pub bits: Option<u32>,
 }
 
 impl BtfTypeFunc {
@@ -738,7 +738,11 @@ impl BtfTypeFunc {
             let name = this_split.get_name(raw_param.name_off).to_owned();
             let type_id = raw_param.type_id;
 
-            params.push(BtfVariable { name, type_id });
+            params.push(BtfVariable {
+                name,
+                type_id,
+                bits: None,
+            });
         }
 
         params
@@ -764,9 +768,17 @@ fn composite_members(this_split: &BtfSplit, type_id: u32, vlen: u32) -> Vec<BtfV
 
         let name = this_split.get_name(raw_member.name_off).to_owned();
 
+        let bitfield_size = raw_member.offset >> 24;
+        let bits = if bitfield_size > 0 {
+            Some(bitfield_size)
+        } else {
+            None
+        };
+
         members.push(BtfVariable {
             name,
             type_id: raw_member.type_id,
+            bits,
         });
     }
 
@@ -1492,6 +1504,7 @@ pub fn btf_iterate_members(
             name: first_field.to_string(),
             // We don't have pointer type_id, use struct/union type_id
             type_id: comp.type_id,
+            bits: None,
         }
     } else {
         let second_name = name_chain[0];
@@ -1552,6 +1565,7 @@ pub fn btf_iterate_function_args(
             let cur_var = BtfVariable {
                 type_id: func.ret_type_id,
                 name: "retval".to_owned(),
+                bits: None,
             };
             return Some((cur_var, cur_type));
         }
@@ -1566,6 +1580,7 @@ pub fn btf_iterate_function_args(
         let cur_var = BtfVariable {
             type_id: func.type_id,
             name: func.name.clone(),
+            bits: None,
         };
         let func_args = BtfComposite {
             type_id: func.proto_id,

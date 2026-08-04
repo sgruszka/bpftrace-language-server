@@ -75,8 +75,12 @@ fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) ->
 
     if let Some(var) = res_var {
         s.push_str(&var.name);
+        if let Some(bits) = var.bits {
+            s.push_str(&format!(":{}", bits));
+        }
     }
 
+    // TODO: For bitfield this should be empty, need to add check ?
     s.push_str(&res_type.type_sufix);
     s
 }
@@ -1205,7 +1209,12 @@ fn members_to_lines(
         let left_indent = indent;
         let type_name;
         let var_name;
-        let type_sufix = member_type.type_sufix;
+
+        let type_sufix = if let Some(bits) = member.bits {
+            format!(":{}", bits)
+        } else {
+            member_type.type_sufix
+        };
 
         if member_type.type_prefix.ends_with("(*") {
             // Function pointer;
