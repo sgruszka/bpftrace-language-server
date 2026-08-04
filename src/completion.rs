@@ -139,45 +139,6 @@ fn resolve_container_members(
     None
 }
 
-fn resolve_function_args(
-    module: &String,
-    resolved_func: &BtfFunction,
-    this_argument: &str,
-) -> Option<(BtfVariable, BtfResolvedType)> {
-    // log_dbg!(COMPL, "MODULE {}", module);
-    // log_dbg!(COMPL, "RESOLVED FUNC {:?}", resolved_func);
-    // log_dbg!(COMPL, "THIS_ARGUMENT {}", this_argument);
-    // let mut names_chain: Vec<&str> = args_str_to_tokens(this_argument);
-    // names_chain.remove(0); // skip "args"
-    // names_chain.remove(0); // skip "."
-    //
-    // log_dbg!(COMPL, "NAMES CHAIN {:?}", names_chain);
-
-    // log_dbg!(
-    //     COMPL,
-    //     "Looking for next item for name chain {:?}",
-    //     names_chain
-    // );
-
-    let module_btf_map = MODULE_BTF_MAP.lock().unwrap();
-
-    if let Some(resolved_tuple) = module_btf_map
-        .get(module)
-        .and_then(|btf| btf_iterate_function_args(btf, resolved_func, this_argument))
-    {
-        return Some(resolved_tuple);
-    }
-
-    None
-}
-
-fn resolve_variable_type(module: &str, var: &BtfVariable) -> Option<BtfResolvedType> {
-    let module_btf_map = MODULE_BTF_MAP.lock().unwrap();
-    let btf = module_btf_map.get(module)?;
-
-    btf_resolve_type(btf, var.type_id)
-}
-
 fn is_fentry_probe(probe: &str) -> bool {
     probe.starts_with("fentry") || probe.starts_with("kfunc")
 }
@@ -253,7 +214,7 @@ fn find_btf_module(module: &str) -> Option<Arc<Btf>> {
     Some(this_btf.clone())
 }
 
-fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
+fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, Arc<Btf>, BtfFunction)> {
     let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
     log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
 
@@ -269,7 +230,7 @@ fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, BtfFunction)> {
     let btf = find_btf_module(module)?;
 
     if let Some(ret) = btf_resolve_func(&btf, kfunc_vec[2]) {
-        return Some((module.to_string(), ret));
+        return Some((module.to_string(), btf, ret));
     }
 
     None
@@ -278,12 +239,12 @@ fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
     res_type.type_prefix == "struct " || res_type.type_prefix == "union "
 }
 
-fn add_items_from_btf_member(module: &str, member: &BtfVariable, items: &mut json::JsonValue) {
-    if let Some(member_type) = resolve_variable_type(module, member) {
+fn add_items_from_btf_member(btf: Arc<Btf>, member: &BtfVariable, items: &mut json::JsonValue) {
+    if let Some(member_type) = btf_resolve_type(&btf, member.type_id) {
         if member.name.is_empty() && is_anonymous_type(&member_type) {
             if let Some(actual_type) = member_type.actual_type {
                 for m in actual_type.members.iter() {
-                    add_items_from_btf_member(module, m, items);
+                    add_items_from_btf_member(btf.clone(), m, items);
                 }
             } else {
                 log_err!(
@@ -312,7 +273,7 @@ fn add_items_from_btf_member(module: &str, member: &BtfVariable, items: &mut jso
 }
 
 fn items_from_resolved_btf(
-    module: &str,
+    btf: Arc<Btf>,
     btf_tuple: &(BtfVariable, BtfResolvedType),
 ) -> json::JsonValue {
     let mut items = json::JsonValue::new_array();
@@ -324,7 +285,7 @@ fn items_from_resolved_btf(
     };
 
     for m in actual_type.members.iter() {
-        add_items_from_btf_member(module, m, &mut items);
+        add_items_from_btf_member(btf.clone(), m, &mut items);
     }
 
     items
@@ -414,15 +375,20 @@ fn encode_completion_for_args_or_retval(
         } else if let Some(next_items) =
             resolve_container_members(probe_args_iter, args_with_fields)
         {
-            items_from_resolved_btf("vmlinux", &next_items)
+            if let Some(btf) = btf_setup_module("vmlinux") {
+                items_from_resolved_btf(btf, &next_items)
+            } else {
+                json::JsonValue::new_array()
+            }
         } else {
             json::JsonValue::new_array()
         }
-    } else if let Some((module, resolved_func)) = probes_compl.btf_probe_args {
-        if let Some(next_items) = resolve_function_args(&module, &resolved_func, args_with_fields) {
+    } else if let Some((btf, resolved_func)) = probes_compl.btf_probe_args {
+        if let Some(next_items) = btf_iterate_function_args(&btf, &resolved_func, args_with_fields)
+        {
             // For debug:
             // log_dbg!(COMPL, "Found arguments using btf:\n{:?}", next_items);
-            items_from_resolved_btf(&module, &next_items)
+            items_from_resolved_btf(btf, &next_items)
         } else {
             json::JsonValue::new_array()
         }
@@ -755,7 +721,8 @@ fn encode_completion_for_probe_list(
                 if (trace_tokens[0] == "kfunc" || trace_tokens[0] == "fentry")
                     && kind == CompletionItemKind::Property
                 {
-                    if let Some((_module, resolved_func)) = find_kfunc_args_by_btf(trace_line) {
+                    if let Some((_module, _btf, resolved_func)) = find_kfunc_args_by_btf(trace_line)
+                    {
                         item["detail"] = resolved_func.full_name.into();
                     }
                 }
@@ -938,7 +905,7 @@ fn encode_completion_for_config_block() -> json::JsonValue {
 
 struct ProbesCompletion {
     probes_vec: Vec<String>,
-    btf_probe_args: Option<(String, BtfFunction)>,
+    btf_probe_args: Option<(Arc<Btf>, BtfFunction)>,
     is_kfunc: bool,
     has_retval: bool,
 }
@@ -1106,21 +1073,21 @@ fn cmp_arg(a: &BtfVariable, b: &BtfVariable) -> bool {
 // type and name.
 // TODO will that work when matching type and name but different arg number, IOW is position also
 // important ?
-pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(String, BtfFunction)> {
+pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(Arc<Btf>, BtfFunction)> {
     let mut probes_iter = probes_vec.iter();
     let probe = probes_iter.next()?;
 
     let btf_probe_args = find_kfunc_args_by_btf(probe);
-    let (module, mut resolved_func) = btf_probe_args?;
+    let (module, btf, mut resolved_func) = btf_probe_args?;
 
     let mut args_to_remove: Vec<usize> = Vec::new();
 
     for (i, arg) in resolved_func.args.iter().enumerate() {
         for probe in probes_vec.iter().skip(1) {
             let btf_probe_args = find_kfunc_args_by_btf(probe);
-            let (_next_module, next_resolved_func) = btf_probe_args?;
+            let (next_module, _next_btf, next_resolved_func) = btf_probe_args?;
             // TODO: we can support diffrent modules if arguments belong to not-split BTF
-            if _next_module != module {
+            if next_module != module {
                 return None;
             }
 
@@ -1146,12 +1113,12 @@ pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(String, BtfFu
 
     resolved_func.args = common_args;
 
-    Some((module, resolved_func))
+    Some((btf, resolved_func))
 }
 
 // Structure/union members
 fn members_to_lines(
-    module: &str,
+    btf: &Btf,
     actual_type: &BtfComposite,
     indent: usize,
     need_field_aligment: bool,
@@ -1159,7 +1126,7 @@ fn members_to_lines(
 ) -> usize {
     let mut max_type_width = 0;
     for member in actual_type.members.iter() {
-        let Some(member_type) = resolve_variable_type(module, member) else {
+        let Some(member_type) = btf_resolve_type(btf, member.type_id) else {
             log_err!("Failed to resolve BTF type {}", member.type_id);
             continue;
         };
@@ -1175,7 +1142,7 @@ fn members_to_lines(
                     "".to_string(),
                 ));
 
-                members_to_lines(module, sub_type, indent + 1, false, lines);
+                members_to_lines(btf, sub_type, indent + 1, false, lines);
 
                 lines.push((
                     indent,
@@ -1239,11 +1206,11 @@ fn members_to_lines(
 }
 
 // Structure/union members
-fn members_to_string(module: &str, actual_type: &BtfComposite) -> String {
+fn members_to_string(btf: &Btf, actual_type: &BtfComposite) -> String {
     let mut lines = Vec::new();
     let mut out_str = String::new();
 
-    let max_type_width = members_to_lines(module, actual_type, 1, true, &mut lines);
+    let max_type_width = members_to_lines(btf, actual_type, 1, true, &mut lines);
 
     for l in lines {
         let (indent, alignment, semicolon, type_name, var_name, type_suffix) = l;
@@ -1270,11 +1237,11 @@ fn get_details_and_docs(
     keyword_with_fields: &str,
     hover: bool,
 ) -> Option<(String, String)> {
-    let (module, resolved_func) = probes_compl.btf_probe_args.as_ref()?;
+    let (btf, resolved_func) = probes_compl.btf_probe_args.as_ref()?;
 
     let func_name = resolved_func.name.clone();
 
-    let (res_var, res_type) = resolve_function_args(module, resolved_func, keyword_with_fields)?;
+    let (res_var, res_type) = btf_iterate_function_args(btf, resolved_func, keyword_with_fields)?;
 
     let mut details = String::new();
     let mut docs = String::new();
@@ -1312,7 +1279,7 @@ fn get_details_and_docs(
             &format!("{}{}\n{{\n", c_open, actual_type.type_name)
         };
         docs.push_str(s);
-        docs.push_str(&members_to_string(module, &actual_type));
+        docs.push_str(&members_to_string(btf, &actual_type));
         docs.push_str(&format!("}};{}", c_close));
     }
 
@@ -1459,7 +1426,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         }
 
         let args_by_btf = find_kfunc_args_by_btf(probe);
-        if let Some((_module, resolved_func)) = args_by_btf {
+        if let Some((_module, _btf, resolved_func)) = args_by_btf {
             data = object! {
                   "result": {
                       "contents": format!("{}:\n```c\n{}```", probe, &resolved_func.full_name),
@@ -1537,7 +1504,7 @@ mod tests {
         let args_by_cmd = find_probe_args_by_command(s);
         let args_by_btf = find_kfunc_args_by_btf(s);
 
-        let Some((module, resolved_btf)) = args_by_btf else {
+        let Some((_module, btf, resolved_btf)) = args_by_btf else {
             println!("{s}");
             panic!();
         };
@@ -1561,7 +1528,7 @@ mod tests {
             assert!(resolved_btf.args.len() > i - 1);
 
             let btf_var = &resolved_btf.args[i - 1];
-            let btf_type = resolve_variable_type(&module, btf_var).unwrap();
+            let btf_type = btf_resolve_type(&btf, btf_var.type_id).unwrap();
             let a = arg.trim().replace("* ", "*");
             assert_eq!(a, btf_item_to_str(&btf_type, Some(btf_var)));
             n += 1;
