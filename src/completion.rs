@@ -81,7 +81,7 @@ fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) ->
     }
 
     // TODO: For bitfield this should be empty, need to add check ?
-    s.push_str(&res_type.type_sufix);
+    s.push_str(&res_type.type_suffix);
     s
 }
 
@@ -1187,7 +1187,7 @@ fn members_to_lines(
                     } else {
                         format!(" {}", member.name)
                     },
-                    member_type.type_sufix,
+                    member_type.type_suffix,
                 ));
 
                 continue;
@@ -1210,10 +1210,10 @@ fn members_to_lines(
         let type_name;
         let var_name;
 
-        let type_sufix = if let Some(bits) = member.bits {
+        let type_suffix = if let Some(bits) = member.bits {
             format!(":{}", bits)
         } else {
-            member_type.type_sufix
+            member_type.type_suffix
         };
 
         if member_type.type_prefix.ends_with("(*") {
@@ -1231,7 +1231,7 @@ fn members_to_lines(
             true,
             type_name,
             var_name,
-            type_sufix,
+            type_suffix,
         ))
     }
 
@@ -1246,13 +1246,13 @@ fn members_to_string(module: &str, actual_type: &BtfComposite) -> String {
     let max_type_width = members_to_lines(module, actual_type, 1, true, &mut lines);
 
     for l in lines {
-        let (indent, alignment, semicolon, type_name, var_name, type_sufix) = l;
+        let (indent, alignment, semicolon, type_name, var_name, type_suffix) = l;
         let line_str = format!(
             "{:<left_indent$}{:<width$}{}{}{}\n",
             "",
             type_name,
             var_name,
-            type_sufix,
+            type_suffix,
             if semicolon { ";" } else { "" },
             left_indent = indent * 8,
             width = if alignment { max_type_width } else { 0 }

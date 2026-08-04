@@ -312,13 +312,13 @@ impl BtfTypeTrait for BtfTypeInteger {
         };
 
         let bits = raw_int.encoding & 0xffu32;
-        let sufix = if bits > 0 && bits < size {
+        let suffix = if bits > 0 && bits < size {
             format!(":{bits}")
         } else {
             "".to_owned()
         };
 
-        (name.to_owned(), sufix)
+        (name.to_owned(), suffix)
     }
 }
 
@@ -336,23 +336,23 @@ impl BtfTypeTrait for BtfTypePointer {
                 return ("".to_owned(), "".to_owned());
             }
         };
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
+        let (sub_prefix, sub_suffix) = sub_type.string_format(split);
 
         let mut prefix = sub_prefix;
-        let mut sufix;
+        let mut suffix;
         match sub_type {
             BtfType::FuncProto(_) => {
                 prefix.push_str(" (*");
-                sufix = ")".to_string();
-                sufix.push_str(&sub_sufix);
+                suffix = ")".to_string();
+                suffix.push_str(&sub_suffix);
             }
             _ => {
                 prefix.push_str(" *");
-                sufix = sub_sufix;
+                suffix = sub_suffix;
             }
         }
 
-        (prefix.to_owned(), sufix.to_owned())
+        (prefix.to_owned(), suffix.to_owned())
     }
 }
 
@@ -385,12 +385,12 @@ impl BtfTypeTrait for BtfTypeArray {
                 return ("".to_owned(), "".to_owned());
             }
         };
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
+        let (sub_prefix, sub_suffix) = sub_type.string_format(split);
 
-        let mut sufix = sub_sufix;
-        sufix.push_str(&format!("[{}]", raw_array.nelems));
+        let mut suffix = sub_suffix;
+        suffix.push_str(&format!("[{}]", raw_array.nelems));
 
-        (sub_prefix, sufix.to_owned())
+        (sub_prefix, suffix.to_owned())
     }
 }
 
@@ -478,7 +478,7 @@ fn ptr_qualifier_string_format(
         }
     };
 
-    let (sub_prefix, sub_sufix) = sub_type.string_format(split);
+    let (sub_prefix, sub_suffix) = sub_type.string_format(split);
 
     let prefix = match sub_type {
         BtfType::Ptr(_) => {
@@ -494,7 +494,7 @@ fn ptr_qualifier_string_format(
         }
     };
 
-    (prefix, sub_sufix.to_owned())
+    (prefix, sub_suffix.to_owned())
 }
 
 impl BtfTypeTrait for BtfTypeVolatile {
@@ -576,12 +576,12 @@ impl BtfTypeTrait for BtfTypeFuncProto {
                     return ("".to_owned(), "".to_owned());
                 }
             };
-            let (sub_prefix, sub_sufix) = sub_type.string_format(this_split);
+            let (sub_prefix, sub_suffix) = sub_type.string_format(this_split);
 
             let name = this_split.get_name(raw_param.name_off);
 
-            if !name.is_empty() || !sub_sufix.is_empty() {
-                func_proto.push_str(&format!("{} {}{}", sub_prefix, name, sub_sufix));
+            if !name.is_empty() || !sub_suffix.is_empty() {
+                func_proto.push_str(&format!("{} {}{}", sub_prefix, name, sub_suffix));
             } else {
                 func_proto.push_str(&sub_prefix);
             };
@@ -602,10 +602,10 @@ impl BtfTypeTrait for BtfTypeFuncProto {
                 return ("".to_owned(), "".to_owned());
             }
         };
-        let (mut ret_type, ret_sufix) = ret_sub_type.string_format(this_split);
-        if !ret_sufix.is_empty() {
+        let (mut ret_type, ret_suffix) = ret_sub_type.string_format(this_split);
+        if !ret_suffix.is_empty() {
             ret_type.push_str(" ");
-            ret_type.push_str(&ret_sufix);
+            ret_type.push_str(&ret_suffix);
         }
 
         (ret_type, func_proto.to_owned())
@@ -671,7 +671,7 @@ impl BtfTypeTrait for BtfTypeTypeTag {
                 return ("".to_owned(), "".to_owned());
             }
         };
-        let (sub_prefix, sub_sufix) = sub_type.string_format(split);
+        let (sub_prefix, sub_suffix) = sub_type.string_format(split);
 
         let name = split.get_type_name(&self.btf_raw_type);
 
@@ -679,7 +679,7 @@ impl BtfTypeTrait for BtfTypeTypeTag {
         prefix.push_str(" __");
         prefix.push_str(name);
 
-        (prefix.to_owned(), sub_sufix.to_owned())
+        (prefix.to_owned(), sub_suffix.to_owned())
     }
 }
 
@@ -1214,7 +1214,7 @@ pub struct BtfResolvedType {
     pub type_id: u32,
     pub actual_type_id: u32,
     pub type_prefix: String,
-    pub type_sufix: String,
+    pub type_suffix: String,
     pub actual_type: Option<BtfComposite>,
 }
 
@@ -1294,8 +1294,8 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
             }
         };
 
-        let (prefix, sufix) = comp_type.string_format(btf);
-        assert_eq!(sufix, "");
+        let (prefix, suffix) = comp_type.string_format(btf);
+        assert_eq!(suffix, "");
 
         let members = match comp_type {
             BtfType::Struct(s) => s.members(btf),
@@ -1312,13 +1312,13 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
         None
     };
 
-    let (type_prefix, type_sufix) = btf_type.string_format(btf);
+    let (type_prefix, type_suffix) = btf_type.string_format(btf);
 
     Some(BtfResolvedType {
         type_id,
         actual_type_id: id,
         type_prefix,
-        type_sufix,
+        type_suffix,
         actual_type,
     })
 }
@@ -1343,13 +1343,13 @@ pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
     );
 
     let btf_type = btf.type_from_id(var.type_id).ok()?;
-    let (type_prefix, type_sufix) = btf_type.string_format(btf);
+    let (type_prefix, type_suffix) = btf_type.string_format(btf);
 
     // TODO: correct push spaces for different types
-    let type_name = type_prefix.clone() + &type_sufix;
+    let type_name = type_prefix.clone() + &type_suffix;
 
     let space = if !type_prefix.ends_with("*") { " " } else { "" };
-    let full_name = type_prefix + space + &var.name + &type_sufix;
+    let full_name = type_prefix + space + &var.name + &type_suffix;
 
     Some(BtfName {
         type_name,
@@ -1591,7 +1591,7 @@ pub fn btf_iterate_function_args(
             type_id: func.type_id,
             actual_type_id: func.proto_id,
             type_prefix: func.name.clone(),
-            type_sufix: func.full_name.clone(),
+            type_suffix: func.full_name.clone(),
             actual_type: Some(func_args),
         };
         return Some((cur_var, cur_type));
@@ -1678,7 +1678,7 @@ mod tests {
     fn test_vmlinux_struct_kernel_param() {
         let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
         let btf_type = split.type_from_id(23).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
+        let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct kernel_param");
 
         let type_id = split.structs["kernel_param"];
@@ -1690,23 +1690,23 @@ mod tests {
         let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
 
         let btf_type = split.type_from_id(5).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
+        let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "void *");
 
         let btf_type = split.type_from_id(111).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
+        let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct posix_acl *");
 
         let btf_type = split.type_from_id(120).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
+        let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct inode_operations *");
 
         let btf_type = split.type_from_id(1801).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
+        let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "const struct mm_struct *const");
 
         let btf_type = split.type_from_id(1804).unwrap();
-        let (prefix, _sufix) = btf_type.string_format(&split);
+        let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct file *const");
     }
 
@@ -1715,14 +1715,14 @@ mod tests {
         let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
 
         let btf_type = split.type_from_id(336).unwrap();
-        let (prefix, sufix) = btf_type.string_format(&split);
+        let (prefix, suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct percpu_counter");
-        assert_eq!(sufix, "[4]");
+        assert_eq!(suffix, "[4]");
 
         let btf_type = split.type_from_id(335).unwrap();
-        let (prefix, sufix) = btf_type.string_format(&split);
+        let (prefix, suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "unsigned long");
-        assert_eq!(sufix, "[50]");
+        assert_eq!(suffix, "[50]");
 
         // TODO test array[N][M]
     }
@@ -1732,9 +1732,9 @@ mod tests {
         let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
 
         let btf_type = split.type_from_id(28257).unwrap();
-        let (prefix, sufix) = btf_type.string_format(&split);
+        let (prefix, suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct mm_struct *");
-        assert_eq!(sufix, "(struct task_struct * task, unsigned int mode)");
+        assert_eq!(suffix, "(struct task_struct * task, unsigned int mode)");
     }
 
     #[test]
@@ -1754,13 +1754,13 @@ mod tests {
                 assert_eq!(params[0].name, "path");
                 assert_eq!(params[0].type_id, 1920);
                 let btf_type = split.type_from_id(params[0].type_id).unwrap();
-                let (prefix, _sufix) = btf_type.string_format(&split);
+                let (prefix, _suffix) = btf_type.string_format(&split);
                 assert_eq!("const struct path *", prefix);
 
                 assert_eq!(params[1].name, "file");
                 assert_eq!(params[1].type_id, 216);
                 let btf_type = split.type_from_id(params[1].type_id).unwrap();
-                let (prefix, _sufix) = btf_type.string_format(&split);
+                let (prefix, _suffix) = btf_type.string_format(&split);
                 assert_eq!("struct file *", prefix);
             }
             _ => panic!(),
@@ -1878,7 +1878,7 @@ mod tests {
         // TODO
         // assert_eq!(resolved_type.type_prefix, "void *");
         // assert_eq!(
-        //     resolved_type.type_sufix,
+        //     resolved_type.type_suffix,
         //     "void (*)( struct callback_head * )"
         // );
 
@@ -1896,7 +1896,7 @@ mod tests {
 
         assert_eq!(resolved_var.name, "it");
         assert_eq!(resolved_type.type_prefix, "union ");
-        assert_eq!(resolved_type.type_sufix, "");
+        assert_eq!(resolved_type.type_suffix, "");
 
         let actual_type = resolved_type.actual_type.unwrap();
         let cpu_member = actual_type
