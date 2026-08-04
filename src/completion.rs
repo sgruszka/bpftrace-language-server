@@ -1792,6 +1792,24 @@ fentry:vmlinux:vfs_writev,
     }
 
     #[test]
+    fn test_args_completion_for_struct_with_bitfield() {
+        let text = r#"
+fentry:vmlinux:async_schedule_node_domain {
+  print(args.domain->
+}
+"#;
+        let json_content = document_content_setup(text, 2, 21);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() == 2);
+
+        assert_eq!(
+            result["result"]["items"][1]["detail"].as_str(),
+            Some("unsigned int registered:1")
+        );
+    }
+
+    #[test]
     fn test_config_variables_completion() {
         let text = r#"config = {  }"#;
         let json_content = document_content_setup(text, 0, text.len() - 2);
