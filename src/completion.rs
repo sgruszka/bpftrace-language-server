@@ -192,7 +192,7 @@ fn find_probe_args_by_command(probe: &str) -> String {
     probe_args
 }
 
-fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, Arc<Btf>, BtfFunction)> {
+fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(Arc<Btf>, BtfFunction)> {
     let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
     log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
 
@@ -208,7 +208,7 @@ fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(String, Arc<Btf>, BtfFunction)
     let btf = btf_module_get(module)?;
 
     if let Some(ret) = btf_resolve_func(&btf, kfunc_vec[2]) {
-        return Some((module.to_string(), btf, ret));
+        return Some((btf, ret));
     }
 
     None
@@ -699,8 +699,7 @@ fn encode_completion_for_probe_list(
                 if (trace_tokens[0] == "kfunc" || trace_tokens[0] == "fentry")
                     && kind == CompletionItemKind::Property
                 {
-                    if let Some((_module, _btf, resolved_func)) = find_kfunc_args_by_btf(trace_line)
-                    {
+                    if let Some((_btf, resolved_func)) = find_kfunc_args_by_btf(trace_line) {
                         item["detail"] = resolved_func.full_name.into();
                     }
                 }
@@ -1056,16 +1055,16 @@ pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(Arc<Btf>, Btf
     let probe = probes_iter.next()?;
 
     let btf_probe_args = find_kfunc_args_by_btf(probe);
-    let (module, btf, mut resolved_func) = btf_probe_args?;
+    let (btf, mut resolved_func) = btf_probe_args?;
 
     let mut args_to_remove: Vec<usize> = Vec::new();
 
     for (i, arg) in resolved_func.args.iter().enumerate() {
         for probe in probes_vec.iter().skip(1) {
             let btf_probe_args = find_kfunc_args_by_btf(probe);
-            let (next_module, _next_btf, next_resolved_func) = btf_probe_args?;
+            let (next_btf, next_resolved_func) = btf_probe_args?;
             // TODO: we can support diffrent modules if arguments belong to not-split BTF
-            if next_module != module {
+            if !Arc::ptr_eq(&btf, &next_btf) {
                 return None;
             }
 
@@ -1404,7 +1403,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         }
 
         let args_by_btf = find_kfunc_args_by_btf(probe);
-        if let Some((_module, _btf, resolved_func)) = args_by_btf {
+        if let Some((_btf, resolved_func)) = args_by_btf {
             data = object! {
                   "result": {
                       "contents": format!("{}:\n```c\n{}```", probe, &resolved_func.full_name),
@@ -1482,7 +1481,7 @@ mod tests {
         let args_by_cmd = find_probe_args_by_command(s);
         let args_by_btf = find_kfunc_args_by_btf(s);
 
-        let Some((_module, btf, resolved_btf)) = args_by_btf else {
+        let Some((btf, resolved_btf)) = args_by_btf else {
             println!("{s}");
             panic!();
         };
