@@ -1961,4 +1961,25 @@ tracepoint:dma:dma_alloc {
         assert!(hover.contains("size_t size;"));
         assert!(hover.contains("enum dma_data_direction dir;"));
     }
+
+    #[test]
+    fn test_hover_for_bitfield() {
+        let text = r#"
+fentry:vmlinux:async_schedule_node_domain {
+  print(args.domain)
+}
+"#;
+        let json_content = document_content_setup(text, 2, 15);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains("struct async_domain"));
+        assert!(hover.contains("registered:1"));
+    }
 }
