@@ -1457,9 +1457,7 @@ fn iterate_over_names_chain(
                 return None;
             }
         } else if *op == "." {
-            if is_pointer {
-                return None;
-            }
+            // Newer bpftrace allow dereferencing pointers using dot
         } else {
             return None;
         }
@@ -1489,8 +1487,7 @@ pub fn btf_iterate_members(
     comp: &BtfComposite,
     name_chain_str: &str,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
-    // Chain starts with "args.first_field->"
-    if !name_chain_str.starts_with("args.") {
+    if !name_chain_str.starts_with("args.") && !name_chain_str.starts_with("args->") {
         return None;
     }
     let mut name_chain = chain_str_to_tokens(name_chain_str);
@@ -1499,7 +1496,7 @@ pub fn btf_iterate_members(
     }
 
     name_chain.remove(0); // 'args'
-    name_chain.remove(0); // '.'
+    name_chain.remove(0); // '.' or '->'
 
     let first_name = name_chain[0];
     if first_name != first_field {
@@ -1507,12 +1504,11 @@ pub fn btf_iterate_members(
     }
     name_chain.remove(0); // 'first_field
 
-    // Only pointers
     let first_op = name_chain[0];
-    if first_op != "->" {
+    if first_op != "->" && first_op != "." {
         return None;
     }
-    name_chain.remove(0); // '->'
+    name_chain.remove(0);
 
     let cur_var = if name_chain.is_empty() {
         BtfVariable {
@@ -1965,8 +1961,13 @@ mod tests {
         assert_eq!(actual_type.type_name, "struct inode");
         assert_eq!(actual_type.members[0].name, "i_mode");
 
-        let resolved_fail = btf_iterate_function_args(&btf, &base, "args.path.dentry");
-        assert!(resolved_fail.is_none());
+        let (resolved_var, resolved_type) =
+            btf_iterate_function_args(&btf, &base, "args.path.dentry").unwrap();
+        assert_eq!(resolved_var.name, "dentry");
+        assert_eq!(resolved_type.type_prefix, "struct dentry *");
+        let actual_type = resolved_type.actual_type.unwrap();
+        assert_eq!(actual_type.type_name, "struct dentry");
+        assert_eq!(actual_type.members[0].name, "d_flags");
     }
 
     #[test]
