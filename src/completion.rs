@@ -894,7 +894,7 @@ impl ProbesCompletion {
         if is_kfunc {
             // TODO
             // let kfunc = kprobe_to_kfunc(probe);
-            btf_probe_args = find_kfunc_list_arguments(&probes_vec);
+            btf_probe_args = find_common_args_by_btf(&probes_vec);
         }
         ProbesCompletion {
             probes_vec,
@@ -1046,11 +1046,42 @@ fn cmp_arg(a: &BtfVariable, b: &BtfVariable) -> bool {
     true
 }
 
-// For multiple probes we can have common arguments that will work, but need having matching
-// type and name.
-// TODO will that work when matching type and name but different arg number, IOW is position also
-// important ?
-pub fn find_kfunc_list_arguments(probes_vec: &[String]) -> Option<(Arc<Btf>, BtfFunction)> {
+// For multiple probes we can have common arguments that will work,
+// but need having matching type and name.
+fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
+    let mut probes_iter = probes_vec.iter();
+    let probe = probes_iter.next()?;
+
+    let args = find_probe_args_by_command(probe);
+    let mut args_iter = args.lines();
+    args_iter.next(); // Skip probe itself
+
+    let mut args_to_remove: Vec<usize> = Vec::new();
+
+    for (i, arg) in args_iter.enumerate() {
+        for probe in probes_vec.iter().skip(1) {
+            let next_args = find_probe_args_by_command(probe);
+
+            let found = next_args.lines().skip(1).any(|new_arg| arg == new_arg);
+            if !found {
+                args_to_remove.push(i);
+            }
+        }
+    }
+
+    let mut common_args: Vec<String> = Vec::new();
+    for (i, arg) in args.lines().skip(1).enumerate() {
+        if args_to_remove.contains(&i) {
+            continue;
+        }
+
+        common_args.push(arg.to_string());
+    }
+
+    Some(common_args)
+}
+
+fn find_common_args_by_btf(probes_vec: &[String]) -> Option<(Arc<Btf>, BtfFunction)> {
     let mut probes_iter = probes_vec.iter();
     let probe = probes_iter.next()?;
 
@@ -1208,6 +1239,28 @@ fn members_to_string(btf: &Btf, actual_type: &BtfComposite) -> String {
     out_str
 }
 
+fn get_args_details(probes_vec: &[String]) -> String {
+    if probes_vec.len() > 1 {
+        let (_, name1) = probes_vec[0].rsplit_once(":").unwrap_or_default();
+        let (_, name2) = probes_vec[1].rsplit_once(":").unwrap_or_default();
+        if probes_vec.len() > 2 {
+            format!(
+                "Struct representing common arguments of {}, {}, ...\n",
+                name1, name2
+            )
+        } else {
+            format!(
+                "Struct representing common arguments of {} and {}\n",
+                name1, name2
+            )
+        }
+    } else if probes_vec.len() == 1 {
+        let (_, name) = probes_vec[0].rsplit_once(":").unwrap_or_default();
+        format!("Struct representing arguments of {}\n", name)
+    } else {
+        String::new()
+    }
+}
 // For args and retval
 fn get_details_and_docs(
     probes_compl: &ProbesCompletion,
@@ -1234,13 +1287,13 @@ fn get_details_and_docs(
         c_open = "```c\n";
         c_close = "\n```\n";
     }
-
+    //struct of all arguments of the traced function.
     let mut is_args = false;
     if keyword_with_fields == "args." {
-        details.push_str(&format!("Arguments of {}():\n", func_name));
+        details.push_str(&get_args_details(&probes_compl.probes_vec));
         is_args = true;
     } else if keyword_with_fields == "retval" {
-        details.push_str(&format!("Return value of {}():\n", func_name));
+        details.push_str(&format!("Return value of {}\n", func_name));
         docs.push_str(&format!("{}{};{}\n", c_open, hover_name, c_close));
     } else if res_type.actual_type.is_some() {
         details = hover_name;
@@ -1251,13 +1304,17 @@ fn get_details_and_docs(
 
     if let Some(actual_type) = res_type.actual_type {
         let s = if is_args {
-            &format!("{}struct args\n{{\n", c_open)
+            &format!("{}struct {{\n", c_open)
         } else {
             &format!("{}{}\n{{\n", c_open, actual_type.type_name)
         };
         docs.push_str(s);
         docs.push_str(&members_to_string(btf, &actual_type));
-        docs.push_str(&format!("}};{}", c_close));
+        docs.push_str(&format!(
+            "}}{};{}",
+            if is_args { " args" } else { "" },
+            c_close
+        ));
     }
 
     Some((details, docs))
@@ -1317,16 +1374,13 @@ fn encode_hover_for_field_expression(
     }
 
     let probes_vec = parser::find_probes_for_action(node, text);
-    let Some(probe) = probes_vec.first() else {
-        return empty_data;
-    };
 
     log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
 
     let (is_kfunc, has_retval) = are_all_kfuncs(&probes_vec);
 
     let hover = if is_kfunc {
-        let btf_probe_args = find_kfunc_list_arguments(&probes_vec);
+        let btf_probe_args = find_common_args_by_btf(&probes_vec);
         if btf_probe_args.is_none() {
             return empty_data;
         }
@@ -1343,19 +1397,18 @@ fn encode_hover_for_field_expression(
 
         details + &docs
     } else if found == "args." {
-        let probe_args = find_probe_args_by_command(probe);
-        let mut probe_args_iter = probe_args.lines();
-        // On first line of probe args is kfunc module and name
-        probe_args_iter.next();
+        let Some(probe_args) = find_common_args_by_cmd(&probes_vec) else {
+            return empty_data;
+        };
 
-        let details = format!("Arguments of {}:\n", probe);
+        let details = get_args_details(&probes_vec);
         let mut docs = String::new();
 
-        docs.push_str("```c\nstruct args {\n");
-        for arg in probe_args_iter {
+        docs.push_str("```c\nstruct {\n");
+        for arg in probe_args {
             docs.push_str(&format!("{};\n", arg));
         }
-        docs.push_str("};```");
+        docs.push_str("} args;```");
 
         details + &docs
     } else {
@@ -1905,10 +1958,11 @@ fentry:vmlinux:find_ge_pid {
             .join(" ");
 
         println!("{hover:?}");
-        assert!(hover.contains(r"Arguments of find_ge_pid():"));
-        assert!(hover.contains("struct args {"));
+        assert!(hover.contains(r"of find_ge_pid"));
+        assert!(hover.contains("struct {"));
         assert!(hover.contains("int nr"));
         assert!(hover.contains("struct pid_namespace * ns"));
+        assert!(hover.contains("} args;"));
     }
 
     #[test]
@@ -1927,7 +1981,7 @@ fexit:vmlinux:find_ge_pid {
             .join(" ");
 
         println!("{hover:?}");
-        assert!(hover.contains(r"Return value of find_ge_pid():"));
+        assert!(hover.contains(r"Return value of find_ge_pid"));
         assert!(hover.contains("refcount_t count;"));
         assert!(hover.contains("unsigned int level;"));
         assert!(hover.contains("spinlock_t lock;"));
@@ -1973,11 +2027,12 @@ tracepoint:dma:dma_alloc {
             .join(" ");
 
         println!("{hover:?}");
-        assert!(hover.contains(r"Arguments of tracepoint:dma:dma_alloc:"));
-        assert!(hover.contains("struct args {"));
+        assert!(hover.contains(r" of dma_alloc"));
+        assert!(hover.contains("struct {"));
         assert!(hover.contains("u64 dma_addr;"));
         assert!(hover.contains("size_t size;"));
         assert!(hover.contains("enum dma_data_direction dir;"));
+        assert!(hover.contains("} args;"));
     }
 
     #[test]
