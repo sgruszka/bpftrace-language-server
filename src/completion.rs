@@ -448,7 +448,8 @@ fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) 
 }
 
 fn add_retval(probes_compl: &ProbesCompletion, items: &mut json::JsonValue) {
-    let Some((details, docs)) = get_details_and_docs(probes_compl, "retval", false) else {
+    // TODO retval for kretprobe (use btf for non btf probe ? )
+    let Some((details, docs)) = get_details_and_docs_by_btf(probes_compl, "retval", false) else {
         return;
     };
 
@@ -465,32 +466,37 @@ fn add_retval(probes_compl: &ProbesCompletion, items: &mut json::JsonValue) {
 }
 
 fn add_args(probes_compl: &ProbesCompletion, is_kfunc: bool, items: &mut json::JsonValue) {
-    let mut details = "args".to_owned();
-    let mut docs = r#"
-This keyword represents the struct of all arguments of the traced function.
-You can print the entire structure via `print(args)` or access particular
-fields using the dot syntax, e.g., `$x = str(args.filename);`. "#
-        .to_owned();
+    let mut details = String::new();
+    let mut docs = String::new();
 
     // TODO add only for probes where 'args' it is valid
-    // TODO get details and doc for other probes i.e. tracepoint
     if is_kfunc {
-        if let Some((btf_details, btf_docs)) = get_details_and_docs(probes_compl, "args.", false) {
+        if let Some((btf_details, btf_docs)) =
+            get_details_and_docs_by_btf(probes_compl, "args.", false)
+        {
             details = btf_details;
-            docs = btf_docs
+            docs = btf_docs;
         };
+    } else if let Some((cmd_details, cmd_docs)) =
+        get_details_and_docs_by_cmd(probes_compl, "args.", false)
+    {
+        details = cmd_details;
+        docs = cmd_docs;
     }
 
-    let completion_args = object! {
-        "label": "args",
-        "kind" : CompletionItemKind::Keyword,
-        "detail" : details,
-        "documentation" : {
-            "kind": "markdown",
-            "value": docs,
-        },
-    };
-    let _ = items.push(completion_args);
+    if !details.is_empty() {
+        let completion_args = object! {
+            "label": "args",
+            "kind" : CompletionItemKind::Keyword,
+            "detail" : details,
+            "documentation" : {
+                "kind": "markdown",
+                "value": docs,
+            },
+        };
+
+        let _ = items.push(completion_args);
+    }
 }
 
 // Special args and retval builtin
@@ -1261,8 +1267,8 @@ fn get_args_details(probes_vec: &[String]) -> String {
         String::new()
     }
 }
-// For args and retval
-fn get_details_and_docs(
+
+fn get_details_and_docs_by_btf(
     probes_compl: &ProbesCompletion,
     keyword_with_fields: &str,
     hover: bool,
@@ -1316,6 +1322,60 @@ fn get_details_and_docs(
             c_close
         ));
     }
+
+    Some((details, docs))
+}
+
+fn get_details_and_docs_by_cmd(
+    probes_compl: &ProbesCompletion,
+    keyword_with_fields: &str,
+    hover: bool,
+) -> Option<(String, String)> {
+    let probe_args = find_common_args_by_cmd(&probes_compl.probes_vec)?;
+    if probe_args.is_empty() {
+        return None;
+    }
+
+    let c_open;
+    let c_close;
+    if hover {
+        c_open = "```c\n";
+        c_close = "```";
+    } else {
+        c_open = "```c\n";
+        c_close = "\n```\n";
+    }
+
+    let mut details = String::new();
+    let mut docs = String::new();
+
+    // let mut is_args = false;
+    if keyword_with_fields == "args." {
+        // is_args = true;
+        details = get_args_details(&probes_compl.probes_vec);
+
+        docs.push_str(&format!("{}struct {{\n", c_open));
+        for arg in probe_args {
+            docs.push_str(&format!("{};\n", arg));
+        }
+        docs.push_str(&format!("}} args;{}", c_close));
+    }
+
+    // TODO
+    // if let Some(actual_type) = res_type.actual_type {
+    //     let s = if is_args {
+    //         &format!("{}struct {{\n", c_open)
+    //     } else {
+    //         &format!("{}{}\n{{\n", c_open, actual_type.type_name)
+    //     };
+    //     docs.push_str(s);
+    //     docs.push_str(&members_to_string(btf, &actual_type));
+    //     docs.push_str(&format!(
+    //         "}}{};{}",
+    //         if is_args { " args" } else { "" },
+    //         c_close
+    //     ));
+    // }
 
     Some((details, docs))
 }
@@ -1379,36 +1439,29 @@ fn encode_hover_for_field_expression(
 
     let (is_kfunc, has_retval) = are_all_kfuncs(&probes_vec);
 
+    let mut probes_compl = ProbesCompletion {
+        probes_vec,
+        btf_probe_args: None,
+        is_kfunc,
+        has_retval,
+    };
+
     let hover = if is_kfunc {
-        let btf_probe_args = find_common_args_by_btf(&probes_vec);
+        let btf_probe_args = find_common_args_by_btf(&probes_compl.probes_vec);
         if btf_probe_args.is_none() {
             return empty_data;
         }
-        let probes_compl = ProbesCompletion {
-            probes_vec,
-            btf_probe_args,
-            is_kfunc,
-            has_retval,
-        };
+        probes_compl.btf_probe_args = btf_probe_args;
 
-        let Some((details, docs)) = get_details_and_docs(&probes_compl, &found, true) else {
+        let Some((details, docs)) = get_details_and_docs_by_btf(&probes_compl, &found, true) else {
             return empty_data;
         };
 
         details + &docs
     } else if found == "args." {
-        let Some(probe_args) = find_common_args_by_cmd(&probes_vec) else {
+        let Some((details, docs)) = get_details_and_docs_by_cmd(&probes_compl, &found, true) else {
             return empty_data;
         };
-
-        let details = get_args_details(&probes_vec);
-        let mut docs = String::new();
-
-        docs.push_str("```c\nstruct {\n");
-        for arg in probe_args {
-            docs.push_str(&format!("{};\n", arg));
-        }
-        docs.push_str("} args;```");
 
         details + &docs
     } else {
