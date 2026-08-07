@@ -1324,10 +1324,10 @@ fn get_details_and_docs_by_btf(
     let c_close;
     if hover {
         c_open = "```c\n";
-        c_close = "```";
+        c_close = "";
     } else {
         c_open = "```c\n";
-        c_close = "\n```\n";
+        c_close = "\n"
     }
     //struct of all arguments of the traced function.
     let mut is_args = false;
@@ -1376,10 +1376,10 @@ fn get_details_and_docs_by_cmd(
     let c_close;
     if hover {
         c_open = "```c\n";
-        c_close = "```";
+        c_close = "";
     } else {
         c_open = "```c\n";
-        c_close = "\n```\n";
+        c_close = "\n";
     }
 
     let mut details = String::new();
@@ -1550,7 +1550,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
             if let Some((_btf, resolved_func)) = args_by_btf {
                 data = object! {
                       "result": {
-                          "contents": format!("{}\n```c\n{}```", probe, &resolved_func.full_name),
+                          "contents": format!("{}\n```c\n{}", probe, &resolved_func.full_name),
                       },
                 };
             } else {
