@@ -1422,7 +1422,7 @@ fn encode_hover_for_function(
     _line_str: &str,
     _char_nr: usize,
 ) -> json::JsonValue {
-    let empty_data = object! {};
+    let empty_data = object! { "result": json::JsonValue::Null };
 
     let mut items = json::JsonValue::new_array();
     bpftrace_stdlib_functions(&mut items);
@@ -1456,7 +1456,7 @@ fn encode_hover_for_field_expression(
     line_str: &str,
     char_nr: usize,
 ) -> json::JsonValue {
-    let empty_data = object! {};
+    let empty_data = object! { "result": json::JsonValue::Null };
 
     let lterm = |c: char| -> bool { c.is_whitespace() || c == '{' || c == '(' };
     let rterm = |c: char| -> bool {
@@ -1518,8 +1518,8 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
     log_dbg!(HOVER, "Received hover with data {}", content);
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
 
-    let empty_data = object! {};
-    let mut data = object! {};
+    let empty_data = object! { "result": json::JsonValue::Null };
+    let mut data = object! { "result": json::JsonValue::Null };
 
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
         return empty_data;
