@@ -144,6 +144,14 @@ fn is_fexit_probe(probe: &str) -> bool {
     probe.starts_with("fexit") || probe.starts_with("kretfunc")
 }
 
+fn is_kprobe(probe: &str) -> bool {
+    probe.starts_with("kprobe") || probe.starts_with("kretprobe")
+}
+
+fn is_tracepoint_probe(probe: &str) -> bool {
+    probe.starts_with("tracepoint") || probe.starts_with("rawtracepoint")
+}
+
 fn is_btf_probe(probe: &str) -> bool {
     is_fentry_probe(probe) || is_fexit_probe(probe)
 }
@@ -155,6 +163,14 @@ fn kprobe_to_kfunc(probe: &str) -> String {
     } else if v[0] == "kretprobe" {
         v[0] = "kretfunc";
     }
+
+    // TODO: use available_traces for finding proper module for function
+    // For now use vmlinux
+    if v.len() == 2 {
+        v.push(v[1]);
+        v[1] = "vmlinux"
+    }
+
     let kfunc = v[..].join(":").to_string();
 
     kfunc
@@ -166,7 +182,12 @@ fn find_probe_args_by_command(probe: &str) -> String {
     }
 
     // Use kfunc for getting arguments, kprobe/kretprobe does not work
-    let probe = kprobe_to_kfunc(probe);
+    // TODO: above can not to be true on newer bpftrace versions
+    let probe = if is_kprobe(probe) {
+        kprobe_to_kfunc(probe)
+    } else {
+        probe.to_string()
+    };
 
     let mut probes_args_map = PROBES_ARGS_MAP.lock().unwrap();
 
@@ -1504,25 +1525,33 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         let probe = probe_node.utf8_text(text.as_bytes()).unwrap_or_default();
         log_dbg!(HOVER, "Hover for probe {}", probe);
 
-        if !is_btf_probe(probe) {
-            return empty_data;
-        }
-
-        let args_by_btf = find_kfunc_args_by_btf(probe);
-        if let Some((_btf, resolved_func)) = args_by_btf {
+        if is_btf_probe(probe) || is_kprobe(probe) {
+            let args_by_btf = if is_kprobe(probe) {
+                find_kfunc_args_by_btf(&kprobe_to_kfunc(probe))
+            } else {
+                find_kfunc_args_by_btf(probe)
+            };
+            if let Some((_btf, resolved_func)) = args_by_btf {
+                data = object! {
+                      "result": {
+                          "contents": format!("{}\n```c\n{}```", probe, &resolved_func.full_name),
+                      },
+                };
+            } else {
+                return empty_data;
+            }
+        } else if is_tracepoint_probe(probe) {
+            let probe_args = find_probe_args_by_command(probe);
             data = object! {
                   "result": {
-                      "contents": format!("{}:\n```c\n{}```", probe, &resolved_func.full_name),
+                      "contents": format!("{}\n", probe_args),
                   },
             };
+        } else {
+            return empty_data;
         }
     } else if loc == SyntaxLocation::Action {
         // TODO handle probes with wildcard
-
-        // TODO: non BTF probes i.e. tracepoints
-        // let probe_args = find_probe_args_by_command(&probe);
-        // log_dbg!(HOVER, "Probe {} with args:\n{}", probe, probe_args);
-
         if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr) {
             data = encode_hover_for_function(&func, text, line_str, char_nr);
         } else {
