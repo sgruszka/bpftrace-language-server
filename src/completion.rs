@@ -1952,6 +1952,20 @@ fentry:vmlinux:async_schedule_node_domain {
     }
 
     #[test]
+    fn test_kretprobe_retval_completion() {
+        let text = r#"
+kretprobe:vmlinux:posix_timer_fn {
+  print(retv
+}
+"#;
+        let json_content = document_content_setup(text, 2, 14);
+
+        let result = encode_completion(json_content);
+
+        check_completion_resutls(result, vec!["retval"]);
+    }
+
+    #[test]
     fn test_config_variables_completion() {
         let text = r#"config = {  }"#;
         let json_content = document_content_setup(text, 0, text.len() - 2);
