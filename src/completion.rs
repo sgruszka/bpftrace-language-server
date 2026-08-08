@@ -315,39 +315,48 @@ fn items_from_probe_args(probe_args_iter: Lines) -> json::JsonValue {
     items
 }
 
-fn compatible_probes(probes_vec: &[String]) -> (bool, bool, bool) {
+fn compatible_probes(probes_vec: &[String]) -> (bool, bool, bool, bool) {
     let mut probes_iter = probes_vec.iter();
+    let incompatible = (false, false, false, false);
+
     let Some(probe) = probes_iter.next() else {
-        return (false, false, false);
+        return incompatible;
     };
 
     let Some((prefix, _)) = probe.split_once(':') else {
-        return (false, false, false);
+        return incompatible;
     };
 
     for next_probe in probes_iter.skip(1) {
         let Some((next_prefix, _)) = next_probe.split_once(':') else {
-            return (false, false, false);
+            return incompatible;
         };
         if prefix != next_prefix {
-            return (false, false, false);
+            return incompatible;
         }
     }
 
-    let mut is_kfunc = false;
+    let mut is_kprobe = false;
+    let mut use_btf = false;
     let mut has_args = false;
     let mut has_retval = false;
 
     if probe.starts_with("kprobe:") || probe.starts_with("fentry") || probe.starts_with("kfunc:") {
-        is_kfunc = true;
+        use_btf = true;
+        if probe.starts_with("kprobe:") {
+            is_kprobe = true;
+        }
     }
 
     if probe.starts_with("kretprobe:")
         || probe.starts_with("kretfunc:")
         || probe.starts_with("fexit")
     {
-        is_kfunc = true;
+        use_btf = true;
         has_retval = true;
+        if probe.starts_with("kretprobe:") {
+            is_kprobe = true;
+        }
     }
 
     if probe.starts_with("rawtracepoint")
@@ -360,7 +369,7 @@ fn compatible_probes(probes_vec: &[String]) -> (bool, bool, bool) {
         has_args = true;
     }
 
-    (is_kfunc, has_args, has_retval)
+    (is_kprobe, use_btf, has_args, has_retval)
 }
 
 // Complete args. i.e. kfunc:xe:__fini_dbm { printf("%s\n", str(args.drm->driver->name)) }
@@ -373,7 +382,7 @@ fn encode_completion_for_args_or_retval(
     let probes_vec = &probes_compl.probes_vec;
     let probe = probes_vec.first()?;
 
-    let items = if !probes_compl.is_kfunc {
+    let items = if probes_compl.btf_probe_args.is_none() {
         let probe_args = find_probe_args_by_command(probe);
         let mut probe_args_iter = probe_args.lines();
 
@@ -480,7 +489,6 @@ fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) 
 }
 
 fn add_retval(probes_compl: &ProbesCompletion, items: &mut json::JsonValue) {
-    // TODO retval for kretprobe (use btf for non btf probe ? )
     let Some((details, docs)) = get_details_and_docs_by_btf(probes_compl, "retval", false) else {
         return;
     };
@@ -497,17 +505,14 @@ fn add_retval(probes_compl: &ProbesCompletion, items: &mut json::JsonValue) {
     let _ = items.push(retval_item);
 }
 
-fn add_args(probes_compl: &ProbesCompletion, is_kfunc: bool, items: &mut json::JsonValue) {
+fn add_args(probes_compl: &ProbesCompletion, items: &mut json::JsonValue) {
     let mut details = String::new();
     let mut docs = String::new();
 
-    if is_kfunc {
-        if let Some((btf_details, btf_docs)) =
-            get_details_and_docs_by_btf(probes_compl, "args.", false)
-        {
-            details = btf_details;
-            docs = btf_docs;
-        };
+    if let Some((btf_details, btf_docs)) = get_details_and_docs_by_btf(probes_compl, "args.", false)
+    {
+        details = btf_details;
+        docs = btf_docs;
     } else if let Some((cmd_details, cmd_docs)) =
         get_details_and_docs_by_cmd(probes_compl, "args.", false)
     {
@@ -537,7 +542,7 @@ fn add_args_and_retval_keywords(probes_compl: &ProbesCompletion, items: &mut jso
     }
 
     if probes_compl.has_args {
-        add_args(probes_compl, probes_compl.is_kfunc, items);
+        add_args(probes_compl, items);
     }
 }
 
@@ -922,25 +927,29 @@ fn encode_completion_for_config_block() -> json::JsonValue {
 struct ProbesCompletion {
     probes_vec: Vec<String>,
     btf_probe_args: Option<(Arc<Btf>, BtfFunction)>,
-    is_kfunc: bool,
     has_args: bool,
     has_retval: bool,
 }
 
 impl ProbesCompletion {
     fn new(probes_vec: Vec<String>) -> ProbesCompletion {
-        let (is_kfunc, has_args, has_retval) = compatible_probes(&probes_vec);
+        let (is_kprobe, use_btf, has_args, has_retval) = compatible_probes(&probes_vec);
         let mut btf_probe_args = None;
-        if is_kfunc {
-            // TODO
-            // let kfunc = kprobe_to_kfunc(probe);
-            btf_probe_args = find_common_args_by_btf(&probes_vec);
+        if use_btf {
+            if is_kprobe {
+                let mut kprobes_vec: Vec<String> = Vec::new();
+                for p in &probes_vec {
+                    kprobes_vec.push(kprobe_to_kfunc(p));
+                }
+                btf_probe_args = find_common_args_by_btf(&kprobes_vec);
+            } else {
+                btf_probe_args = find_common_args_by_btf(&probes_vec);
+            }
         }
 
         ProbesCompletion {
             probes_vec,
             btf_probe_args,
-            is_kfunc,
             has_retval,
             has_args,
         }
@@ -1473,17 +1482,16 @@ fn encode_hover_for_field_expression(
 
     log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
 
-    let (is_kfunc, has_args, has_retval) = compatible_probes(&probes_vec);
+    let (_is_kprobe, use_btf, has_args, has_retval) = compatible_probes(&probes_vec);
 
     let mut probes_compl = ProbesCompletion {
         probes_vec,
         btf_probe_args: None,
-        is_kfunc,
         has_args,
         has_retval,
     };
 
-    let hover = if is_kfunc {
+    let hover = if use_btf {
         let btf_probe_args = find_common_args_by_btf(&probes_compl.probes_vec);
         if btf_probe_args.is_none() {
             return empty_data;
