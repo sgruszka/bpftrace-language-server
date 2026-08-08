@@ -1512,11 +1512,10 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
     log_dbg!(HOVER, "Received hover with data {}", content);
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
 
-    let empty_data = object! { "result": json::JsonValue::Null };
     let mut data = object! { "result": json::JsonValue::Null };
 
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
-        return empty_data;
+        return data;
     };
 
     let (text, loc, node, line_str) = get_document_state!(text_doc, line_nr, char_nr, data, HOVER);
@@ -1524,12 +1523,13 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
     if loc == SyntaxLocation::ProbesList {
         assert_eq!(node.kind(), "probes_list");
 
-        // TODO extend beyond just single probes
         if node.child_count() < 1 {
-            return empty_data;
+            return data;
         }
+
+        // TODO: this works for multiple probe list , but not for wildcard
         let Some(probe_node) = parser::find_probe_in_probes_list(&node, line_nr, char_nr) else {
-            return empty_data;
+            return data;
         };
 
         let probe = probe_node.utf8_text(text.as_bytes()).unwrap_or_default();
@@ -1547,18 +1547,27 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
                           "contents": format!("{}\n```c\n{}", probe, &resolved_func.full_name),
                       },
                 };
-            } else {
-                return empty_data;
             }
         } else if is_tracepoint_probe(probe) {
             let probe_args = find_probe_args_by_command(probe);
+            let mut probe_args_iter = probe_args.lines();
+            let _ = probe_args_iter.next();
+
+            let (_, name) = probe.rsplit_once(":").unwrap_or_default();
+            let first_param = probe_args_iter.next().unwrap_or_default();
+
+            let mut proto = "```c\n".to_string();
+            proto.push_str(&format!("void {}({}", name, first_param.trim()));
+            for arg in probe_args_iter {
+                proto.push_str(&format!(", {}", arg.trim()));
+            }
+            proto.push_str(")\n");
+
             data = object! {
                   "result": {
-                      "contents": format!("{}\n", probe_args),
+                      "contents": format!("{}\n{}", probe, proto),
                   },
             };
-        } else {
-            return empty_data;
         }
     } else if loc == SyntaxLocation::Action {
         // TODO handle probes with wildcard
