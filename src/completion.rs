@@ -1482,22 +1482,9 @@ fn encode_hover_for_field_expression(
 
     log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
 
-    let (_is_kprobe, use_btf, has_args, has_retval) = compatible_probes(&probes_vec);
+    let probes_compl = ProbesCompletion::new(probes_vec);
 
-    let mut probes_compl = ProbesCompletion {
-        probes_vec,
-        btf_probe_args: None,
-        has_args,
-        has_retval,
-    };
-
-    let hover = if use_btf {
-        let btf_probe_args = find_common_args_by_btf(&probes_compl.probes_vec);
-        if btf_probe_args.is_none() {
-            return empty_data;
-        }
-        probes_compl.btf_probe_args = btf_probe_args;
-
+    let hover = if probes_compl.btf_probe_args.is_some() {
         let Some((details, docs)) = get_details_and_docs_by_btf(&probes_compl, &found, true) else {
             return empty_data;
         };
