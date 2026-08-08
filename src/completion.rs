@@ -82,10 +82,10 @@ fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) ->
     s
 }
 
-fn resolve_container_members(
-    probe_args_iter: Lines,
+fn resolve_container_members<'a>(
+    probe_args_iter: impl Iterator<Item = &'a str>,
     this_argument: &str,
-) -> Option<(BtfVariable, BtfResolvedType)> {
+) -> Option<(Arc<Btf>, BtfVariable, BtfResolvedType)> {
     let btf = btf_module_get("vmlinux")?;
 
     for arg in probe_args_iter {
@@ -103,6 +103,7 @@ fn resolve_container_members(
                 else {
                     continue;
                 };
+
                 res_type = Some(st);
                 break;
             }
@@ -130,7 +131,8 @@ fn resolve_container_members(
             continue;
         };
 
-        return btf_iterate_members(&btf, var_name, &actual_type, this_argument);
+        let (res_var, res_type) = btf_iterate_members(&btf, var_name, &actual_type, this_argument)?;
+        return Some((btf, res_var, res_type));
     }
 
     None
@@ -391,14 +393,10 @@ fn encode_completion_for_args_or_retval(
 
         if args_with_fields.ends_with("args.") || args_with_fields.ends_with("args->") {
             items_from_probe_args(probe_args_iter)
-        } else if let Some(next_items) =
+        } else if let Some((btf, res_var, res_type)) =
             resolve_container_members(probe_args_iter, args_with_fields)
         {
-            if let Some(btf) = btf_module_get("vmlinux") {
-                items_from_resolved_btf(btf, &next_items)
-            } else {
-                json::JsonValue::new_array()
-            }
+            items_from_resolved_btf(btf, &(res_var, res_type))
         } else {
             json::JsonValue::new_array()
         }
@@ -1124,8 +1122,7 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
         if args_to_remove.contains(&i) {
             continue;
         }
-
-        common_args.push(arg.to_string());
+        common_args.push(arg.trim().to_string());
     }
 
     Some(common_args)
@@ -1393,9 +1390,7 @@ fn get_details_and_docs_by_cmd(
     let mut details = String::new();
     let mut docs = String::new();
 
-    // let mut is_args = false;
     if keyword_with_fields == "args." {
-        // is_args = true;
         details = get_args_details(&probes.probes_vec);
 
         docs.push_str(&format!("{}struct {{\n", c_open));
@@ -1403,23 +1398,16 @@ fn get_details_and_docs_by_cmd(
             docs.push_str(&format!("{};\n", arg));
         }
         docs.push_str(&format!("}} args;{}", c_close));
+    } else if let Some((btf, res_var, res_type)) =
+        resolve_container_members(probe_args.iter().map(|s| s.as_str()), keyword_with_fields)
+    {
+        if let Some(actual_type) = res_type.actual_type {
+            let s = &format!("{}{}\n{{\n", c_open, actual_type.type_name);
+            docs.push_str(s);
+            docs.push_str(&members_to_string(&btf, &actual_type));
+            docs.push_str(&format!("}} {};{}", res_var.name, c_close));
+        }
     }
-
-    // TODO
-    // if let Some(actual_type) = res_type.actual_type {
-    //     let s = if is_args {
-    //         &format!("{}struct {{\n", c_open)
-    //     } else {
-    //         &format!("{}{}\n{{\n", c_open, actual_type.type_name)
-    //     };
-    //     docs.push_str(s);
-    //     docs.push_str(&members_to_string(btf, &actual_type));
-    //     docs.push_str(&format!(
-    //         "}}{};{}",
-    //         if is_args { " args" } else { "" },
-    //         c_close
-    //     ));
-    // }
 
     Some((details, docs))
 }
@@ -1489,7 +1477,7 @@ fn encode_hover_for_field_expression(
         };
 
         details + &docs
-    } else if found == "args." {
+    } else if found.starts_with("args.") {
         let Some((details, docs)) = get_details_and_docs_by_cmd(&probes, &found, true) else {
             return empty_data;
         };

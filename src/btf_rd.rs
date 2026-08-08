@@ -1491,7 +1491,7 @@ pub fn btf_iterate_members(
         return None;
     }
     let mut name_chain = chain_str_to_tokens(name_chain_str);
-    if name_chain.len() < 4 {
+    if name_chain.len() < 3 {
         return None;
     }
 
@@ -1504,11 +1504,13 @@ pub fn btf_iterate_members(
     }
     name_chain.remove(0); // 'first_field
 
-    let first_op = name_chain[0];
-    if first_op != "->" && first_op != "." {
-        return None;
+    if !name_chain.is_empty() {
+        let first_op = name_chain[0];
+        if first_op != "->" && first_op != "." {
+            return None;
+        }
+        name_chain.remove(0);
     }
-    name_chain.remove(0);
 
     let cur_var = if name_chain.is_empty() {
         BtfVariable {
