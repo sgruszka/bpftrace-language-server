@@ -88,6 +88,8 @@ fn resolve_container_members<'a>(
 ) -> Option<(Arc<Btf>, BtfVariable, BtfResolvedType)> {
     let btf = btf_module_get("vmlinux")?;
 
+    log_dbg!(COMPL, "Looking for struct/union for {}", this_argument);
+
     for arg in probe_args_iter {
         let mut tokens = arg.split_whitespace();
         let mut res_type = None;
@@ -132,6 +134,13 @@ fn resolve_container_members<'a>(
         };
 
         let (res_var, res_type) = btf_iterate_members(&btf, var_name, &actual_type, this_argument)?;
+        log_dbg!(
+            COMPL,
+            "Found field {} with type {}{}",
+            res_var.name,
+            res_type.type_prefix,
+            res_type.type_suffix
+        );
         return Some((btf, res_var, res_type));
     }
 
@@ -1983,6 +1992,7 @@ kretprobe:vmlinux:posix_timer_fn {
         ];
         check_completion_resutls(result, fields);
     }
+
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_cma_tracepoint_page_completion() {
@@ -2006,6 +2016,33 @@ tracepoint:cma:cma_release {
             "page_type",
             "private",
             "_refcount",
+        ];
+        check_completion_resutls(result.clone(), fields);
+    }
+
+    #[cfg(feature = "live_btf_tests")]
+    #[ignore] // works only on newer bpftrace 0.25 or 0.26
+    #[test]
+    fn test_rawtracepoint_struct_competion() {
+        let text = r#"
+rawtracepoint:vmlinux:xhci_queue_trb {
+  print(args.ring->);
+}
+"#;
+        let json_content = document_content_setup(text, 2, 19);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() > 0);
+
+        let fields = vec![
+            "first_seg",
+            "last_seg",
+            "enqueue",
+            "enq_seg",
+            "dequeue",
+            "td_list",
+            "cycle_state",
+            "stream_id",
         ];
         check_completion_resutls(result.clone(), fields);
     }
