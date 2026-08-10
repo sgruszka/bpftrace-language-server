@@ -2158,4 +2158,29 @@ fentry:vmlinux:async_schedule_node_domain {
         assert!(hover.contains("struct async_domain"));
         assert!(hover.contains("registered:1"));
     }
+
+    #[cfg(feature = "live_btf_tests")]
+    #[test]
+    fn test_hover_for_tracepoint_struct() {
+        let text = r"
+tracepoint:xhci-hcd:xhci_dbc_alloc_request {
+  print(args.req)
+}";
+        let json_content = document_content_setup(text, 2, 14);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains(r"struct dbc_request {"));
+        assert!(hover.contains("void * buf"));
+        assert!(hover.contains("dma_addr_t dma;"));
+        assert!(hover.contains("struct list_head list_pool;"));
+        assert!(hover.contains("union xhci_trb * trb;"));
+        assert!(hover.contains("unsigned int direction:1;"));
+    }
 }
