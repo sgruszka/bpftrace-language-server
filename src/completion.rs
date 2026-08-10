@@ -1463,9 +1463,18 @@ fn encode_hover_for_field_expression(
 ) -> json::JsonValue {
     let empty_data = object! { "result": json::JsonValue::Null };
 
-    let lterm = |c: char| -> bool { c.is_whitespace() || c == '{' || c == '(' };
+    // TODO: user parser instead of custom string processing
+    let lterm =
+        |c: char| -> bool { c.is_whitespace() || c == '{' || c == '(' || c == ',' || c == '*' };
     let rterm = |c: char| -> bool {
-        c.is_whitespace() || c == '}' || c == ')' || c == '.' || c == '-' || c == ';'
+        c.is_whitespace()
+            || c == '}'
+            || c == ')'
+            || c == '.'
+            || c == '-'
+            || c == ';'
+            || c == ','
+            || c == '*'
     };
     let mut found = find_hover_str(line_str, char_nr, lterm, rterm);
     log_dbg!(HOVER, "Hover found args string {}", found);
