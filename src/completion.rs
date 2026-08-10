@@ -2176,6 +2176,35 @@ tracepoint:dma:dma_alloc {
     }
 
     #[test]
+    fn test_hover_multiple_tracepoint_args() {
+        let text = r#"
+tracepoint:syscalls:sys_enter_open,
+tracepoint:syscalls:sys_enter_openat,
+tracepoint:syscalls:sys_enter_openat2, {
+  print(args);
+}"#;
+        let json_content = document_content_setup(text, 4, 11);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        assert_eq!(formatted_hover.lines().count(), 7);
+
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+
+        assert!(hover.contains(r"common arguments of sys"));
+        assert!(hover.contains("..."));
+        assert!(hover.contains("struct {"));
+        assert!(hover.contains("int __syscall_nr"));
+        assert!(hover.contains("const char * filename"));
+        assert!(hover.contains("} args;"));
+    }
+
+    #[test]
     fn test_hover_for_bitfield() {
         let text = r#"
 fentry:vmlinux:async_schedule_node_domain {
