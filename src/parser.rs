@@ -125,7 +125,8 @@ pub fn find_syntax_location<'t>(
     if (node.next_sibling().is_none() || postion_before_next_sibling(&node, line_nr, char_nr))
         && node.has_error()
     {
-        if let Some(right_child) = node.child(node.child_count() - 1) {
+        let right_child_idx = node.child_count().saturating_sub(1) as u32;
+        if let Some(right_child) = node.child(right_child_idx) {
             if right_child.is_missing() {
                 return (node_to_syntax_location(&node), node);
             }
@@ -286,7 +287,7 @@ fn find_all_map_variables<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>>
 fn probes_list_to_vec(probes_list: &Node, text: &str) -> Vec<String> {
     let mut probes_vec: Vec<String> = Vec::with_capacity(probes_list.child_count());
     for i in 0..probes_list.child_count() {
-        let probe = probes_list.child(i).unwrap();
+        let probe = probes_list.child(i as u32).unwrap();
         if probe.kind() != "probe" {
             continue;
         }
@@ -318,7 +319,7 @@ fn add_scratch_variables_for_node(
     node: &Node,
     text: &str,
     results: &mut Vec<String>,
-    child_nr: usize,
+    child_nr: u32,
 ) {
     if let Some(var) = node.child(child_nr).and_then(|var| {
         if var.kind() == "scratch_variable" {
