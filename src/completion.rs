@@ -1404,7 +1404,7 @@ fn get_details_and_docs_by_cmd(
 
         docs.push_str(&format!("{}struct {{\n", c_open));
         for arg in probe_args {
-            docs.push_str(&format!("{};\n", arg));
+            docs.push_str(&format!("{:<indent$}{};\n", "", arg, indent = 8));
         }
         docs.push_str(&format!("}} args;{}", c_close));
     } else if let Some((btf, res_var, res_type)) =
