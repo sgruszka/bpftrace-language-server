@@ -1,9 +1,7 @@
-use tree_sitter::{Node, Point, Query, QueryCursor, Tree};
+use tree_sitter::{Node, Point, Query, QueryCursor, StreamingIterator, Tree};
 
 use crate::log_mod::{self, PARSE};
 use crate::{log_dbg, log_err};
-
-use streaming_iterator::StreamingIterator;
 
 // Syntax tree nodes we are interested in in context of completion
 #[derive(Debug, PartialEq)]
