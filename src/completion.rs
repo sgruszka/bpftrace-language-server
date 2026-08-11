@@ -2115,6 +2115,45 @@ fentry:vmlinux:find_ge_pid {
     }
 
     #[test]
+    fn test_hover_inside_call_expression() {
+        let text = r#"
+fentry:vmlinux:find_ge_pid {
+  printf("%d %d\n", args.ns->level, args.nr);
+}"#;
+        let json_content = document_content_setup(text, 2, 26);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+
+        assert!(hover.contains("struct pid_namespace {"));
+        assert!(hover.contains("struct idr idr;"));
+        assert!(hover.contains("struct ns_common ns;"));
+        assert!(hover.contains("unsigned int level;"));
+        assert!(hover.contains("int pid_max;"));
+        assert!(hover.contains("struct work_struct work;"));
+        assert!(hover.contains("struct task_struct * child_reaper;"));
+
+        let json_content = document_content_setup(text, 2, 30);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        assert_eq!(formatted_hover.lines().count(), 2);
+
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(hover.contains("unsigned int level;"));
+    }
+
+    #[test]
     fn test_hover_for_retval() {
         let text = r"
 fexit:vmlinux:find_ge_pid {
