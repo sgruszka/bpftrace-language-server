@@ -1067,4 +1067,39 @@ macro print2(x, y) {
         assert_eq!(end["line"], 3);
         assert_eq!(end["character"], 1);
     }
+
+    #[test]
+    fn test_reference_macro_definition() {
+        let text = r#"
+macro foo(x) {
+  print(x);
+}
+macro boo(x, y) {
+  foo(x + y);
+  foo(x - y);
+  foo(x * y);
+  foo(x / y);
+}
+"#;
+        let json_content = document_content_setup(text, 1, 7);
+
+        let result = encode_references(json_content);
+        assert_eq!(result["result"].len(), 4);
+
+        let start = &result["result"][0]["range"]["start"];
+        assert_eq!(start["line"], 5);
+        assert_eq!(start["character"], 2);
+
+        let end = &result["result"][0]["range"]["end"];
+        assert_eq!(end["line"], 5);
+        assert_eq!(end["character"], 5);
+
+        let start = &result["result"][3]["range"]["start"];
+        assert_eq!(start["line"], 8);
+        assert_eq!(start["character"], 2);
+
+        let end = &result["result"][3]["range"]["end"];
+        assert_eq!(end["line"], 8);
+        assert_eq!(end["character"], 5);
+    }
 }
