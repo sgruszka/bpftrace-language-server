@@ -20,9 +20,8 @@ pub mod parser;
 #[macro_use]
 pub mod log_mod;
 
-use log_mod::{DEFIN, DIAGN, NOTIF, PROTO};
+use log_mod::{DEFIN, DIAGN, NOTIF, PROTO, REFER};
 
-use crate::parser::{find_source_file_macros_for_node, is_location_function_call};
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -100,6 +99,7 @@ macro_rules! get_document_state {
             log_mod::COMPL => "Completion",
             log_mod::HOVER => "Hover",
             log_mod::DEFIN => "Definition",
+            log_mod::REFER => "References",
             _ => "",
         };
 
@@ -213,6 +213,7 @@ fn encode_initalize_result() -> json::JsonValue {
         "textDocumentSync": 1,
         "hoverProvider": true,
         "definitionProvider": true,
+        "referencesProvider": true,
         // "codeActionProvider": true,
         "completionProvider": {
             "triggerCharacters": [":", ".", ">", "$", "@"],
@@ -258,11 +259,11 @@ fn encode_definition(content: json::JsonValue) -> json::JsonValue {
     let (text, _loc, main_node, _line_str) =
         get_document_state!(text_doc, line_nr, char_nr, encode_no_definition(), DEFIN);
 
-    if let Some(func_call) = is_location_function_call(text, &main_node, line_nr, char_nr) {
+    if let Some(func_call) = parser::is_location_function_call(text, &main_node, line_nr, char_nr) {
         let call_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
         log_dbg!(DEFIN, "Definition for function call: {}", call_name);
 
-        let all_macros = find_source_file_macros_for_node(&main_node, text);
+        let all_macros = parser::find_source_file_macros_for_node(&main_node, text);
         log_vdbg!(DEFIN, "{:?}", all_macros);
 
         for m in all_macros {
@@ -295,6 +296,70 @@ fn encode_definition(content: json::JsonValue) -> json::JsonValue {
     }
 
     encode_no_definition()
+}
+
+fn encode_no_references() -> json::JsonValue {
+    object! { "result": json::JsonValue::Null }
+}
+
+fn encode_references(content: json::JsonValue) -> json::JsonValue {
+    let (uri, line_nr, char_nr) = unpack_text_document_info(content);
+
+    let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
+        return encode_no_references();
+    };
+
+    let (text, loc, main_node, _line_str) =
+        get_document_state!(text_doc, line_nr, char_nr, encode_no_references(), REFER);
+
+    let mut macro_name = "";
+
+    if loc == parser::SyntaxLocation::MacroDefinition {
+        if let Some(name_node) = parser::is_location_macro_name(&main_node, line_nr, char_nr) {
+            macro_name = name_node.utf8_text(text.as_bytes()).unwrap_or_default();
+            log_dbg!(REFER, "References for macro defintion: {}", macro_name);
+        }
+    }
+
+    if macro_name.is_empty() {
+        if let Some(func_call) =
+            parser::is_location_function_call(text, &main_node, line_nr, char_nr)
+        {
+            macro_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
+            log_dbg!(REFER, "References for function call: {}", macro_name);
+        }
+    }
+
+    if macro_name.is_empty() {
+        return encode_no_references();
+    }
+
+    let ref_nodes = parser::find_source_file_func_calls_for_node(&main_node, text, macro_name);
+    if ref_nodes.is_empty() {
+        return encode_no_references();
+    }
+
+    let mut location = json::JsonValue::new_array();
+
+    for node in ref_nodes {
+        let start = node.start_position();
+        let end = node.end_position();
+
+        let loc = object! {
+            "uri": uri.clone(),
+            "range": {
+                "start": { "line": start.row, "character": start.column },
+                 "end": { "line": end.row, "character": end.column },
+            },
+        };
+        let _ = location.push(loc);
+    }
+
+    let data = object! {
+        "result": location,
+    };
+
+    data
 }
 
 // TODO implement correct codeAction and enable codeActionProvider
@@ -635,6 +700,7 @@ fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
         "shutdown" => encode_shutdown(),
         "textDocument/hover" => completion::encode_hover(content),
         "textDocument/definition" => encode_definition(content),
+        "textDocument/references" => encode_references(content),
         "textDocument/codeAction" => encode_code_action(content),
         "textDocument/completion" => completion::encode_completion(content),
         "completionItem/resolve" => completion::encode_completion_resolve(content),

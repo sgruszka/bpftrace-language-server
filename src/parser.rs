@@ -192,6 +192,7 @@ pub fn is_location_macro_body<'t>(
     line_nr: usize,
     char_nr: usize,
 ) -> Option<Node<'t>> {
+    assert_eq!(macro_node.kind(), "macro_definition");
     let block_node = macro_node.child_by_field_name("body")?;
 
     let pos = postition_relative_to_node(&block_node, line_nr, char_nr);
@@ -201,6 +202,23 @@ pub fn is_location_macro_body<'t>(
 
     None
 }
+
+pub fn is_location_macro_name<'t>(
+    macro_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    assert_eq!(macro_node.kind(), "macro_definition");
+    let name_node = macro_node.child_by_field_name("name")?;
+
+    let pos = postition_relative_to_node(&name_node, line_nr, char_nr);
+    if pos == Position::Within {
+        return Some(name_node);
+    }
+
+    None
+}
+
 pub fn find_error_location<'t>(
     text: &str,
     root_node: &Node<'t>,
@@ -483,6 +501,51 @@ pub fn find_source_file_macros_for_node<'t>(
     macros
 }
 
+pub fn find_source_file_func_calls_for_node<'t>(
+    this_node: &'t Node,
+    text: &str,
+    macro_name: &str,
+) -> Vec<Node<'t>> {
+    let mut func_calls = Vec::new();
+
+    let Some(source_file) = node_to_source_file(*this_node) else {
+        return func_calls;
+    };
+    assert_eq!(source_file.kind(), "source_file");
+
+    let query_str = r#"
+    [
+        (call_expression
+          function: (identifier) @func_identifier)
+    ]
+    "#;
+
+    // TODO save compiled query and reuse it
+    let query = match Query::new(&tree_sitter_bpftrace::LANGUAGE.into(), query_str) {
+        Ok(q) => q,
+        Err(e) => {
+            log_err!("Tree-sitter error: {}", e);
+            return func_calls;
+        }
+    };
+
+    let mut query_cursor = QueryCursor::new();
+    let mut matches = query_cursor.matches(&query, source_file, text.as_bytes());
+
+    while let Some(m) = matches.next() {
+        for cap in m.captures {
+            let Ok(func_name) = cap.node.utf8_text(text.as_bytes()) else {
+                continue;
+            };
+
+            if func_name == macro_name {
+                func_calls.push(cap.node);
+            }
+        }
+    }
+
+    func_calls
+}
 pub fn find_probes_vec_for_error(error_node: &Node, text: &str) -> Vec<String> {
     assert_eq!(error_node.kind(), "ERROR");
     let mut probes_vec: Vec<String> = Vec::new();
