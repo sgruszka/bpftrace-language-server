@@ -1781,32 +1781,27 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_alloc_pid() {
+    fn test_resolve_alloc_mnt_ns() {
         let btf = btf_module_get("vmlinux").unwrap();
 
-        let f = btf_resolve_func(&btf, "alloc_pid").unwrap();
-        assert_eq!(f.name, "alloc_pid");
-        // TODO spaces after "*"
+        let f = btf_resolve_func(&btf, "alloc_mnt_ns").unwrap();
+        assert_eq!(f.name, "alloc_mnt_ns");
+
         assert_eq!(
             f.full_name,
-            "struct pid * alloc_pid(struct pid_namespace * ns, pid_t * set_tid, size_t set_tid_size)"
+            "struct mnt_namespace * alloc_mnt_ns(struct user_namespace * user_ns, bool anon)"
         );
-        assert_eq!(f.args.len(), 3);
-        assert_eq!(f.args[0].name, "ns");
-        assert_eq!(f.args[1].name, "set_tid");
-        assert_eq!(f.args[2].name, "set_tid_size");
+        assert_eq!(f.args.len(), 2);
+        assert_eq!(f.args[0].name, "user_ns");
+        assert_eq!(f.args[1].name, "anon");
 
         let var_name = btf_variable_name(&btf, &f.args[0]).unwrap();
-        assert_eq!(var_name.type_name, "struct pid_namespace *");
-        assert_eq!(var_name.full_name, "struct pid_namespace *ns");
+        assert_eq!(var_name.type_name, "struct user_namespace *");
+        assert_eq!(var_name.full_name, "struct user_namespace *user_ns");
 
         let var_name = btf_variable_name(&btf, &f.args[1]).unwrap();
-        assert_eq!(var_name.type_name, "pid_t *");
-        assert_eq!(var_name.full_name, "pid_t *set_tid");
-
-        let var_name = btf_variable_name(&btf, &f.args[2]).unwrap();
-        assert_eq!(var_name.type_name, "size_t");
-        assert_eq!(var_name.full_name, "size_t set_tid_size");
+        assert_eq!(var_name.type_name, "bool");
+        assert_eq!(var_name.full_name, "bool anon");
     }
 
     #[test]
