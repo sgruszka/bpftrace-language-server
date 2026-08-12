@@ -351,15 +351,17 @@ fn are_probes_compatible(probes_vec: &[String]) -> bool {
 }
 
 fn probe_properties(probe: &str) -> ProbeProperties {
-    let mut is_kprobe = false;
-    let mut use_btf = false;
     let mut has_args = false;
     let mut has_retval = false;
+    let mut has_arg_n = false;
+    let mut use_btf = false;
+    let mut use_kfunc_for_kprobe = false;
 
     if probe.starts_with("kprobe:") || probe.starts_with("fentry") || probe.starts_with("kfunc:") {
         use_btf = true;
         if probe.starts_with("kprobe:") {
-            is_kprobe = true;
+            use_kfunc_for_kprobe = true;
+            has_arg_n = true;
         }
     }
 
@@ -370,7 +372,7 @@ fn probe_properties(probe: &str) -> ProbeProperties {
         use_btf = true;
         has_retval = true;
         if probe.starts_with("kretprobe:") {
-            is_kprobe = true;
+            use_kfunc_for_kprobe = true;
         }
     }
 
@@ -385,10 +387,11 @@ fn probe_properties(probe: &str) -> ProbeProperties {
     }
 
     ProbeProperties {
-        is_kprobe,
-        use_btf,
         has_args,
         has_retval,
+        has_arg_n,
+        use_btf,
+        use_kfunc_for_kprobe,
     }
 }
 
@@ -402,11 +405,19 @@ fn encode_completion_for_args_or_retval(
     let probes_vec = &probes.probes_vec;
     let probe = probes_vec.first()?;
 
+    if args_with_fields.starts_with("args") && !probes.properties.has_args {
+        return None;
+    }
+
+    if args_with_fields.starts_with("retval") && !probes.properties.has_retval {
+        return None;
+    }
+
     let items = if probes.btf_probe_args.is_none() {
         let probe_args = find_probe_args_by_command(probe);
         let mut probe_args_iter = probe_args.lines();
 
-        // On first line of probe args is kfunc module and name
+        // On first line of probe args is the probe itself
         probe_args_iter.next();
 
         if args_with_fields.ends_with("args.") || args_with_fields.ends_with("args->") {
@@ -431,10 +442,10 @@ fn encode_completion_for_args_or_retval(
         json::JsonValue::new_array()
     };
 
-    let is_incomplete = false; // Currently we provide complete list
+    // Completion list can change if switch from args to retval or vice versa
     let data = object! {
         "result": {
-            "isIncomplete": is_incomplete,
+            "isIncomplete": true,
             "items": items,
         }
     };
@@ -550,6 +561,31 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
     }
 }
 
+fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
+    // TODO: add details and docs
+    // let mut details = String::new();
+    // let mut docs = String::new();
+
+    let Some((_btf, resolved_func)) = probes.btf_probe_args.as_ref() else {
+        return;
+    };
+
+    for i in 0..resolved_func.args.len() {
+        let arg_i = object! {
+            "label": format!("arg{}", i),
+            "kind" : CompletionItemKind::Keyword,
+            "detail" : null,
+            "documentation": null,
+            // "documentation" : {
+            //     "kind": "markdown",
+            //     "value": docs,
+            // },
+        };
+
+        let _ = items.push(arg_i);
+    }
+}
+
 // Special args and retval builtin
 fn add_args_and_retval_keywords(probes: &Probes, items: &mut json::JsonValue) {
     if probes.properties.has_retval {
@@ -558,6 +594,10 @@ fn add_args_and_retval_keywords(probes: &Probes, items: &mut json::JsonValue) {
 
     if probes.properties.has_args {
         add_args(probes, items);
+    }
+
+    if probes.properties.has_arg_n {
+        add_arg_n(probes, items);
     }
 }
 
@@ -941,8 +981,9 @@ fn encode_completion_for_config_block() -> json::JsonValue {
 struct ProbeProperties {
     has_args: bool,
     has_retval: bool,
+    has_arg_n: bool,
     use_btf: bool,
-    is_kprobe: bool,
+    use_kfunc_for_kprobe: bool,
 }
 
 struct Probes {
@@ -959,8 +1000,9 @@ impl Probes {
         let mut properties = ProbeProperties {
             has_args: false,
             has_retval: false,
+            has_arg_n: false,
             use_btf: false,
-            is_kprobe: false,
+            use_kfunc_for_kprobe: false,
         };
 
         if are_compatible {
@@ -968,12 +1010,12 @@ impl Probes {
             properties = probe_properties(probe);
 
             if properties.use_btf {
-                if properties.is_kprobe {
-                    let mut kprobes_vec: Vec<String> = Vec::new();
+                if properties.use_kfunc_for_kprobe {
+                    let mut kfuncs_vec: Vec<String> = Vec::new();
                     for p in &probes_vec {
-                        kprobes_vec.push(kprobe_to_kfunc(p));
+                        kfuncs_vec.push(kprobe_to_kfunc(p));
                     }
-                    btf_probe_args = find_common_args_by_btf(&kprobes_vec);
+                    btf_probe_args = find_common_args_by_btf(&kfuncs_vec);
                 } else {
                     btf_probe_args = find_common_args_by_btf(&probes_vec);
                 }
