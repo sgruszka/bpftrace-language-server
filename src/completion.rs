@@ -326,27 +326,31 @@ fn items_from_probe_args(probe_args_iter: Lines) -> json::JsonValue {
     items
 }
 
-fn compatible_probes(probes_vec: &[String]) -> (bool, bool, bool, bool) {
+fn are_probes_compatible(probes_vec: &[String]) -> bool {
     let mut probes_iter = probes_vec.iter();
-    let incompatible = (false, false, false, false);
 
     let Some(probe) = probes_iter.next() else {
-        return incompatible;
+        return false;
     };
 
     let Some((prefix, _)) = probe.split_once(':') else {
-        return incompatible;
+        return false;
     };
 
-    for next_probe in probes_iter.skip(1) {
+    for next_probe in probes_iter {
         let Some((next_prefix, _)) = next_probe.split_once(':') else {
-            return incompatible;
+            return false;
         };
+
         if prefix != next_prefix {
-            return incompatible;
+            return false;
         }
     }
 
+    return true;
+}
+
+fn probe_properties(probe: &str) -> (bool, bool, bool, bool) {
     let mut is_kprobe = false;
     let mut use_btf = false;
     let mut has_args = false;
@@ -939,17 +943,29 @@ struct Probes {
 
 impl Probes {
     fn new(probes_vec: Vec<String>) -> Probes {
-        let (is_kprobe, use_btf, has_args, has_retval) = compatible_probes(&probes_vec);
+        let are_compatible = are_probes_compatible(&probes_vec);
+
         let mut btf_probe_args = None;
-        if use_btf {
-            if is_kprobe {
-                let mut kprobes_vec: Vec<String> = Vec::new();
-                for p in &probes_vec {
-                    kprobes_vec.push(kprobe_to_kfunc(p));
+        let mut has_args = false;
+        let mut has_retval = false;
+
+        if are_compatible {
+            let probe = probes_vec.first().unwrap();
+            let (is_kprobe, use_btf, args, retval) = probe_properties(probe);
+
+            has_args = args;
+            has_retval = retval;
+
+            if use_btf {
+                if is_kprobe {
+                    let mut kprobes_vec: Vec<String> = Vec::new();
+                    for p in &probes_vec {
+                        kprobes_vec.push(kprobe_to_kfunc(p));
+                    }
+                    btf_probe_args = find_common_args_by_btf(&kprobes_vec);
+                } else {
+                    btf_probe_args = find_common_args_by_btf(&probes_vec);
                 }
-                btf_probe_args = find_common_args_by_btf(&kprobes_vec);
-            } else {
-                btf_probe_args = find_common_args_by_btf(&probes_vec);
             }
         }
 
