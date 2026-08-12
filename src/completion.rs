@@ -1770,6 +1770,21 @@ mod tests {
         }
     }
 
+    fn check_completion_resutls_negative(result: &json::JsonValue, values: Vec<&str>) {
+        let labels: Vec<_> = result["result"]["items"]
+            .members()
+            .map(|item| item["label"].to_string())
+            .collect();
+
+        for val in values.iter() {
+            assert!(
+                !labels.contains(&val.to_string()),
+                "'{val}' present in completion results: {:?}",
+                labels
+            );
+        }
+    }
+
     fn check_completion_resutls(result: json::JsonValue, values: Vec<&str>) {
         let labels: Vec<_> = result["result"]["items"]
             .members()
@@ -2056,6 +2071,21 @@ kretprobe:vmlinux:posix_timer_fn {
         let result = encode_completion(json_content);
 
         check_completion_resutls(result, vec!["retval"]);
+    }
+
+    #[test]
+    fn test_kprobe_arg_n_completion() {
+        let text = r#"
+k:posix_acl_from_xattr {
+  print(a
+}
+"#;
+        let json_content = document_content_setup(text, 2, 10);
+
+        let result = encode_completion(json_content);
+
+        check_completion_resutls_negative(&result, vec!["arg4", "arg5", "arg9", "args", "retval"]);
+        check_completion_resutls(result, vec!["arg0", "arg1", "arg2"]);
     }
 
     #[test]
