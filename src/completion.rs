@@ -148,19 +148,25 @@ fn resolve_container_members<'a>(
 }
 
 fn is_fentry_probe(probe: &str) -> bool {
-    probe.starts_with("fentry") || probe.starts_with("kfunc")
+    probe.starts_with("fentry") || probe.starts_with("kfunc") || probe.starts_with("f:")
 }
 
 fn is_fexit_probe(probe: &str) -> bool {
-    probe.starts_with("fexit") || probe.starts_with("kretfunc")
+    probe.starts_with("fexit") || probe.starts_with("kretfunc") || probe.starts_with("fr:")
 }
 
 fn is_kprobe(probe: &str) -> bool {
-    probe.starts_with("kprobe") || probe.starts_with("kretprobe")
+    probe.starts_with("kprobe") || probe.starts_with("k:")
+}
+fn is_kretprobe(probe: &str) -> bool {
+    probe.starts_with("kretprobe") || probe.starts_with("kr:")
 }
 
 fn is_tracepoint_probe(probe: &str) -> bool {
-    probe.starts_with("tracepoint") || probe.starts_with("rawtracepoint")
+    probe.starts_with("tracepoint")
+        || probe.starts_with("rawtracepoint")
+        || probe.starts_with("t:")
+        || probe.starts_with("rt:")
 }
 
 fn is_btf_probe(probe: &str) -> bool {
@@ -347,7 +353,7 @@ fn are_probes_compatible(probes_vec: &[String]) -> bool {
         }
     }
 
-    return true;
+    true
 }
 
 fn probe_properties(probe: &str) -> ProbeProperties {
@@ -357,32 +363,30 @@ fn probe_properties(probe: &str) -> ProbeProperties {
     let mut use_btf = false;
     let mut use_kfunc_for_kprobe = false;
 
-    if probe.starts_with("kprobe:") || probe.starts_with("fentry") || probe.starts_with("kfunc:") {
+    if is_fentry_probe(probe) {
         use_btf = true;
-        if probe.starts_with("kprobe:") {
-            use_kfunc_for_kprobe = true;
-            has_arg_n = true;
-        }
+        has_args = true;
     }
 
-    if probe.starts_with("kretprobe:")
-        || probe.starts_with("kretfunc:")
-        || probe.starts_with("fexit")
-    {
+    if is_fexit_probe(probe) {
         use_btf = true;
+        has_args = true;
         has_retval = true;
-        if probe.starts_with("kretprobe:") {
-            use_kfunc_for_kprobe = true;
-        }
     }
 
-    if probe.starts_with("rawtracepoint")
-        || probe.starts_with("tracepoint")
-        || probe.starts_with("fentry")
-        || probe.starts_with("fexit")
-        || probe.starts_with("kfunc")
-        || probe.starts_with("kretfunc")
-    {
+    if is_kprobe(probe) {
+        use_btf = true;
+        use_kfunc_for_kprobe = true;
+        has_arg_n = true;
+    }
+
+    if is_kretprobe(probe) {
+        use_btf = true;
+        use_kfunc_for_kprobe = true;
+        has_retval = true;
+    }
+
+    if is_tracepoint_probe(probe) {
         has_args = true;
     }
 
