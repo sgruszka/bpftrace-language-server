@@ -566,24 +566,27 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
 }
 
 fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
-    // TODO: add details and docs
-    // let mut details = String::new();
-    // let mut docs = String::new();
-
-    let Some((_btf, resolved_func)) = probes.btf_probe_args.as_ref() else {
+    let Some((btf, resolved_func)) = probes.btf_probe_args.as_ref() else {
         return;
     };
 
-    for i in 0..resolved_func.args.len() {
+    // TODO: add documentation
+
+    for (i, var) in resolved_func.args.iter().enumerate() {
+        let detail = if let Some(res_type) = btf_resolve_type(btf, var.type_id) {
+            btf_item_to_str(&res_type, Some(var))
+        } else {
+            var.name.clone()
+        };
+
         let arg_i = object! {
             "label": format!("arg{}", i),
             "kind" : CompletionItemKind::Keyword,
-            "detail" : null,
-            "documentation": null,
-            // "documentation" : {
-            //     "kind": "markdown",
-            //     "value": docs,
-            // },
+            "detail" : detail,
+        //     "documentation" : {
+        //         "kind": "markdown",
+        //         "value": docs,
+        //     },
         };
 
         let _ = items.push(arg_i);
