@@ -350,7 +350,7 @@ fn are_probes_compatible(probes_vec: &[String]) -> bool {
     return true;
 }
 
-fn probe_properties(probe: &str) -> (bool, bool, bool, bool) {
+fn probe_properties(probe: &str) -> ProbeProperties {
     let mut is_kprobe = false;
     let mut use_btf = false;
     let mut has_args = false;
@@ -384,7 +384,12 @@ fn probe_properties(probe: &str) -> (bool, bool, bool, bool) {
         has_args = true;
     }
 
-    (is_kprobe, use_btf, has_args, has_retval)
+    ProbeProperties {
+        is_kprobe,
+        use_btf,
+        has_args,
+        has_retval,
+    }
 }
 
 // Complete args. i.e. kfunc:xe:__fini_dbm { printf("%s\n", str(args.drm->driver->name)) }
@@ -547,11 +552,11 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
 
 // Special args and retval builtin
 fn add_args_and_retval_keywords(probes: &Probes, items: &mut json::JsonValue) {
-    if probes.has_retval {
+    if probes.properties.has_retval {
         add_retval(probes, items);
     }
 
-    if probes.has_args {
+    if probes.properties.has_args {
         add_args(probes, items);
     }
 }
@@ -933,12 +938,17 @@ fn encode_completion_for_config_block() -> json::JsonValue {
         }
     }
 }
+struct ProbeProperties {
+    has_args: bool,
+    has_retval: bool,
+    use_btf: bool,
+    is_kprobe: bool,
+}
 
 struct Probes {
     probes_vec: Vec<String>,
     btf_probe_args: Option<(Arc<Btf>, BtfFunction)>,
-    has_args: bool,
-    has_retval: bool,
+    properties: ProbeProperties,
 }
 
 impl Probes {
@@ -946,18 +956,19 @@ impl Probes {
         let are_compatible = are_probes_compatible(&probes_vec);
 
         let mut btf_probe_args = None;
-        let mut has_args = false;
-        let mut has_retval = false;
+        let mut properties = ProbeProperties {
+            has_args: false,
+            has_retval: false,
+            use_btf: false,
+            is_kprobe: false,
+        };
 
         if are_compatible {
             let probe = probes_vec.first().unwrap();
-            let (is_kprobe, use_btf, args, retval) = probe_properties(probe);
+            properties = probe_properties(probe);
 
-            has_args = args;
-            has_retval = retval;
-
-            if use_btf {
-                if is_kprobe {
+            if properties.use_btf {
+                if properties.is_kprobe {
                     let mut kprobes_vec: Vec<String> = Vec::new();
                     for p in &probes_vec {
                         kprobes_vec.push(kprobe_to_kfunc(p));
@@ -972,8 +983,7 @@ impl Probes {
         Probes {
             probes_vec,
             btf_probe_args,
-            has_retval,
-            has_args,
+            properties,
         }
     }
 }
