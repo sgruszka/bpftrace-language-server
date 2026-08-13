@@ -57,6 +57,7 @@ fn node_to_syntax_location(node: &Node) -> SyntaxLocation {
     match node.kind() {
         "block_comment" => SyntaxLocation::Comment,
         "line_comment" => SyntaxLocation::Comment,
+        "string_literal" => SyntaxLocation::Comment, // For completion purpose this is equivalent
         "probes_list" => SyntaxLocation::ProbesList,
         "predicate" => SyntaxLocation::Predicate,
         "action" => SyntaxLocation::Action,
@@ -80,6 +81,7 @@ pub fn find_syntax_location<'t>(
         (action) @action
         (block_comment) @block_comment
         (line_comment) @line_comment
+        (string_literal) @string_literal
         (macro_definition) @macro_definition
         (map_declaration) @map_declaration
         (config_block) @config_block
