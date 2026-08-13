@@ -263,7 +263,7 @@ fn encode_definition(content: json::JsonValue) -> json::JsonValue {
         let call_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
         log_dbg!(DEFIN, "Definition for function call: {}", call_name);
 
-        let all_macros = parser::find_source_file_macros_for_node(&main_node, text);
+        let all_macros = parser::find_source_file_macros(&main_node, text);
         log_vdbg!(DEFIN, "{:?}", all_macros);
 
         for m in all_macros {
@@ -334,7 +334,7 @@ fn encode_references(content: json::JsonValue) -> json::JsonValue {
         return encode_no_references();
     }
 
-    let ref_nodes = parser::find_source_file_func_calls_for_node(&main_node, text, macro_name);
+    let ref_nodes = parser::find_source_file_func_calls(&main_node, text, macro_name);
     if ref_nodes.is_empty() {
         return encode_no_references();
     }

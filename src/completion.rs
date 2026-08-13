@@ -503,7 +503,7 @@ fn add_block_variables(
 }
 
 fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) {
-    let macros = parser::find_source_file_macros_for_node(node, text);
+    let macros = parser::find_source_file_macros(node, text);
     log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
     // TODO add parameters

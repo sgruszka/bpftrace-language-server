@@ -275,7 +275,7 @@ pub fn find_errors<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
     results
 }
 
-fn find_all_map_variables<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
+fn find_all_map_variable_assigments<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
     let query_str = r#"
         (assignment_statement
           left: (map_variable) @map.lhs)
@@ -359,7 +359,7 @@ fn add_source_file_map_variables_for_block(action: &Node, text: &str, results: &
         return;
     };
 
-    let nodes = find_all_map_variables(text, &source_file);
+    let nodes = find_all_map_variable_assigments(text, &source_file);
 
     for map_node in nodes {
         assert_eq!(map_node.kind(), "map_variable");
@@ -462,6 +462,10 @@ pub fn find_map_variables_for_block(node: &Node, text: &str) -> Vec<String> {
 }
 
 fn node_to_source_file(n: Node) -> Option<Node> {
+    if n.kind() == "source_file" {
+        return Some(n);
+    }
+
     let mut node = n;
 
     let source_file = loop {
@@ -477,10 +481,7 @@ fn node_to_source_file(n: Node) -> Option<Node> {
     Some(source_file)
 }
 
-pub fn find_source_file_macros_for_node<'t>(
-    this_node: &'t Node,
-    text: &str,
-) -> Vec<(String, Node<'t>)> {
+pub fn find_source_file_macros<'t>(this_node: &'t Node, text: &str) -> Vec<(String, Node<'t>)> {
     let mut macros = Vec::new();
 
     let Some(source_file) = node_to_source_file(*this_node) else {
@@ -503,15 +504,38 @@ pub fn find_source_file_macros_for_node<'t>(
     macros
 }
 
-pub fn find_source_file_func_calls_for_node<'t>(
+fn find_name_in_query_matches<'t>(
+    text: &str,
+    root_node: &Node<'t>,
+    query: &Query,
+    name: &str,
+) -> Vec<Node<'t>> {
+    let mut query_cursor = QueryCursor::new();
+    let mut matches = query_cursor.matches(&query, *root_node, text.as_bytes());
+
+    let mut refs = Vec::new();
+    while let Some(m) = matches.next() {
+        for cap in m.captures {
+            let Ok(node_name) = cap.node.utf8_text(text.as_bytes()) else {
+                continue;
+            };
+
+            if node_name == name {
+                refs.push(cap.node);
+            }
+        }
+    }
+
+    refs
+}
+
+pub fn find_source_file_func_calls<'t>(
     this_node: &'t Node,
     text: &str,
     macro_name: &str,
 ) -> Vec<Node<'t>> {
-    let mut func_calls = Vec::new();
-
     let Some(source_file) = node_to_source_file(*this_node) else {
-        return func_calls;
+        return Vec::new();
     };
     assert_eq!(source_file.kind(), "source_file");
 
@@ -527,27 +551,13 @@ pub fn find_source_file_func_calls_for_node<'t>(
         Ok(q) => q,
         Err(e) => {
             log_err!("Tree-sitter error: {}", e);
-            return func_calls;
+            return Vec::new();
         }
     };
 
-    let mut query_cursor = QueryCursor::new();
-    let mut matches = query_cursor.matches(&query, source_file, text.as_bytes());
-
-    while let Some(m) = matches.next() {
-        for cap in m.captures {
-            let Ok(func_name) = cap.node.utf8_text(text.as_bytes()) else {
-                continue;
-            };
-
-            if func_name == macro_name {
-                func_calls.push(cap.node);
-            }
-        }
-    }
-
-    func_calls
+    find_name_in_query_matches(text, &source_file, &query, macro_name)
 }
+
 pub fn find_probes_vec_for_error(error_node: &Node, text: &str) -> Vec<String> {
     assert_eq!(error_node.kind(), "ERROR");
     let mut probes_vec: Vec<String> = Vec::new();
@@ -819,7 +829,7 @@ begin {
     "#;
         let tree = setup_syntax_tree(text);
 
-        let variables = find_all_map_variables(text, &tree.root_node());
+        let variables = find_all_map_variable_assigments(text, &tree.root_node());
         assert_eq!(variables.len(), 5);
         for v in variables {
             assert_eq!(v.kind(), "map_variable");
@@ -971,7 +981,7 @@ macro add_two(y) {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let macros = find_source_file_macros_for_node(&action, text);
+        let macros = find_source_file_macros(&action, text);
         assert_eq!(macros.len(), 2);
         assert_eq!(macros[0].0, "add_one");
         assert_eq!(macros[1].0, "add_two");
