@@ -1140,6 +1140,31 @@ macro print2(x, y) {
     }
 
     #[test]
+    fn test_goto_map_variable() {
+        let text = r#"
+fentry:rt2x00lib:rt2x00lib_config {
+  @start[tid] = nsecs();
+}
+
+fexit:rt2x00lib:rt2x00lib_config {
+  $duration = nsecs() - @start[tid];
+  printf("%s took %u\n", probe(), $duration);
+  delete(@start, tid);
+}
+"#;
+        let json_content = document_content_setup(text, 8, 12);
+
+        let result = encode_definition(json_content);
+        let start = &result["result"]["range"]["start"];
+        assert_eq!(start["line"], 2);
+        assert_eq!(start["character"], 2);
+
+        let end = &result["result"]["range"]["end"];
+        assert_eq!(end["line"], 2);
+        assert_eq!(end["character"], 13);
+    }
+
+    #[test]
     fn test_reference_macro_definition() {
         let text = r#"
 macro foo(x) {
@@ -1172,5 +1197,40 @@ macro boo(x, y) {
         let end = &result["result"][3]["range"]["end"];
         assert_eq!(end["line"], 8);
         assert_eq!(end["character"], 5);
+    }
+
+    #[test]
+    fn test_reference_map_variable() {
+        let text = r#"
+fentry:rt2x00lib:rt2x00lib_config {
+  @start[tid] = nsecs();
+}
+
+fexit:rt2x00lib:rt2x00lib_config {
+  $duration = nsecs() - @start[tid];
+  printf("%s took %u\n", probe(), $duration);
+  delete(@start, tid);
+}
+"#;
+        let json_content = document_content_setup(text, 8, 12);
+
+        let result = encode_references(json_content);
+        assert_eq!(result["result"].len(), 3);
+
+        let start = &result["result"][0]["range"]["start"];
+        assert_eq!(start["line"], 2);
+        assert_eq!(start["character"], 2);
+
+        let end = &result["result"][0]["range"]["end"];
+        assert_eq!(end["line"], 2);
+        assert_eq!(end["character"], 13);
+
+        let start = &result["result"][1]["range"]["start"];
+        assert_eq!(start["line"], 6);
+        assert_eq!(start["character"], 24);
+
+        let end = &result["result"][1]["range"]["end"];
+        assert_eq!(end["line"], 6);
+        assert_eq!(end["character"], 35);
     }
 }
