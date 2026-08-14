@@ -259,43 +259,76 @@ fn encode_definition(content: json::JsonValue) -> json::JsonValue {
     let (text, _loc, main_node, _line_str) =
         get_document_state!(text_doc, line_nr, char_nr, encode_no_definition(), DEFIN);
 
+    let mut def_node = None;
+
     if let Some(func_call) = parser::is_location_function_call(text, &main_node, line_nr, char_nr) {
         let call_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
         log_dbg!(DEFIN, "Definition for function call: {}", call_name);
 
         let all_macros = parser::find_source_file_macros(&main_node, text);
-        log_vdbg!(DEFIN, "{:?}", all_macros);
+        log_vdbg!(DEFIN, "All macros definitions: {:?}", all_macros);
 
         for m in all_macros {
             if m.0 == call_name {
-                let macro_def_node = m.1;
-                let start = macro_def_node.start_position();
-                let end = macro_def_node.end_position();
-                log_dbg!(
-                    DEFIN,
-                    "Found macro defintion at ({},{}) - ({},{})",
-                    start.row,
-                    start.column,
-                    end.row,
-                    end.column,
-                );
-
-                let data = object! {
-                    "result": {
-                        "uri": uri.to_string(),
-                        "range": {
-                            "start": { "line": start.row, "character": start.column,},
-                            "end": {"line": end.row, "character": end.column, },
-                        },
-                    },
-                };
-
-                return data;
+                def_node = Some(m.1);
+                break;
             }
         }
     }
 
-    encode_no_definition()
+    if let Some((map_var, _refs)) =
+        parser::is_location_map_variable(text, &main_node, line_nr, char_nr, false)
+    {
+        let full_name = map_var.utf8_text(text.as_bytes()).unwrap_or_default();
+        let (name, _) = full_name.split_once("[").unwrap_or((full_name, ""));
+        log_dbg!(DEFIN, "Definition for map_variable: {}", name);
+
+        let assignments = parser::find_all_map_variable_assignments(text, &main_node);
+        log_vdbg!(DEFIN, "All map varibles assignments {:?}", assignments);
+
+        for map_node in assignments {
+            let Ok(map_var_full_name) = map_node.utf8_text(text.as_bytes()) else {
+                continue;
+            };
+
+            let (map_var_name, _) = map_var_full_name
+                .split_once("[")
+                .unwrap_or((map_var_full_name, ""));
+
+            if map_var_name == name {
+                def_node = Some(map_node);
+                break;
+            }
+        }
+    }
+
+    if let Some(def) = def_node {
+        let start = def.start_position();
+        let end = def.end_position();
+        log_dbg!(
+            DEFIN,
+            "Found {} defintion at ({},{}) - ({},{})",
+            def.kind(),
+            start.row,
+            start.column,
+            end.row,
+            end.column,
+        );
+
+        let data = object! {
+            "result": {
+                "uri": uri.to_string(),
+                "range": {
+                    "start": { "line": start.row, "character": start.column,},
+                    "end": {"line": end.row, "character": end.column, },
+                },
+            },
+        };
+
+        data
+    } else {
+        encode_no_definition()
+    }
 }
 
 fn encode_no_references() -> json::JsonValue {

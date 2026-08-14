@@ -189,6 +189,42 @@ pub fn is_location_function_call<'t>(
     location_within_query_match(text, main_node, &query, line_nr, char_nr)
 }
 
+pub fn is_location_map_variable<'t>(
+    text: &str,
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+    with_refs: bool,
+) -> Option<(Node<'t>, Vec<Node<'t>>)> {
+    let query_str = r#"
+    [
+        (map_variable) @map_variable
+    ]
+    "#;
+
+    let query = match Query::new(&tree_sitter_bpftrace::LANGUAGE.into(), query_str) {
+        Ok(q) => q,
+        Err(e) => {
+            log_err!("Tree-sitter error: {}", e);
+            return None;
+        }
+    };
+    log_dbg!(PARSE, "line_nr {line_nr} char_nr {char_nr}");
+
+    let found = location_within_query_match(text, main_node, &query, line_nr, char_nr)?;
+    let full_name = found.utf8_text(text.as_bytes()).unwrap_or_default();
+    let (name, _) = full_name.split_once("[").unwrap_or((full_name, ""));
+    log_dbg!(PARSE, "name {name} full_name {full_name}");
+
+    let refs = if with_refs {
+        find_name_in_query_matches(text, main_node, &query, name)
+    } else {
+        Vec::new()
+    };
+
+    Some((found, refs))
+}
+
 pub fn is_location_macro_body<'t>(
     macro_node: &'t Node,
     line_nr: usize,
@@ -275,7 +311,11 @@ pub fn find_errors<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
     results
 }
 
-fn find_all_map_variable_assigments<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
+pub fn find_all_map_variable_assignments<'t>(text: &str, main_node: &Node<'t>) -> Vec<Node<'t>> {
+    let Some(source_file) = node_to_source_file(*main_node) else {
+        return Vec::new();
+    };
+
     let query_str = r#"
         (assignment_statement
           left: (map_variable) @map.lhs)
@@ -290,7 +330,7 @@ fn find_all_map_variable_assigments<'t>(text: &str, root_node: &Node<'t>) -> Vec
     };
 
     let mut query_cursor = QueryCursor::new();
-    let mut matches = query_cursor.matches(&query, *root_node, text.as_bytes());
+    let mut matches = query_cursor.matches(&query, source_file, text.as_bytes());
 
     let mut results: Vec<Node> = vec![];
 
@@ -354,12 +394,8 @@ fn add_scratch_variables_for_node(
     }
 }
 
-fn add_source_file_map_variables_for_block(action: &Node, text: &str, results: &mut Vec<String>) {
-    let Some(source_file) = node_to_source_file(*action) else {
-        return;
-    };
-
-    let nodes = find_all_map_variable_assigments(text, &source_file);
+fn add_source_file_map_variables(action: &Node, text: &str, results: &mut Vec<String>) {
+    let nodes = find_all_map_variable_assignments(text, action);
 
     for map_node in nodes {
         assert_eq!(map_node.kind(), "map_variable");
@@ -456,7 +492,7 @@ pub fn find_map_variables_for_block(node: &Node, text: &str) -> Vec<String> {
     assert!(node.kind() == "action" || node.kind() == "block");
 
     let mut results = Vec::new();
-    add_source_file_map_variables_for_block(node, text, &mut results);
+    add_source_file_map_variables(node, text, &mut results);
 
     results
 }
@@ -511,7 +547,7 @@ fn find_name_in_query_matches<'t>(
     name: &str,
 ) -> Vec<Node<'t>> {
     let mut query_cursor = QueryCursor::new();
-    let mut matches = query_cursor.matches(&query, *root_node, text.as_bytes());
+    let mut matches = query_cursor.matches(query, *root_node, text.as_bytes());
 
     let mut refs = Vec::new();
     while let Some(m) = matches.next() {
@@ -829,7 +865,7 @@ begin {
     "#;
         let tree = setup_syntax_tree(text);
 
-        let variables = find_all_map_variable_assigments(text, &tree.root_node());
+        let variables = find_all_map_variable_assignments(text, &tree.root_node());
         assert_eq!(variables.len(), 5);
         for v in variables {
             assert_eq!(v.kind(), "map_variable");
