@@ -335,44 +335,15 @@ fn encode_no_references() -> json::JsonValue {
     object! { "result": json::JsonValue::Null }
 }
 
-fn encode_references(content: json::JsonValue) -> json::JsonValue {
-    let (uri, line_nr, char_nr) = unpack_text_document_info(content);
+fn encode_references_for_nodes<'t>(
+    uri: String,
+    ref_nodes: Vec<tree_sitter::Node<'t>>,
+) -> json::JsonValue {
+    let mut location = json::JsonValue::new_array();
 
-    let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
-        return encode_no_references();
-    };
-
-    let (text, loc, main_node, _line_str) =
-        get_document_state!(text_doc, line_nr, char_nr, encode_no_references(), REFER);
-
-    let mut macro_name = "";
-
-    if loc == parser::SyntaxLocation::MacroDefinition {
-        if let Some(name_node) = parser::is_location_macro_name(&main_node, line_nr, char_nr) {
-            macro_name = name_node.utf8_text(text.as_bytes()).unwrap_or_default();
-            log_dbg!(REFER, "References for macro defintion: {}", macro_name);
-        }
-    }
-
-    if macro_name.is_empty() {
-        if let Some(func_call) =
-            parser::is_location_function_call(text, &main_node, line_nr, char_nr)
-        {
-            macro_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
-            log_dbg!(REFER, "References for function call: {}", macro_name);
-        }
-    }
-
-    if macro_name.is_empty() {
-        return encode_no_references();
-    }
-
-    let ref_nodes = parser::find_source_file_func_calls(&main_node, text, macro_name);
     if ref_nodes.is_empty() {
         return encode_no_references();
     }
-
-    let mut location = json::JsonValue::new_array();
 
     for node in ref_nodes {
         let start = node.start_position();
@@ -393,6 +364,73 @@ fn encode_references(content: json::JsonValue) -> json::JsonValue {
     };
 
     data
+}
+
+fn get_references_for_map_variable<'t>(
+    text: &str,
+    main_node: &'t tree_sitter::Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Vec<tree_sitter::Node<'t>>> {
+    let (_map_var, map_var_refs) =
+        parser::is_location_map_variable(text, main_node, line_nr, char_nr, true)?;
+
+    Some(map_var_refs)
+}
+
+fn get_references_for_macro<'t>(
+    text: &str,
+    loc: parser::SyntaxLocation,
+    main_node: &'t tree_sitter::Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Vec<tree_sitter::Node<'t>>> {
+    let mut macro_name = "";
+
+    if loc == parser::SyntaxLocation::MacroDefinition {
+        if let Some(name_node) = parser::is_location_macro_name(main_node, line_nr, char_nr) {
+            macro_name = name_node.utf8_text(text.as_bytes()).unwrap_or_default();
+            log_dbg!(REFER, "References for macro defintion: {}", macro_name);
+        }
+    }
+
+    if macro_name.is_empty() {
+        if let Some(func_call) =
+            parser::is_location_function_call(text, main_node, line_nr, char_nr)
+        {
+            macro_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
+            log_dbg!(REFER, "References for function call: {}", macro_name);
+        }
+    }
+
+    if macro_name.is_empty() {
+        return None;
+    }
+
+    Some(parser::find_source_file_func_calls(
+        main_node, text, macro_name,
+    ))
+}
+
+fn encode_references(content: json::JsonValue) -> json::JsonValue {
+    let (uri, line_nr, char_nr) = unpack_text_document_info(content);
+
+    let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
+        return encode_no_references();
+    };
+
+    let (text, loc, main_node, _line_str) =
+        get_document_state!(text_doc, line_nr, char_nr, encode_no_references(), REFER);
+
+    if let Some(ref_nodes) = get_references_for_map_variable(text, &main_node, line_nr, char_nr) {
+        encode_references_for_nodes(uri, ref_nodes)
+    } else if let Some(ref_nodes) =
+        get_references_for_macro(text, loc, &main_node, line_nr, char_nr)
+    {
+        encode_references_for_nodes(uri, ref_nodes)
+    } else {
+        encode_no_references()
+    }
 }
 
 // TODO implement correct codeAction and enable codeActionProvider

@@ -209,15 +209,25 @@ pub fn is_location_map_variable<'t>(
             return None;
         }
     };
-    log_dbg!(PARSE, "line_nr {line_nr} char_nr {char_nr}");
 
     let found = location_within_query_match(text, main_node, &query, line_nr, char_nr)?;
     let full_name = found.utf8_text(text.as_bytes()).unwrap_or_default();
     let (name, _) = full_name.split_once("[").unwrap_or((full_name, ""));
-    log_dbg!(PARSE, "name {name} full_name {full_name}");
+    log_dbg!(
+        PARSE,
+        "Location for map_variable {name} full_name {full_name}"
+    );
 
     let refs = if with_refs {
-        find_name_in_query_matches(text, main_node, &query, name)
+        if let Some(source_file) = node_to_source_file(*main_node) {
+            let cmp = |map_full_name: &str, a: &str| {
+                let (b, _) = map_full_name.split_once("[").unwrap_or((map_full_name, ""));
+                b == a
+            };
+            find_name_in_query_matches(text, &source_file, &query, name, cmp)
+        } else {
+            Vec::new()
+        }
     } else {
         Vec::new()
     };
@@ -540,12 +550,16 @@ pub fn find_source_file_macros<'t>(this_node: &'t Node, text: &str) -> Vec<(Stri
     macros
 }
 
-fn find_name_in_query_matches<'t>(
+fn find_name_in_query_matches<'t, Cmp>(
     text: &str,
     root_node: &Node<'t>,
     query: &Query,
     name: &str,
-) -> Vec<Node<'t>> {
+    cmp: Cmp,
+) -> Vec<Node<'t>>
+where
+    Cmp: Fn(&str, &str) -> bool,
+{
     let mut query_cursor = QueryCursor::new();
     let mut matches = query_cursor.matches(query, *root_node, text.as_bytes());
 
@@ -556,7 +570,7 @@ fn find_name_in_query_matches<'t>(
                 continue;
             };
 
-            if node_name == name {
+            if cmp(node_name, name) {
                 refs.push(cap.node);
             }
         }
@@ -591,7 +605,8 @@ pub fn find_source_file_func_calls<'t>(
         }
     };
 
-    find_name_in_query_matches(text, &source_file, &query, macro_name)
+    let cmp = |a: &str, b: &str| b == a;
+    find_name_in_query_matches(text, &source_file, &query, macro_name, cmp)
 }
 
 pub fn find_probes_vec_for_error(error_node: &Node, text: &str) -> Vec<String> {
