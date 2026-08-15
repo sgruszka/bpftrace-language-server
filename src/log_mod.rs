@@ -81,7 +81,7 @@ pub struct Logger {
 
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 
-pub fn create_logger(filename: &str) -> Result<(), std::io::Error> {
+pub fn create_logger(filename_opt: Option<String>) -> Result<(), std::io::Error> {
     let verbose_level = match env::var("BPFTRACE_LS_LOG_VERBOSE") {
         Ok(val) => val.parse::<u32>().unwrap_or(0),
         Err(_) => 0,
@@ -128,10 +128,10 @@ pub fn create_logger(filename: &str) -> Result<(), std::io::Error> {
     let mut log_file_opt = match env::var("BPFTRACE_LS_LOG_FILE") {
         Ok(env_filename) => File::create(env_filename).ok(),
         Err(_) => {
-            if filename.is_empty() {
-                None
-            } else {
+            if let Some(filename) = filename_opt {
                 File::create(filename).ok()
+            } else {
+                None
             }
         }
     };

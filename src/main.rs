@@ -1033,8 +1033,17 @@ fn handle_client_msg(
     false /* No exit */
 }
 
+xflags::xflags! {
+    cmd args {
+        optional --log-file path: String
+    }
+}
+//TODO        optional --cmd command: String
+
 fn main() {
-    if let Err(e) = log_mod::create_logger("") {
+    let args = Args::from_env_or_exit();
+
+    if let Err(e) = log_mod::create_logger(args.log_file) {
         println!("Failed to create logger, error {e}");
     }
 
