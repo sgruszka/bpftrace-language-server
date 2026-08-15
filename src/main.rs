@@ -1034,7 +1034,7 @@ fn handle_client_msg(
 }
 
 fn main() {
-    if let Err(e) = log_mod::create_logger("log.txt") {
+    if let Err(e) = log_mod::create_logger("") {
         println!("Failed to create logger, error {e}");
     }
 

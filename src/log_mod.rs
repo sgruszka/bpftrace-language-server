@@ -125,13 +125,27 @@ pub fn create_logger(filename: &str) -> Result<(), std::io::Error> {
         Err(_) => DEFAULT_MASK,
     };
 
-    let mut log_file = File::create(filename)?;
+    let mut log_file_opt = match env::var("BPFTRACE_LS_LOG_FILE") {
+        Ok(env_filename) => File::create(env_filename).ok(),
+        Err(_) => {
+            if filename.is_empty() {
+                None
+            } else {
+                File::create(filename).ok()
+            }
+        }
+    };
+
     let (tx, rx) = mpsc::channel::<String>();
 
     let _logger_thread = thread::spawn(move || {
         while let Ok(msg) = rx.recv() {
-            let _r = log_file.write_all(msg.as_bytes());
-            let _r = log_file.write_all("\n".as_bytes());
+            if let Some(ref mut log_file) = log_file_opt {
+                let _r = log_file.write_all(msg.as_bytes());
+                let _r = log_file.write_all("\n".as_bytes());
+            } else {
+                eprintln!("{}", msg);
+            }
         }
     });
 
