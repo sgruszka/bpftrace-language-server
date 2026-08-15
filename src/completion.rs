@@ -2184,6 +2184,18 @@ rawtracepoint:vmlinux:xhci_queue_trb {
     }
 
     #[test]
+    fn test_completion_inside_string() {
+        let text = r#"
+fentry:mac80211:ieee80211_check_fast_xmit_iface {
+  printf("Frag threshold %x\n", args.sdata->local.hw.wiphy->frag_threshold)
+}
+    "#;
+        let json_content = document_content_setup(text, 2, 15);
+        let result = encode_completion(json_content);
+        assert_eq!(result["result"]["items"].len(), 0);
+    }
+
+    #[test]
     fn test_hover_for_kfunc() {
         let text = r"kfunc:vmlinux:posix_timer_fn {}";
         let json_content = document_content_setup(text, 0, text.len() - 10);
