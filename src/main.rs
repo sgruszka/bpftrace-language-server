@@ -1036,9 +1036,9 @@ fn handle_client_msg(
 xflags::xflags! {
     cmd args {
         optional --log-file path: String
+        optional --cmd command: String
     }
 }
-//TODO        optional --cmd command: String
 
 fn main() {
     let args = Args::from_env_or_exit();
@@ -1050,7 +1050,7 @@ fn main() {
     log_dbg!(PROTO, "{} {} started", PKG_NAME, PKG_VERSION);
 
     let completion_init = thread::spawn(completion::init_available_traces);
-    let command_init = thread::spawn(cmd_mod::init_bpftrace_dry_run);
+    let command_init = thread::spawn(move || cmd_mod::init_bpftrace_dry_run(args.cmd));
 
     let (mpsc_tx, mpsc_rx) = mpsc::channel::<MpscMessage>();
     let diag_mpsc_tx = mpsc_tx.clone();
