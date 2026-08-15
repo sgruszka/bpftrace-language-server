@@ -1552,12 +1552,22 @@ fn encode_hover_for_field_expression(
     let empty_data = object! { "result": json::JsonValue::Null };
 
     // TODO: user parser instead of custom string processing
-    let lterm =
-        |c: char| -> bool { c.is_whitespace() || c == '{' || c == '(' || c == ',' || c == '*' };
+    let lterm = |c: char| -> bool {
+        c.is_whitespace()
+            || c == '{'
+            || c == '}'
+            || c == '('
+            || c == ')'
+            || c == ','
+            || c == '*'
+            || c == ';'
+    };
     let rterm = |c: char| -> bool {
         c.is_whitespace()
             || c == '}'
+            || c == '{'
             || c == ')'
+            || c == '('
             || c == '.'
             || c == '-'
             || c == ';'
