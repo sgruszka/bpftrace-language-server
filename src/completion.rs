@@ -595,6 +595,10 @@ fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
 
 // Special args and retval builtin
 fn add_args_and_retval_keywords(probes: &Probes, items: &mut json::JsonValue) {
+    if probes.probes_vec.is_empty() {
+        return;
+    }
+
     if probes.properties.has_retval {
         add_retval(probes, items);
     }
@@ -614,6 +618,7 @@ fn add_completion_items_for_block(
     line_nr: usize,
     char_nr: usize,
     line_str: &str,
+    probes_opt: Option<Probes>,
     items: &mut json::JsonValue,
 ) {
     let up_to_char = char_nr.saturating_add(1);
@@ -629,6 +634,9 @@ fn add_completion_items_for_block(
     } else if line_head.ends_with("@") {
         add_block_variables(node, text, line_nr, char_nr, items, true);
     } else {
+        if let Some(probes) = probes_opt {
+            add_args_and_retval_keywords(&probes, items);
+        }
         bpftrace_stdlib_functions(items);
         add_block_keywords(items);
         add_source_file_macros(node, text, items);
@@ -648,10 +656,15 @@ fn encode_completion_for_action(
     // TODO preload btf module
     let mut items = json::JsonValue::new_array();
 
-    add_completion_items_for_block(text, node, line_nr, char_nr, line_str, &mut items);
-    if !probes.probes_vec.is_empty() {
-        add_args_and_retval_keywords(&probes, &mut items);
-    }
+    add_completion_items_for_block(
+        text,
+        node,
+        line_nr,
+        char_nr,
+        line_str,
+        Some(probes),
+        &mut items,
+    );
 
     let data = object! {
         "result": {
@@ -674,7 +687,7 @@ fn encode_completion_for_macro(
 
     let mut items = json::JsonValue::new_array();
 
-    add_completion_items_for_block(text, node, line_nr, char_nr, line_str, &mut items);
+    add_completion_items_for_block(text, node, line_nr, char_nr, line_str, None, &mut items);
 
     let is_incomplete = false; // Currently we provide complete list
     let data = object! {
