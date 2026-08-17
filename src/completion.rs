@@ -1,3 +1,4 @@
+use glob_match::glob_match;
 use json::{self, object};
 use std::collections::HashMap;
 use std::str::Lines;
@@ -999,6 +1000,37 @@ fn encode_completion_for_config_block() -> json::JsonValue {
     }
 }
 
+fn expand_wildcard_probe(wildcard_probe: &str) -> Vec<String> {
+    let mut result = Vec::new();
+
+    let Some(available_traces) = AVAILABE_TRACES.get_or_init(bpftrace_get_traces_list) else {
+        return Vec::new();
+    };
+
+    for trace_line in available_traces.lines() {
+        if glob_match(wildcard_probe, trace_line) {
+            result.push(trace_line.to_string());
+        }
+    }
+
+    result
+}
+
+fn expand_probes(probes_vec: Vec<String>) -> Vec<String> {
+    let mut new_vec = Vec::new();
+
+    for probe in probes_vec {
+        // TODO: limit number of probes ?
+        if probe.contains("*") {
+            new_vec.extend(expand_wildcard_probe(&probe));
+        } else {
+            new_vec.push(probe);
+        }
+    }
+
+    new_vec
+}
+
 struct ProbeProperties {
     has_args: bool,
     has_retval: bool,
@@ -1016,6 +1048,7 @@ struct Probes {
 impl Probes {
     fn new(probes_vec: Vec<String>) -> Probes {
         let are_compatible = are_probes_compatible(&probes_vec);
+        let mut probes_vec = probes_vec;
 
         let mut btf_probe_args = None;
         let mut properties = ProbeProperties {
@@ -1031,6 +1064,8 @@ impl Probes {
             properties = probe_properties(probe);
 
             if properties.use_btf {
+                probes_vec = expand_probes(probes_vec);
+
                 if properties.use_kfunc_for_kprobe {
                     let mut kfuncs_vec: Vec<String> = Vec::new();
                     for p in &probes_vec {
