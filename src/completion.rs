@@ -11,7 +11,7 @@ use crate::btf_rd::{
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
-use crate::cmd_mod::bpftrace_command;
+use crate::cmd_mod::{bpftrace_command, bpftrace_list_probes_verbose};
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_functions,
 };
@@ -998,6 +998,7 @@ fn encode_completion_for_config_block() -> json::JsonValue {
         }
     }
 }
+
 struct ProbeProperties {
     has_args: bool,
     has_retval: bool,
@@ -1194,35 +1195,54 @@ fn cmp_arg(a: &BtfVariable, b: &BtfVariable) -> bool {
 // For multiple probes we can have common arguments that will work,
 // but need having matching type and name.
 fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
-    let mut probes_iter = probes_vec.iter();
-    let probe = probes_iter.next()?;
+    let all_probes = probes_vec.join(",");
+    let all_probes_args = bpftrace_list_probes_verbose(&all_probes)?;
 
-    let args = find_probe_args_by_command(probe);
-    let mut args_iter = args.lines();
-    args_iter.next(); // Skip probe itself
+    let mut probe_idx = 0;
+    let mut common_args = Vec::new();
+    let mut new_args = Vec::new();
 
-    let mut args_to_remove: Vec<usize> = Vec::new();
+    // TODO: we skip adding arguments to the PROBES_ARGS_MAP cache.
 
-    for (i, arg) in args_iter.enumerate() {
-        for probe in probes_vec.iter().skip(1) {
-            let next_args = find_probe_args_by_command(probe);
+    for line in all_probes_args.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
 
-            let found = next_args.lines().skip(1).any(|new_arg| arg == new_arg);
-            if !found {
-                args_to_remove.push(i);
+        if line.chars().next().is_some_and(|c| c.is_whitespace()) {
+            if probe_idx == 1 {
+                common_args.push(line);
+            } else {
+                new_args.push(line);
+            }
+        } else {
+            probe_idx += 1;
+
+            if probe_idx > 2 {
+                common_args.retain(|arg| new_args.contains(arg));
+                if common_args.is_empty() {
+                    break;
+                }
+                new_args = Vec::new()
             }
         }
     }
 
-    let mut common_args: Vec<String> = Vec::new();
-    for (i, arg) in args.lines().skip(1).enumerate() {
-        if args_to_remove.contains(&i) {
-            continue;
-        }
-        common_args.push(arg.trim().to_string());
+    // In the loop we did not handle last probe
+    if probe_idx >= 2 {
+        common_args.retain(|arg| new_args.contains(arg));
     }
 
-    Some(common_args)
+    if !common_args.is_empty() {
+        Some(
+            common_args
+                .into_iter()
+                .map(|s| s.trim().to_string())
+                .collect(),
+        )
+    } else {
+        None
+    }
 }
 
 fn find_common_args_by_btf(probes_vec: &[String]) -> Option<(Arc<Btf>, BtfFunction)> {
@@ -1399,8 +1419,14 @@ fn get_args_details(probes_vec: &[String]) -> String {
             )
         }
     } else if probes_vec.len() == 1 {
+        let common = if probes_vec[0].contains("*") {
+            " commmon "
+        } else {
+            " "
+        };
         let (_, name) = probes_vec[0].rsplit_once(":").unwrap_or_default();
-        format!("Struct representing arguments of {}\n", name)
+
+        format!("Struct representing{}arguments of {}\n", common, name)
     } else {
         String::new()
     }
@@ -1473,6 +1499,7 @@ fn get_details_and_docs_by_cmd(
     if probe_args.is_empty() {
         return None;
     }
+    log_dbg!(HOVER, "Found probe args by command: {:?}\n", probe_args);
 
     let c_open;
     let c_close;
@@ -1582,9 +1609,11 @@ fn encode_hover_for_field_expression(
     }
 
     let probes_vec = parser::find_probes_for_action(node, text);
+    if probes_vec.is_empty() {
+        return empty_data;
+    }
 
     log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
-
     let probes = Probes::new(probes_vec);
 
     let hover = if probes.btf_probe_args.is_some() {
@@ -1653,9 +1682,8 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
                 };
             }
         } else if is_tracepoint_probe(probe) {
-            let probe_args = find_probe_args_by_command(probe);
-            let mut probe_args_iter = probe_args.lines();
-            let _ = probe_args_iter.next();
+            let probes_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
+            let mut probe_args_iter = probes_args.into_iter();
 
             let (_, name) = probe.rsplit_once(":").unwrap_or_default();
             let first_param = probe_args_iter.next().unwrap_or_default();
@@ -1689,25 +1717,26 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd_mod::{bpftrace_list_probes_verbose, init_bpftrace_dry_run};
     use std::process::Command;
     use std::sync::atomic::{AtomicUsize, Ordering};
     static URI_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     fn preload_probes_args(probes_vec: &[&str]) {
+        init_bpftrace_dry_run(None);
+
         let probes_str = probes_vec.join(",");
 
-        let shell_cmd = format!(r#"(sudo bpftrace -l -v "{}") 2>&1"#, probes_str);
-
-        let Ok(output) = Command::new("sh").arg("-c").arg(shell_cmd).output() else {
-            return;
-        };
-
-        let Ok(all_probes_args) = String::from_utf8(output.stdout) else {
+        let Some(all_probes_args) = bpftrace_list_probes_verbose(&probes_str) else {
+            println!(
+                "bpfrace did not provide arguments for probes '{}'",
+                probes_str
+            );
             return;
         };
 
         if all_probes_args.is_empty() {
-            println!("No arguments for probe {}", probes_str);
+            println!("Empty arguments for probe {}", probes_str);
             return;
         }
 
@@ -2341,6 +2370,8 @@ fentry:vmlinux:find_ge_pid {
 
     #[test]
     fn test_hover_for_tracepoint_args() {
+        init_bpftrace_dry_run(None);
+
         let text = r"
 tracepoint:dma:dma_alloc {
   print(args);
@@ -2365,6 +2396,8 @@ tracepoint:dma:dma_alloc {
 
     #[test]
     fn test_hover_multiple_tracepoint_args() {
+        init_bpftrace_dry_run(None);
+
         let text = r#"
 tracepoint:syscalls:sys_enter_open,
 tracepoint:syscalls:sys_enter_openat,
@@ -2416,6 +2449,8 @@ fentry:vmlinux:async_schedule_node_domain {
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_hover_for_tracepoint_struct() {
+        init_bpftrace_dry_run(None);
+
         let text = r"
 tracepoint:xhci-hcd:xhci_dbc_alloc_request {
   print(args.req)

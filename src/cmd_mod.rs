@@ -25,6 +25,35 @@ fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
     cmd.args(args).output()
 }
 
+pub fn bpftrace_list_probes_verbose(probes_str: &str) -> Option<String> {
+    let cmd = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
+        custom_cmd.to_string()
+    } else {
+        let mut sudo = "";
+        if let Some(use_sudo) = USE_SUDO.get() {
+            if *use_sudo {
+                sudo = "sudo ";
+            }
+        }
+
+        format!("{}bpftrace", sudo)
+    };
+
+    // bpftrace -l -v mixes stdout (for probe names) and stderr (for args),
+    // run in sub shell to get coherent output
+    let shell_cmd = format!(r#"({} -l -v '{}') 2>&1"#, cmd, probes_str);
+
+    let Ok(output) = Command::new("sh").arg("-c").arg(shell_cmd).output() else {
+        return None;
+    };
+
+    let Ok(all_probes_args) = String::from_utf8(output.stdout) else {
+        return None;
+    };
+
+    Some(all_probes_args)
+}
+
 pub fn bpftrace_command(args: &[&str]) -> io::Result<Output> {
     if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
         return Command::new(custom_cmd).args(args).output();
