@@ -1758,7 +1758,7 @@ mod tests {
     static URI_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     fn preload_probes_args(probes_vec: &[&str]) {
-        init_bpftrace_dry_run(None);
+        init_bpftrace_dry_run();
 
         let probes_str = probes_vec.join(",");
 
@@ -2405,7 +2405,7 @@ fentry:vmlinux:find_ge_pid {
 
     #[test]
     fn test_hover_for_tracepoint_args() {
-        init_bpftrace_dry_run(None);
+        init_bpftrace_dry_run();
 
         let text = r"
 tracepoint:dma:dma_alloc {
@@ -2431,7 +2431,7 @@ tracepoint:dma:dma_alloc {
 
     #[test]
     fn test_hover_multiple_tracepoint_args() {
-        init_bpftrace_dry_run(None);
+        init_bpftrace_dry_run();
 
         let text = r#"
 tracepoint:syscalls:sys_enter_open,
@@ -2484,7 +2484,7 @@ fentry:vmlinux:async_schedule_node_domain {
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_hover_for_tracepoint_struct() {
-        init_bpftrace_dry_run(None);
+        init_bpftrace_dry_run();
 
         let text = r"
 tracepoint:xhci-hcd:xhci_dbc_alloc_request {

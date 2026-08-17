@@ -97,14 +97,16 @@ pub fn bpftrace_dry_run_command(prog: &str) -> io::Result<Output> {
     bpftrace_command(&args_d)
 }
 
-pub fn init_bpftrace_dry_run(custom_cmd_opt: Option<String>) {
+pub fn init_bpftrace_command(custom_cmd_opt: Option<String>) {
     // Environment variable takes precedence
     if let Ok(custom_cmd) = env::var("BPFTRACE_LS_COMMAND") {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
     } else if let Some(custom_cmd) = custom_cmd_opt {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
     }
+}
 
+pub fn init_bpftrace_dry_run() {
     let result = bpftrace_dry_run_command("BEGIN { exit() }");
     if let Err(e) = result {
         log_err!("Failed to detect bpftrace dry-run command, error {:?}", e);
