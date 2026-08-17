@@ -2084,6 +2084,23 @@ mod tests {
     }
 
     #[test]
+    fn test_args_completion_for_wildcard_tracepoint() {
+        init_bpftrace_dry_run();
+
+        let text = r#"tracepoint:syscalls:sys_enter_opena*, { args."#;
+        let json_content = document_content_setup(text, 0, text.len());
+
+        let result = encode_completion(json_content);
+        assert_eq!(result["result"]["items"].len(), 4);
+
+        let fields = vec!["how", "mode", "usize"];
+        check_completion_resutls_negative(&result, fields);
+
+        let fields = vec!["dfd", "filename", "__syscall_nr"];
+        check_completion_resutls(result, fields);
+    }
+
+    #[test]
     fn test_modules_completion_for_short_tracepoint() {
         let text = r#"t:"#;
         let json_content = document_content_setup(text, 0, text.len());
