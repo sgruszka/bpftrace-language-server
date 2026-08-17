@@ -1695,7 +1695,6 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
             return data;
         }
 
-        // TODO: this works for multiple probe list , but not for wildcard
         let Some(probe_node) = parser::find_probe_in_probes_list(&node, line_nr, char_nr) else {
             return data;
         };
@@ -1703,7 +1702,29 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         let probe = probe_node.utf8_text(text.as_bytes()).unwrap_or_default();
         log_dbg!(HOVER, "Hover for probe {}", probe);
 
-        if is_btf_probe(probe) || is_kprobe(probe) {
+        if probe.contains("*") && !is_tracepoint_probe(probe) {
+            // Wildcard probe might expand to thousands of individual probes
+            // Just print them, do not try to calculate common arguments
+            let all_probes = expand_probes(vec![probe.to_string()]);
+
+            let mut all_probes_str = String::new();
+            for p in &all_probes {
+                all_probes_str.push_str(&format!("{}\n", p));
+            }
+
+            let hover = format!(
+                "Wildcard probe {}\nExpands into {} individual probes\n\n{}",
+                probe,
+                all_probes.len(),
+                all_probes_str
+            );
+
+            data = object! {
+                  "result": {
+                      "contents": hover,
+                },
+            };
+        } else if is_btf_probe(probe) || is_kprobe(probe) {
             let args_by_btf = if is_kprobe(probe) {
                 find_kfunc_args_by_btf(&kprobe_to_kfunc(probe))
             } else {
