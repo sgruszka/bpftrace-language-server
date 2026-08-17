@@ -2502,6 +2502,33 @@ fentry:vmlinux:async_schedule_node_domain {
         assert!(hover.contains("registered:1"));
     }
 
+    // This test is slow, it has to read availabe traces,
+    // TODO: init AVAILABE_TRACES during test module start
+    #[ignore]
+    #[test]
+    fn test_hover_for_wildcard_probe() {
+        let text = r#"tracepoint:syscalls:sys_enter_open* { }"#;
+
+        let json_content = document_content_setup(text, 0, 5);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        assert_eq!(formatted_hover.lines().count(), 9);
+
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains("Wildcard probe"));
+        assert!(hover.contains("Expands into 6 individual probes"));
+        assert!(hover.contains("sys_enter_open"));
+        assert!(hover.contains("sys_enter_openat"));
+        assert!(hover.contains("sys_enter_openat2"));
+        assert!(hover.contains("sys_enter_open_by_handle_at"));
+    }
+
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_hover_for_tracepoint_struct() {
