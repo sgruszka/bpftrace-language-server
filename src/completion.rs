@@ -1702,7 +1702,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         let probe = probe_node.utf8_text(text.as_bytes()).unwrap_or_default();
         log_dbg!(HOVER, "Hover for probe {}", probe);
 
-        if probe.contains("*") && !is_tracepoint_probe(probe) {
+        if probe.contains("*") {
             // Wildcard probe might expand to thousands of individual probes
             // Just print them, do not try to calculate common arguments
             let all_probes = expand_probes(vec![probe.to_string()]);
