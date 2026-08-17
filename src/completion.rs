@@ -1,8 +1,7 @@
 use glob_match::glob_match;
 use json::{self, object};
 use std::collections::HashMap;
-use std::str::Lines;
-use std::sync::{Arc, LazyLock, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use tree_sitter::Node;
 
@@ -57,9 +56,6 @@ impl From<CompletionItemKind> for json::JsonValue {
     }
 }
 
-static PROBES_ARGS_MAP: LazyLock<Mutex<HashMap<String, String>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
 static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
 
 static FENTRY_KFUNC_NAME: OnceLock<&'static str> = OnceLock::new();
@@ -83,8 +79,8 @@ fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) ->
     s
 }
 
-fn resolve_container_members<'a>(
-    probe_args_iter: impl Iterator<Item = &'a str>,
+fn resolve_container_members(
+    probe_args_iter: impl Iterator<Item = String>,
     this_argument: &str,
 ) -> Option<(Arc<Btf>, BtfVariable, BtfResolvedType)> {
     let btf = btf_module_get("vmlinux")?;
@@ -194,43 +190,6 @@ fn kprobe_to_kfunc(probe: &str) -> String {
     kfunc
 }
 
-fn find_probe_args_by_command(probe: &str) -> String {
-    if probe.is_empty() {
-        return "".to_string();
-    }
-
-    // Use kfunc for getting arguments, kprobe/kretprobe does not work
-    // TODO: above can not to be true on newer bpftrace versions
-    let probe = if is_kprobe(probe) {
-        kprobe_to_kfunc(probe)
-    } else {
-        probe.to_string()
-    };
-
-    let mut probes_args_map = PROBES_ARGS_MAP.lock().unwrap();
-
-    let mut probe_args = "".to_string();
-    if let Some(args) = probes_args_map.get(&probe) {
-        probe_args = args.to_string();
-    } else if let Ok(output) = bpftrace_command(&["-l", "-v", &probe]) {
-        if let Ok(stdout_probe_args) = String::from_utf8(output.stdout) {
-            probe_args = stdout_probe_args.clone();
-        }
-        if let Ok(stderr_probe_args) = String::from_utf8(output.stderr) {
-            probe_args.push_str(&stderr_probe_args);
-        }
-
-        if probe_args.is_empty() {
-            log_err!("No arguments for probe {}", probe);
-        } else {
-            probes_args_map.insert(probe.clone(), probe_args.clone());
-            log_dbg!(COMPL, "Found arguments using command line\n{}", probe_args);
-        }
-    }
-
-    probe_args
-}
-
 fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(Arc<Btf>, BtfFunction)> {
     let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
     log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
@@ -308,7 +267,7 @@ fn items_from_resolved_btf(
     items
 }
 
-fn items_from_probe_args(probe_args_iter: Lines) -> json::JsonValue {
+fn items_from_probe_args(probe_args_iter: impl Iterator<Item = String>) -> json::JsonValue {
     let mut items = json::JsonValue::new_array();
 
     for arg in probe_args_iter {
@@ -419,11 +378,8 @@ fn encode_completion_for_args_or_retval(
     }
 
     let items = if probes.btf_probe_args.is_none() {
-        let probe_args = find_probe_args_by_command(probe);
-        let mut probe_args_iter = probe_args.lines();
-
-        // On first line of probe args is the probe itself
-        probe_args_iter.next();
+        let probe_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
+        let probe_args_iter = probe_args.into_iter();
 
         if args_with_fields.ends_with("args.") || args_with_fields.ends_with("args->") {
             items_from_probe_args(probe_args_iter)
@@ -1231,7 +1187,14 @@ fn cmp_arg(a: &BtfVariable, b: &BtfVariable) -> bool {
 // but need having matching type and name.
 fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
     let all_probes = probes_vec.join(",");
+    log_dbg!(COMPL, "Looking for arguments for probes {:?}", all_probes);
+
     let all_probes_args = bpftrace_list_probes_verbose(&all_probes)?;
+    log_dbg!(
+        COMPL,
+        "Found arguments using command line\n{}",
+        all_probes_args
+    );
 
     let mut probe_idx = 0;
     let mut common_args = Vec::new();
@@ -1267,6 +1230,8 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
     if probe_idx >= 2 {
         common_args.retain(|arg| new_args.contains(arg));
     }
+
+    log_dbg!(COMPL, "Common arguments:\n{:?}", common_args);
 
     if !common_args.is_empty() {
         Some(
@@ -1558,7 +1523,7 @@ fn get_details_and_docs_by_cmd(
         }
         docs.push_str(&format!("}} args;{}", c_close));
     } else if let Some((btf, res_var, res_type)) =
-        resolve_container_members(probe_args.iter().map(|s| s.as_str()), keyword_with_fields)
+        resolve_container_members(probe_args.into_iter(), keyword_with_fields)
     {
         if let Some(actual_type) = res_type.actual_type {
             let s = &format!("{}{}\n{{\n", c_open, actual_type.type_name);
@@ -1776,7 +1741,11 @@ mod tests {
     use crate::cmd_mod::{bpftrace_list_probes_verbose, init_bpftrace_dry_run};
     use std::process::Command;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{LazyLock, Mutex};
+
     static URI_COUNTER: AtomicUsize = AtomicUsize::new(0);
+    static PROBES_ARGS_MAP: LazyLock<Mutex<HashMap<String, String>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
 
     fn preload_probes_args(probes_vec: &[&str]) {
         init_bpftrace_dry_run();
@@ -1818,6 +1787,43 @@ mod tests {
             let mut probes_args_map = PROBES_ARGS_MAP.lock().unwrap();
             probes_args_map.insert(probe, probe_args);
         }
+    }
+
+    fn find_probe_args_by_command(probe: &str) -> String {
+        if probe.is_empty() {
+            return "".to_string();
+        }
+
+        // Use kfunc for getting arguments, kprobe/kretprobe does not work
+        // TODO: above can not to be true on newer bpftrace versions
+        let probe = if is_kprobe(probe) {
+            kprobe_to_kfunc(probe)
+        } else {
+            probe.to_string()
+        };
+
+        let mut probes_args_map = PROBES_ARGS_MAP.lock().unwrap();
+
+        let mut probe_args = "".to_string();
+        if let Some(args) = probes_args_map.get(&probe) {
+            probe_args = args.to_string();
+        } else if let Ok(output) = bpftrace_command(&["-l", "-v", &probe]) {
+            if let Ok(stdout_probe_args) = String::from_utf8(output.stdout) {
+                probe_args = stdout_probe_args.clone();
+            }
+            if let Ok(stderr_probe_args) = String::from_utf8(output.stderr) {
+                probe_args.push_str(&stderr_probe_args);
+            }
+
+            if probe_args.is_empty() {
+                log_err!("No arguments for probe {}", probe);
+            } else {
+                probes_args_map.insert(probe.clone(), probe_args.clone());
+                log_dbg!(COMPL, "Found arguments using command line\n{}", probe_args);
+            }
+        }
+
+        probe_args
     }
 
     fn compare_btf_and_cmd(s: &str) {
@@ -2218,6 +2224,8 @@ k:posix_acl_from_xattr {
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_cma_tracepoint_page_completion() {
+        init_bpftrace_dry_run();
+
         let text = r#"
 tracepoint:cma:cma_release {
   print(args.page->
@@ -2246,6 +2254,8 @@ tracepoint:cma:cma_release {
     #[ignore] // works only on newer bpftrace 0.25 or 0.26
     #[test]
     fn test_rawtracepoint_struct_competion() {
+        init_bpftrace_dry_run();
+
         let text = r#"
 rawtracepoint:vmlinux:xhci_queue_trb {
   print(args.ring->);
@@ -2271,6 +2281,8 @@ rawtracepoint:vmlinux:xhci_queue_trb {
 
     #[test]
     fn test_missing_right_bracket_action() {
+        init_bpftrace_dry_run();
+
         let text = r#"t:syscalls:sys_enter_bpf { args."#;
         let json_content = document_content_setup(text, 0, text.len());
         let result = encode_completion(json_content);
@@ -2282,6 +2294,8 @@ rawtracepoint:vmlinux:xhci_queue_trb {
 
     #[test]
     fn test_missing_left_bracket_action() {
+        init_bpftrace_dry_run();
+
         let text = r#"t:syscalls:sys_enter_bpf args. }"#;
         let json_content = document_content_setup(text, 0, text.len() - 2);
         let result = encode_completion(json_content);
