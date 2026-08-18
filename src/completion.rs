@@ -152,10 +152,11 @@ fn is_fexit_probe(probe: &str) -> bool {
     probe.starts_with("fexit") || probe.starts_with("kretfunc") || probe.starts_with("fr:")
 }
 
-fn is_kprobe(probe: &str) -> bool {
+fn is_kprobe_probe(probe: &str) -> bool {
     probe.starts_with("kprobe") || probe.starts_with("k:")
 }
-fn is_kretprobe(probe: &str) -> bool {
+
+fn is_kretprobe_probe(probe: &str) -> bool {
     probe.starts_with("kretprobe") || probe.starts_with("kr:")
 }
 
@@ -166,8 +167,12 @@ fn is_tracepoint_probe(probe: &str) -> bool {
         || probe.starts_with("rt:")
 }
 
-fn is_btf_probe(probe: &str) -> bool {
+fn probe_use_btf(probe: &str) -> bool {
     is_fentry_probe(probe) || is_fexit_probe(probe)
+}
+
+fn probe_sim_btf(probe: &str) -> bool {
+    is_kprobe_probe(probe) || is_kretprobe_probe(probe)
 }
 
 fn kprobe_to_kfunc(probe: &str) -> String {
@@ -334,13 +339,13 @@ fn probe_properties(probe: &str) -> ProbeProperties {
         has_retval = true;
     }
 
-    if is_kprobe(probe) {
+    if is_kprobe_probe(probe) {
         use_btf = true;
         use_kfunc_for_kprobe = true;
         has_arg_n = true;
     }
 
-    if is_kretprobe(probe) {
+    if is_kretprobe_probe(probe) {
         use_btf = true;
         use_kfunc_for_kprobe = true;
         has_retval = true;
@@ -1668,6 +1673,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         log_dbg!(HOVER, "Hover for probe {}", probe);
 
         if probe.contains("*") {
+            log_dbg!(HOVER, "Probe is wildcard");
             // Wildcard probe might expand to thousands of individual probes
             // Just print them, do not try to calculate common arguments
             let all_probes = expand_probes(vec![probe.to_string()]);
@@ -1689,8 +1695,9 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
                       "contents": hover,
                 },
             };
-        } else if is_btf_probe(probe) || is_kprobe(probe) {
-            let args_by_btf = if is_kprobe(probe) {
+        } else if probe_use_btf(probe) || probe_sim_btf(probe) {
+            log_dbg!(HOVER, "Probe is BTF");
+            let args_by_btf = if probe_sim_btf(probe) {
                 find_kfunc_args_by_btf(&kprobe_to_kfunc(probe))
             } else {
                 find_kfunc_args_by_btf(probe)
@@ -1703,6 +1710,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
                 };
             }
         } else if is_tracepoint_probe(probe) {
+            log_dbg!(HOVER, "Probe is tracepoint");
             let probes_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
             let mut probe_args_iter = probes_args.into_iter();
 
@@ -1796,7 +1804,7 @@ mod tests {
 
         // Use kfunc for getting arguments, kprobe/kretprobe does not work
         // TODO: above can not to be true on newer bpftrace versions
-        let probe = if is_kprobe(probe) {
+        let probe = if probe_sim_btf(probe) {
             kprobe_to_kfunc(probe)
         } else {
             probe.to_string()
