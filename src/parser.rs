@@ -276,7 +276,7 @@ pub fn is_location_macro_name<'t>(
     None
 }
 
-fn field_expr_to_vec<'a>(text: &'a str, field_expr: &Node, last_field: &Node) -> Vec<&'a str> {
+pub fn field_expr_to_vec<'a>(text: &'a str, field_expr: &Node, last_field: &Node) -> Vec<&'a str> {
     let mut vec: Vec<&str> = Vec::new();
     let mut field_expr = *field_expr;
 
@@ -370,6 +370,34 @@ pub fn is_location_field_expression<'t>(
     }
 
     None
+}
+
+pub fn is_location_args_keyword<'t>(
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let node = position_to_node(main_node, line_nr, char_nr)?;
+
+    if node.kind() == "args_keyword" {
+        Some(node)
+    } else {
+        None
+    }
+}
+
+pub fn is_location_retval_identifier<'t>(
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let node = position_to_node(main_node, line_nr, char_nr)?;
+
+    if node.kind() == "retval_identifier" {
+        Some(node)
+    } else {
+        None
+    }
 }
 
 pub fn find_error_location<'t>(

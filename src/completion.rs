@@ -6,8 +6,8 @@ use std::time::Instant;
 use tree_sitter::Node;
 
 use crate::btf_rd::{
-    btf_iterate_function_args, btf_iterate_members, btf_module_get, btf_resolve_func,
-    btf_resolve_struct, btf_resolve_type, btf_resolve_union,
+    btf_iterate_function_args, btf_iterate_function_args_vec, btf_iterate_members, btf_module_get,
+    btf_resolve_func, btf_resolve_struct, btf_resolve_type, btf_resolve_union,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -482,7 +482,7 @@ fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) 
 }
 
 fn add_retval(probes: &Probes, items: &mut json::JsonValue) {
-    let Some((details, docs)) = get_details_and_docs_by_btf(probes, "retval", false) else {
+    let Some((details, docs)) = get_details_and_docs_by_btf(probes, vec!["retval"], false) else {
         return;
     };
 
@@ -502,7 +502,8 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
     let mut details = String::new();
     let mut docs = String::new();
 
-    if let Some((btf_details, btf_docs)) = get_details_and_docs_by_btf(probes, "args", false) {
+    if let Some((btf_details, btf_docs)) = get_details_and_docs_by_btf(probes, vec!["args"], false)
+    {
         details = btf_details;
         docs = btf_docs;
     } else if let Some((cmd_details, cmd_docs)) = get_details_and_docs_by_cmd(probes, "args", false)
@@ -1143,38 +1144,6 @@ pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
     data
 }
 
-fn find_hover_str<LF, RF>(line: &str, char_nr: usize, lcond: LF, rcond: RF) -> String
-where
-    LF: Fn(char) -> bool,
-    RF: Fn(char) -> bool,
-{
-    let mut found = "";
-
-    if line.len() > char_nr {
-        let mut l = 0;
-        let mut r = line.len();
-        for (i, c) in line.chars().enumerate() {
-            if i == char_nr && lcond(c) {
-                return "".to_string();
-            }
-
-            if lcond(c) && i <= char_nr {
-                l = i + 1;
-            }
-
-            if rcond(c) && i > char_nr {
-                r = i;
-                break;
-            }
-        }
-        if found.is_empty() && l < r {
-            found = &line[l..r];
-        }
-    }
-
-    found.to_string()
-}
-
 fn cmp_arg(a: &BtfVariable, b: &BtfVariable) -> bool {
     if a.name != b.name {
         return false;
@@ -1438,14 +1407,27 @@ fn get_args_details(probes_vec: &[String]) -> String {
 
 fn get_details_and_docs_by_btf(
     probes: &Probes,
-    keyword_with_fields: &str,
+    field_expr: Vec<&str>,
     hover: bool,
 ) -> Option<(String, String)> {
-    let (btf, resolved_func) = probes.btf_probe_args.as_ref()?;
+    if field_expr.is_empty() {
+        return None;
+    }
 
+    let mut is_args = false;
+    if field_expr.len() == 1 && field_expr[0] == "args" {
+        is_args = true;
+    }
+
+    let mut is_retval = false;
+    if field_expr.len() == 1 && field_expr[0] == "retval" {
+        is_retval = true;
+    }
+
+    let (btf, resolved_func) = probes.btf_probe_args.as_ref()?;
     let func_name = resolved_func.name.clone();
 
-    let (res_var, res_type) = btf_iterate_function_args(btf, resolved_func, keyword_with_fields)?;
+    let (res_var, res_type) = btf_iterate_function_args_vec(btf, resolved_func, field_expr)?;
 
     let mut details = String::new();
     let mut docs = String::new();
@@ -1462,14 +1444,9 @@ fn get_details_and_docs_by_btf(
         c_close = "\n"
     }
     //struct of all arguments of the traced function.
-    let mut is_args = false;
-    if keyword_with_fields == "args"
-        || keyword_with_fields == "args."
-        || keyword_with_fields == "args->"
-    {
+    if is_args {
         details.push_str(&get_args_details(&probes.probes_vec));
-        is_args = true;
-    } else if keyword_with_fields == "retval" {
+    } else if is_retval {
         details.push_str(&format!("Return value of {}\n", func_name));
         docs.push_str(&format!("{}{};{}\n", c_open, hover_name, c_close));
     } else if res_type.actual_type.is_some() {
@@ -1581,40 +1558,15 @@ fn encode_hover_for_function(
 }
 
 fn encode_hover_for_field_expression(
-    node: &Node,
+    main_node: &Node,
     text: &str,
-    line_str: &str,
-    char_nr: usize,
+    field_expr_vec: Vec<&str>,
 ) -> json::JsonValue {
+    log_dbg!(HOVER, "Hover for field expression {:?}", field_expr_vec);
+
     let empty_data = object! { "result": json::JsonValue::Null };
 
-    // TODO: user parser instead of custom string processing
-    let lterm = |c: char| -> bool {
-        c.is_whitespace()
-            || c == '{'
-            || c == '}'
-            || c == '('
-            || c == ')'
-            || c == ','
-            || c == '*'
-            || c == ';'
-    };
-    let rterm = |c: char| -> bool {
-        c.is_whitespace()
-            || c == '}'
-            || c == '{'
-            || c == ')'
-            || c == '('
-            || c == '.'
-            || c == '-'
-            || c == ';'
-            || c == ','
-            || c == '*'
-    };
-    let found = find_hover_str(line_str, char_nr, lterm, rterm);
-    log_dbg!(HOVER, "Hover found args string '{}'", found);
-
-    let probes_vec = parser::find_probes_for_action(node, text);
+    let probes_vec = parser::find_probes_for_action(main_node, text);
     if probes_vec.is_empty() {
         return empty_data;
     }
@@ -1622,8 +1574,12 @@ fn encode_hover_for_field_expression(
     log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
     let probes = Probes::new(probes_vec);
 
+    // TODO: use field_expr_vec for get_details_and_docs_by_cmd()
+    let found = field_expr_vec.join("");
+
     let hover = if probes.btf_probe_args.is_some() {
-        let Some((details, docs)) = get_details_and_docs_by_btf(&probes, &found, true) else {
+        let Some((details, docs)) = get_details_and_docs_by_btf(&probes, field_expr_vec, true)
+        else {
             return empty_data;
         };
 
@@ -1735,8 +1691,21 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         // TODO handle probes with wildcard
         if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr) {
             data = encode_hover_for_function(&func, text, line_str, char_nr);
-        } else {
-            data = encode_hover_for_field_expression(&node, text, line_str, char_nr);
+        } else if let Some(args) = parser::is_location_args_keyword(&node, line_nr, char_nr)
+            .and_then(|node| node.utf8_text(text.as_bytes()).ok())
+        {
+            data = encode_hover_for_field_expression(&node, text, vec![args]);
+        } else if let Some(retval) = parser::is_location_retval_identifier(&node, line_nr, char_nr)
+            .and_then(|node| node.utf8_text(text.as_bytes()).ok())
+        {
+            data = encode_hover_for_field_expression(&node, text, vec![retval]);
+        } else if let Some((field_expr, last_field)) =
+            parser::is_location_field_expression(&node, line_nr, char_nr)
+        {
+            let vec = parser::field_expr_to_vec(text, &field_expr, &last_field);
+            if !vec.is_empty() {
+                data = encode_hover_for_field_expression(&node, text, vec);
+            }
         }
     }
 
