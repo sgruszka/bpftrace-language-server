@@ -1487,11 +1487,25 @@ pub fn btf_iterate_members(
     comp: &BtfComposite,
     name_chain_str: &str,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
-    if !name_chain_str.starts_with("args.") && !name_chain_str.starts_with("args->") {
+    let name_chain = chain_str_to_tokens(name_chain_str);
+    btf_iterate_members_vec(btf, first_field, comp, name_chain)
+}
+
+pub fn btf_iterate_members_vec(
+    btf: &Btf,
+    first_field: &str,
+    comp: &BtfComposite,
+    mut name_chain: Vec<&str>,
+) -> Option<(BtfVariable, BtfResolvedType)> {
+    if name_chain.len() < 3 {
         return None;
     }
-    let mut name_chain = chain_str_to_tokens(name_chain_str);
-    if name_chain.len() < 3 {
+
+    if name_chain[0] != "args" {
+        return None;
+    }
+
+    if name_chain[1] != "->" && name_chain[1] != "." {
         return None;
     }
 
@@ -1535,10 +1549,17 @@ pub fn btf_iterate_function_args(
     func: &BtfFunction,
     name_chain_str: &str,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
-    let mut name_chain = chain_str_to_tokens(name_chain_str);
+    let name_chain = chain_str_to_tokens(name_chain_str);
+    btf_iterate_function_args_vec(btf, func, name_chain)
+}
 
+pub fn btf_iterate_function_args_vec(
+    btf: &Btf,
+    func: &BtfFunction,
+    mut name_chain: Vec<&str>,
+) -> Option<(BtfVariable, BtfResolvedType)> {
     // Support only args. , retval() , retval as prefixes for name chain
-    if !name_chain_str.starts_with("args") && !name_chain_str.starts_with("retval") {
+    if name_chain.is_empty() {
         return None;
     }
 
