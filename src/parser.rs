@@ -138,6 +138,15 @@ pub fn find_syntax_location<'t>(
     (SyntaxLocation::SourceFile, tree.root_node())
 }
 
+fn position_to_node<'t>(main_node: &'t Node, line_nr: usize, char_nr: usize) -> Option<Node<'t>> {
+    let p = Point {
+        column: char_nr,
+        row: line_nr,
+    };
+
+    main_node.descendant_for_point_range(p, p)
+}
+
 fn location_within_query_match<'t>(
     text: &str,
     root_node: &Node<'t>,
@@ -262,6 +271,102 @@ pub fn is_location_macro_name<'t>(
     let pos = postition_relative_to_node(&name_node, line_nr, char_nr);
     if pos == Position::Within {
         return Some(name_node);
+    }
+
+    None
+}
+
+fn field_expr_to_vec<'a>(text: &'a str, field_expr: &Node, last_field: &Node) -> Vec<&'a str> {
+    let mut vec: Vec<&str> = Vec::new();
+    let mut field_expr = *field_expr;
+
+    // Some complications to skip whitespaces and block comments inside the expression
+    loop {
+        let mut op_idx: u32 = 1;
+        if field_expr.child_count() > 3 {
+            // TODO: introduce operator field_name in tree-sitter-bpftrace to avoid this
+            for idx in 1..field_expr.child_count() as u32 {
+                if let Some(n) = field_expr.child(idx) {
+                    if n.kind() == "." || n.kind() == "->" {
+                        op_idx = idx;
+                        break;
+                    }
+                }
+            }
+        }
+
+        let Some(field) = &field_expr.child_by_field_name("field") else {
+            return Vec::new();
+        };
+
+        let Some(op) = &field_expr.child(op_idx) else {
+            return Vec::new();
+        };
+
+        let Some(arg) = &field_expr.child_by_field_name("argument") else {
+            return Vec::new();
+        };
+
+        if arg == last_field {
+            vec.push(arg.utf8_text(text.as_bytes()).unwrap_or_default());
+            break;
+        }
+
+        if op != last_field {
+            vec.push(field.utf8_text(text.as_bytes()).ok().unwrap_or_default());
+        }
+        vec.push(op.kind());
+
+        if arg.kind() != "field_expression" {
+            vec.push(arg.utf8_text(text.as_bytes()).unwrap_or_default());
+            break;
+        } else {
+            field_expr = *arg;
+        }
+    }
+
+    // We parsed in reverse order
+    vec.reverse();
+    vec
+}
+
+pub fn is_location_field_expression<'t>(
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<(Node<'t>, Node<'t>)> {
+    let node = position_to_node(main_node, line_nr, char_nr)?;
+
+    if (node.kind() == "." || node.kind() == "->" || !node.is_error())
+        && node
+            .parent()
+            .is_some_and(|n| n.kind() == "field_expression")
+    {
+        let field_expr = node.parent().unwrap();
+        let last_field = node;
+
+        return Some((field_expr, last_field));
+    }
+
+    if node.is_error() {
+        if let Some(parent) = node.parent() {
+            let field_expr;
+            if parent.kind() == "field_expression" {
+                field_expr = parent;
+            } else if parent.is_error()
+                && parent
+                    .prev_sibling()
+                    .is_some_and(|n| n.kind() == "field_expression")
+            {
+                field_expr = parent.prev_sibling().unwrap();
+            } else {
+                return None;
+            }
+
+            // TODO: check if line_nr, char_nr, is in field_expr range
+            let last_field = field_expr.child_by_field_name("field")?;
+            return Some((field_expr, last_field));
+        }
     }
 
     None
@@ -863,6 +968,51 @@ kfunc:vmlinux:posix_timer_fn {
         let func_call = is_location_function_call(text, &action, 4, 8).unwrap();
         assert_eq!(func_call.kind(), "identifier");
         assert_eq!(func_call.utf8_text(text.as_bytes()).unwrap(), "printf");
+    }
+
+    #[test]
+    fn test_field_expression_location() {
+        let text = r#"
+f:vmlinux:func {
+  print(args.x.y/* */->z.u
+}
+"#;
+        let tree = setup_syntax_tree(text);
+
+        let (loc, action) = find_syntax_location(text, &tree, 2, 25);
+        assert_eq!(loc, SyntaxLocation::Action);
+        assert_eq!(action.kind(), "action");
+
+        let (field_expr, last_field) = is_location_field_expression(&action, 2, 25).unwrap();
+        assert_eq!(field_expr.kind(), "field_expression");
+        assert_eq!(
+            field_expr_to_vec(text, &field_expr, &last_field),
+            vec!["args", ".", "x", ".", "y", "->", "z", ".", "u"]
+        );
+
+        let (field_expr, last_field) = is_location_field_expression(&action, 2, 22).unwrap();
+        assert_eq!(field_expr.kind(), "field_expression");
+        assert_eq!(
+            field_expr_to_vec(text, &field_expr, &last_field),
+            vec!["args", ".", "x", ".", "y", "->"]
+        );
+
+        let (field_expr, last_field) = is_location_field_expression(&action, 2, 14).unwrap();
+        assert_eq!(field_expr.kind(), "field_expression");
+        assert_eq!(
+            field_expr_to_vec(text, &field_expr, &last_field),
+            vec!["args", ".", "x", "."]
+        );
+
+        let (field_expr, last_field) = is_location_field_expression(&action, 2, 11).unwrap();
+        assert_eq!(field_expr.kind(), "field_expression");
+        assert_eq!(
+            field_expr_to_vec(text, &field_expr, &last_field),
+            vec!["args"]
+        );
+
+        let x = is_location_field_expression(&action, 2, 6);
+        assert_eq!(x, None);
     }
 
     #[test]
