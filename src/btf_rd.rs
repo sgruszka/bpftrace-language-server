@@ -1558,15 +1558,17 @@ pub fn btf_iterate_function_args_vec(
     func: &BtfFunction,
     mut name_chain: Vec<&str>,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
-    // Support only args. , retval() , retval as prefixes for name chain
     if name_chain.is_empty() {
         return None;
     }
 
+    // Support only args. , retval() , retval as prefixes for name chain
     let mut is_retval = false;
     if name_chain.len() == 1 {
         if name_chain[0] == "retval()" || name_chain[0] == "retval" {
             is_retval = true;
+            name_chain.remove(0);
+        } else if name_chain[0] == "args" {
             name_chain.remove(0);
         } else {
             return None;

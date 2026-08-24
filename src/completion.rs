@@ -502,11 +502,10 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
     let mut details = String::new();
     let mut docs = String::new();
 
-    if let Some((btf_details, btf_docs)) = get_details_and_docs_by_btf(probes, "args.", false) {
+    if let Some((btf_details, btf_docs)) = get_details_and_docs_by_btf(probes, "args", false) {
         details = btf_details;
         docs = btf_docs;
-    } else if let Some((cmd_details, cmd_docs)) =
-        get_details_and_docs_by_cmd(probes, "args.", false)
+    } else if let Some((cmd_details, cmd_docs)) = get_details_and_docs_by_cmd(probes, "args", false)
     {
         details = cmd_details;
         docs = cmd_docs;
@@ -1464,7 +1463,10 @@ fn get_details_and_docs_by_btf(
     }
     //struct of all arguments of the traced function.
     let mut is_args = false;
-    if keyword_with_fields == "args." {
+    if keyword_with_fields == "args"
+        || keyword_with_fields == "args."
+        || keyword_with_fields == "args->"
+    {
         details.push_str(&get_args_details(&probes.probes_vec));
         is_args = true;
     } else if keyword_with_fields == "retval" {
@@ -1519,7 +1521,10 @@ fn get_details_and_docs_by_cmd(
     let mut details = String::new();
     let mut docs = String::new();
 
-    if keyword_with_fields == "args." {
+    if keyword_with_fields == "args"
+        || keyword_with_fields == "args."
+        || keyword_with_fields == "args->"
+    {
         details = get_args_details(&probes.probes_vec);
 
         docs.push_str(&format!("{}struct {{\n", c_open));
@@ -1606,12 +1611,8 @@ fn encode_hover_for_field_expression(
             || c == ','
             || c == '*'
     };
-    let mut found = find_hover_str(line_str, char_nr, lterm, rterm);
-    log_dbg!(HOVER, "Hover found args string {}", found);
-
-    if found == "args" {
-        found.push('.');
-    }
+    let found = find_hover_str(line_str, char_nr, lterm, rterm);
+    log_dbg!(HOVER, "Hover found args string '{}'", found);
 
     let probes_vec = parser::find_probes_for_action(node, text);
     if probes_vec.is_empty() {
@@ -1627,7 +1628,7 @@ fn encode_hover_for_field_expression(
         };
 
         details + &docs
-    } else if found.starts_with("args.") {
+    } else if found.starts_with("args") {
         let Some((details, docs)) = get_details_and_docs_by_cmd(&probes, &found, true) else {
             return empty_data;
         };
