@@ -388,7 +388,7 @@ fn encode_completion_for_field_expression(
         let probe_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
         let probe_args_iter = probe_args.into_iter();
 
-        if field_expr.len() == 1 && field_expr[0] == "args" {
+        if (field_expr.len() == 1 || field_expr.len() == 2) && field_expr[0] == "args" {
             items = items_from_probe_args(probe_args_iter)
         } else if let Some((btf, res_var, res_type)) =
             resolve_container_members(probe_args_iter, field_expr)
@@ -413,57 +413,9 @@ fn encode_completion_for_field_expression(
 }
 
 // Complete args. i.e. kfunc:xe:__fini_dbm { printf("%s\n", str(args.drm->driver->name)) }
-fn encode_completion_for_args_or_retval(
-    probes: Probes,
-    args_with_fields: &str,
-) -> Option<json::JsonValue> {
-    let probes_vec = &probes.probes_vec;
-    let probe = probes_vec.first()?;
-
-    if args_with_fields.starts_with("args") && !probes.properties.has_args {
-        return None;
-    }
-
-    if args_with_fields.starts_with("retval") && !probes.properties.has_retval {
-        return None;
-    }
-
-    let items = if probes.btf_probe_args.is_none() {
-        let probe_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
-        let probe_args_iter = probe_args.into_iter();
-
-        if args_with_fields.ends_with("args.") || args_with_fields.ends_with("args->") {
-            items_from_probe_args(probe_args_iter)
-        } else if let Some((btf, res_var, res_type)) = resolve_container_members(
-            probe_args_iter,
-            parser::chain_str_to_tokens(args_with_fields),
-        ) {
-            items_from_resolved_btf(btf, &(res_var, res_type))
-        } else {
-            json::JsonValue::new_array()
-        }
-    } else if let Some((btf, resolved_func)) = probes.btf_probe_args {
-        if let Some(next_items) = btf_iterate_function_args(&btf, &resolved_func, args_with_fields)
-        {
-            // For debug:
-            // log_dbg!(COMPL, "Found arguments using btf:\n{:?}", next_items);
-            items_from_resolved_btf(btf, &next_items)
-        } else {
-            json::JsonValue::new_array()
-        }
-    } else {
-        json::JsonValue::new_array()
-    };
-
-    // Completion list can change if switch from args to retval or vice versa
-    let data = object! {
-        "result": {
-            "isIncomplete": true,
-            "items": items,
-        }
-    };
-
-    Some(data)
+fn encode_completion_for_args_or_retval(probes: Probes, fields: &str) -> Option<json::JsonValue> {
+    let fields_vec = parser::chain_str_to_tokens(fields);
+    encode_completion_for_field_expression(probes, fields_vec)
 }
 
 fn add_block_keywords(items: &mut json::JsonValue) {
