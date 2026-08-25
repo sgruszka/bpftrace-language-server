@@ -6,8 +6,8 @@ use std::time::Instant;
 use tree_sitter::Node;
 
 use crate::btf_rd::{
-    btf_iterate_function_args, btf_iterate_function_args_vec, btf_iterate_members_vec,
-    btf_module_get, btf_resolve_func, btf_resolve_struct, btf_resolve_type, btf_resolve_union,
+    btf_iterate_function_args, btf_iterate_function_args_vec, btf_iterate_members, btf_module_get,
+    btf_resolve_func, btf_resolve_struct, btf_resolve_type, btf_resolve_union,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -130,8 +130,7 @@ fn resolve_container_members(
             continue;
         };
 
-        let (res_var, res_type) =
-            btf_iterate_members_vec(&btf, var_name, &actual_type, field_expr)?;
+        let (res_var, res_type) = btf_iterate_members(&btf, var_name, &actual_type, field_expr)?;
         log_dbg!(
             COMPL,
             "Found field {} with type {}{}",

@@ -1454,16 +1454,6 @@ pub fn btf_iterate_members(
     btf: &Btf,
     first_field: &str,
     comp: &BtfComposite,
-    name_chain_str: &str,
-) -> Option<(BtfVariable, BtfResolvedType)> {
-    let name_chain = chain_str_to_tokens(name_chain_str);
-    btf_iterate_members_vec(btf, first_field, comp, name_chain)
-}
-
-pub fn btf_iterate_members_vec(
-    btf: &Btf,
-    first_field: &str,
-    comp: &BtfComposite,
     mut name_chain: Vec<&str>,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
     if name_chain.len() < 3 {
@@ -1972,6 +1962,15 @@ mod tests {
         assert_eq!(resolved_var.name, "d_flags");
         assert_eq!(resolved_type.type_prefix, "unsigned int");
     }
+    pub fn btf_iterate_members_str(
+        btf: &Btf,
+        first_field: &str,
+        comp: &BtfComposite,
+        name_chain_str: &str,
+    ) -> Option<(BtfVariable, BtfResolvedType)> {
+        let name_chain = chain_str_to_tokens(name_chain_str);
+        btf_iterate_members(btf, first_field, comp, name_chain)
+    }
 
     #[test]
     fn test_resolve_inode_struct() {
@@ -1983,7 +1982,8 @@ mod tests {
         assert_eq!(actual_type.members[0].name, "i_mode");
 
         let (res_var, res_type) =
-            btf_iterate_members(&btf, "INODE", &actual_type, "args.INODE->i_sb->s_bdi").unwrap();
+            btf_iterate_members_str(&btf, "INODE", &actual_type, "args.INODE->i_sb->s_bdi")
+                .unwrap();
         assert_eq!(res_var.name, "s_bdi");
         assert_eq!(res_type.type_prefix, "struct backing_dev_info *");
     }
@@ -2003,7 +2003,7 @@ mod tests {
         assert_eq!(actual_type.members[2].type_id, 7837);
 
         let (res_var, res_type) =
-            btf_iterate_members(&btf, "iter", &actual_type, "args.iter->task.tid").unwrap();
+            btf_iterate_members_str(&btf, "iter", &actual_type, "args.iter->task.tid").unwrap();
         assert_eq!(res_var.name, "tid");
         assert_eq!(res_type.type_prefix, "__u32");
     }
