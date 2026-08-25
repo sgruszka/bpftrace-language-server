@@ -222,7 +222,8 @@ fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
 
 fn add_items_from_btf_member(btf: Arc<Btf>, member: &BtfVariable, items: &mut json::JsonValue) {
     if let Some(member_type) = btf_resolve_type(&btf, member.type_id) {
-        if member.name.is_empty() && is_anonymous_type(&member_type) {
+        // Anonymous member with named or inserted struct/union
+        if member.name.is_empty() {
             if let Some(actual_type) = member_type.actual_type {
                 for m in actual_type.members.iter() {
                     add_items_from_btf_member(btf.clone(), m, items);
