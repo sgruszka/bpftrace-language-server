@@ -836,10 +836,53 @@ pub fn is_args_or_retval(line_str: &str, char_nr: usize) -> Option<String> {
     None
 }
 
+pub fn chain_str_to_tokens(names_chain: &str) -> Vec<&str> {
+    let mut res: Vec<&str> = Vec::new();
+
+    let mut start_idx = 0;
+    let mut end_idx = 0;
+
+    for (i, c) in names_chain.char_indices() {
+        match c {
+            '.' => {
+                res.push(&names_chain[start_idx..i]);
+                res.push(".");
+                start_idx = i + 1;
+            }
+            '-' => {
+                res.push(&names_chain[start_idx..i]);
+                start_idx = i + 1;
+            }
+            '>' => {
+                res.push("->");
+                start_idx = i + 1;
+            }
+            _ => end_idx = i,
+        };
+    }
+
+    if end_idx != 0 && start_idx <= end_idx {
+        res.push(&names_chain[start_idx..=end_idx]);
+    }
+
+    res
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tree_sitter::{Parser, Tree};
+
+    #[test]
+    fn test_chain_str_to_tokens() {
+        assert!(chain_str_to_tokens("args") == vec!["args"]);
+        assert!(chain_str_to_tokens("args.") == vec!["args", "."]);
+        assert!(chain_str_to_tokens("xxx->yyy") == vec!["xxx", "->", "yyy"]);
+        assert!(chain_str_to_tokens("a.b.c.d") == vec!["a", ".", "b", ".", "c", ".", "d"]);
+        assert!(
+            chain_str_to_tokens("args.f1.f2->f3") == vec!["args", ".", "f1", ".", "f2", "->", "f3"]
+        );
+    }
 
     fn setup_syntax_tree(source_code: &str) -> Tree {
         let mut parser = Parser::new();

@@ -9,6 +9,7 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::ops::Deref;
 
 use crate::log_mod::{self, BTFRD};
+use crate::parser::chain_str_to_tokens;
 use crate::{log_dbg, log_err};
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -1381,38 +1382,6 @@ fn is_pointer_type(btf: &Btf, type_id: u32) -> bool {
     matches!(btf_type, BtfType::Ptr(_))
 }
 
-fn chain_str_to_tokens(names_chain: &str) -> Vec<&str> {
-    let mut res: Vec<&str> = Vec::new();
-
-    let mut start_idx = 0;
-    let mut end_idx = 0;
-
-    for (i, c) in names_chain.char_indices() {
-        match c {
-            '.' => {
-                res.push(&names_chain[start_idx..i]);
-                res.push(".");
-                start_idx = i + 1;
-            }
-            '-' => {
-                res.push(&names_chain[start_idx..i]);
-                start_idx = i + 1;
-            }
-            '>' => {
-                res.push("->");
-                start_idx = i + 1;
-            }
-            _ => end_idx = i,
-        };
-    }
-
-    if end_idx != 0 && start_idx <= end_idx {
-        res.push(&names_chain[start_idx..=end_idx]);
-    }
-
-    res
-}
-
 fn find_member(btf: &Btf, composite: &BtfComposite, member_name: &str) -> Option<BtfVariable> {
     for m in composite.members.iter() {
         if m.name == *member_name {
@@ -1650,16 +1619,6 @@ mod tests {
         assert!(btf2.is_none());
     }
 
-    #[test]
-    fn test_chain_str_to_tokens() {
-        assert!(chain_str_to_tokens("args") == vec!["args"]);
-        assert!(chain_str_to_tokens("args.") == vec!["args", "."]);
-        assert!(chain_str_to_tokens("xxx->yyy") == vec!["xxx", "->", "yyy"]);
-        assert!(chain_str_to_tokens("a.b.c.d") == vec!["a", ".", "b", ".", "c", ".", "d"]);
-        assert!(
-            chain_str_to_tokens("args.f1.f2->f3") == vec!["args", ".", "f1", ".", "f2", "->", "f3"]
-        );
-    }
     #[test]
     fn test_vmlinux_btf_number_of_types() {
         let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
