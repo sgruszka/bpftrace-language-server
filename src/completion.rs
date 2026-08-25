@@ -6,8 +6,8 @@ use std::time::Instant;
 use tree_sitter::Node;
 
 use crate::btf_rd::{
-    btf_iterate_function_args, btf_iterate_function_args_vec, btf_iterate_members, btf_module_get,
-    btf_resolve_func, btf_resolve_struct, btf_resolve_type, btf_resolve_union,
+    btf_iterate_function_args, btf_iterate_function_args_vec, btf_iterate_members_vec,
+    btf_module_get, btf_resolve_func, btf_resolve_struct, btf_resolve_type, btf_resolve_union,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -81,11 +81,11 @@ fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) ->
 
 fn resolve_container_members(
     probe_args_iter: impl Iterator<Item = String>,
-    this_argument: &str,
+    field_expr: Vec<&str>,
 ) -> Option<(Arc<Btf>, BtfVariable, BtfResolvedType)> {
     let btf = btf_module_get("vmlinux")?;
 
-    log_dbg!(COMPL, "Looking for struct/union for {}", this_argument);
+    log_dbg!(COMPL, "Looking for struct/union for {:?}", field_expr);
 
     for arg in probe_args_iter {
         let mut tokens = arg.split_whitespace();
@@ -130,7 +130,8 @@ fn resolve_container_members(
             continue;
         };
 
-        let (res_var, res_type) = btf_iterate_members(&btf, var_name, &actual_type, this_argument)?;
+        let (res_var, res_type) =
+            btf_iterate_members_vec(&btf, var_name, &actual_type, field_expr)?;
         log_dbg!(
             COMPL,
             "Found field {} with type {}{}",
@@ -388,9 +389,10 @@ fn encode_completion_for_args_or_retval(
 
         if args_with_fields.ends_with("args.") || args_with_fields.ends_with("args->") {
             items_from_probe_args(probe_args_iter)
-        } else if let Some((btf, res_var, res_type)) =
-            resolve_container_members(probe_args_iter, args_with_fields)
-        {
+        } else if let Some((btf, res_var, res_type)) = resolve_container_members(
+            probe_args_iter,
+            parser::chain_str_to_tokens(args_with_fields),
+        ) {
             items_from_resolved_btf(btf, &(res_var, res_type))
         } else {
             json::JsonValue::new_array()
@@ -506,7 +508,8 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
     {
         details = btf_details;
         docs = btf_docs;
-    } else if let Some((cmd_details, cmd_docs)) = get_details_and_docs_by_cmd(probes, "args", false)
+    } else if let Some((cmd_details, cmd_docs)) =
+        get_details_and_docs_by_cmd(probes, vec!["args"], false)
     {
         details = cmd_details;
         docs = cmd_docs;
@@ -1476,7 +1479,7 @@ fn get_details_and_docs_by_btf(
 
 fn get_details_and_docs_by_cmd(
     probes: &Probes,
-    keyword_with_fields: &str,
+    field_expr: Vec<&str>,
     hover: bool,
 ) -> Option<(String, String)> {
     let probe_args = find_common_args_by_cmd(&probes.probes_vec)?;
@@ -1498,10 +1501,7 @@ fn get_details_and_docs_by_cmd(
     let mut details = String::new();
     let mut docs = String::new();
 
-    if keyword_with_fields == "args"
-        || keyword_with_fields == "args."
-        || keyword_with_fields == "args->"
-    {
+    if field_expr.len() == 1 && field_expr[0] == "args" {
         details = get_args_details(&probes.probes_vec);
 
         docs.push_str(&format!("{}struct {{\n", c_open));
@@ -1510,7 +1510,7 @@ fn get_details_and_docs_by_cmd(
         }
         docs.push_str(&format!("}} args;{}", c_close));
     } else if let Some((btf, res_var, res_type)) =
-        resolve_container_members(probe_args.into_iter(), keyword_with_fields)
+        resolve_container_members(probe_args.into_iter(), field_expr)
     {
         if let Some(actual_type) = res_type.actual_type {
             let s = &format!("{}{}\n{{\n", c_open, actual_type.type_name);
@@ -1560,9 +1560,9 @@ fn encode_hover_for_function(
 fn encode_hover_for_field_expression(
     main_node: &Node,
     text: &str,
-    field_expr_vec: Vec<&str>,
+    field_expr: Vec<&str>,
 ) -> json::JsonValue {
-    log_dbg!(HOVER, "Hover for field expression {:?}", field_expr_vec);
+    log_dbg!(HOVER, "Hover for field expression {:?}", field_expr);
 
     let empty_data = object! { "result": json::JsonValue::Null };
 
@@ -1574,18 +1574,14 @@ fn encode_hover_for_field_expression(
     log_dbg!(HOVER, "Found probes vec {:?}", probes_vec);
     let probes = Probes::new(probes_vec);
 
-    // TODO: use field_expr_vec for get_details_and_docs_by_cmd()
-    let found = field_expr_vec.join("");
-
     let hover = if probes.btf_probe_args.is_some() {
-        let Some((details, docs)) = get_details_and_docs_by_btf(&probes, field_expr_vec, true)
-        else {
+        let Some((details, docs)) = get_details_and_docs_by_btf(&probes, field_expr, true) else {
             return empty_data;
         };
 
         details + &docs
-    } else if found.starts_with("args") {
-        let Some((details, docs)) = get_details_and_docs_by_cmd(&probes, &found, true) else {
+    } else if !field_expr.is_empty() && field_expr[0] == "args" {
+        let Some((details, docs)) = get_details_and_docs_by_cmd(&probes, field_expr, true) else {
             return empty_data;
         };
 
