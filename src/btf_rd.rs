@@ -9,7 +9,6 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::ops::Deref;
 
 use crate::log_mod::{self, BTFRD};
-use crate::parser::chain_str_to_tokens;
 use crate::{log_dbg, log_err};
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -1506,15 +1505,6 @@ pub fn btf_iterate_members(
 pub fn btf_iterate_function_args(
     btf: &Btf,
     func: &BtfFunction,
-    name_chain_str: &str,
-) -> Option<(BtfVariable, BtfResolvedType)> {
-    let name_chain = chain_str_to_tokens(name_chain_str);
-    btf_iterate_function_args_vec(btf, func, name_chain)
-}
-
-pub fn btf_iterate_function_args_vec(
-    btf: &Btf,
-    func: &BtfFunction,
     mut name_chain: Vec<&str>,
 ) -> Option<(BtfVariable, BtfResolvedType)> {
     if name_chain.is_empty() {
@@ -1599,6 +1589,7 @@ pub fn btf_iterate_function_args_vec(
 mod tests {
     const VMLINUX_BTF_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
     use super::*;
+    use crate::parser::chain_str_to_tokens;
 
     #[test]
     fn test_load_module() {
@@ -1812,13 +1803,22 @@ mod tests {
         assert_eq!(union.members.len(), 2);
     }
 
+    fn btf_iterate_function_args_str(
+        btf: &Btf,
+        func: &BtfFunction,
+        name_chain_str: &str,
+    ) -> Option<(BtfVariable, BtfResolvedType)> {
+        let name_chain = chain_str_to_tokens(name_chain_str);
+        btf_iterate_function_args(btf, func, name_chain)
+    }
+
     #[test]
     fn test_resolve_alloc_worqueue_noprof() {
         let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
         let base = btf_resolve_func(&btf, "alloc_workqueue_noprof").unwrap();
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "retval").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "retval").unwrap();
 
         assert_eq!(resolved_var.name, "retval");
         assert_eq!(resolved_type.type_prefix, "struct workqueue_struct *");
@@ -1848,12 +1848,12 @@ mod tests {
         let base = btf_resolve_func(&btf, "alloc_pid").unwrap();
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.ns->rcu.next").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.ns->rcu.next").unwrap();
         assert!(resolved_var.name == "next");
         assert!(resolved_type.actual_type.unwrap().members[0].name == "next");
 
         let (resolved_var, _resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.ns->rcu.func").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.ns->rcu.func").unwrap();
         assert_eq!(resolved_var.name, "func");
         // TODO
         // assert_eq!(resolved_type.type_prefix, "void *");
@@ -1862,7 +1862,7 @@ mod tests {
         //     "void (*)( struct callback_head * )"
         // );
 
-        let resolved_fail = btf_iterate_function_args(&btf, &base, "args.ns->rcu->next");
+        let resolved_fail = btf_iterate_function_args_str(&btf, &base, "args.ns->rcu->next");
         assert!(resolved_fail.is_none());
     }
 
@@ -1872,7 +1872,7 @@ mod tests {
 
         let base = btf_resolve_func(&btf, "posixtimer_send_sigqueue").unwrap();
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.tmr->it").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.tmr->it").unwrap();
 
         assert_eq!(resolved_var.name, "it");
         assert_eq!(resolved_type.type_prefix, "union ");
@@ -1900,7 +1900,7 @@ mod tests {
         assert!(base.name == "vfs_open");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.").unwrap();
         assert_eq!(resolved_var.name, "vfs_open");
 
         let members = resolved_type.actual_type.unwrap().members;
@@ -1909,13 +1909,13 @@ mod tests {
         assert_eq!(members[1].name, "file");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "retval").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "retval").unwrap();
         assert_eq!(resolved_var.name, "retval");
         assert_eq!(resolved_type.type_prefix, "int");
         assert!(resolved_type.actual_type.is_none());
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.path").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.path").unwrap();
         assert_eq!(resolved_var.name, "path");
         assert_eq!(resolved_type.type_prefix, "const struct path *");
         let actual_type = resolved_type.actual_type.unwrap();
@@ -1923,7 +1923,7 @@ mod tests {
         assert_eq!(actual_type.members[0].name, "mnt");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.path->dentry->d_inode").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.path->dentry->d_inode").unwrap();
         assert_eq!(resolved_var.name, "d_inode");
         assert_eq!(resolved_type.type_prefix, "struct inode *");
         let actual_type = resolved_type.actual_type.unwrap();
@@ -1931,7 +1931,7 @@ mod tests {
         assert_eq!(actual_type.members[0].name, "i_mode");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.path.dentry").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.path.dentry").unwrap();
         assert_eq!(resolved_var.name, "dentry");
         assert_eq!(resolved_type.type_prefix, "struct dentry *");
         let actual_type = resolved_type.actual_type.unwrap();
@@ -1947,18 +1947,18 @@ mod tests {
         assert!(base.name == "fuse_dentry_delete");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "retval").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "retval").unwrap();
         assert_eq!(resolved_var.name, "retval");
         assert_eq!(resolved_type.type_prefix, "int");
 
         assert!(resolved_type.actual_type.is_none());
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.dentry").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.dentry").unwrap();
         assert_eq!(resolved_var.name, "dentry");
         assert_eq!(resolved_type.type_prefix, "const struct dentry *");
 
         let (resolved_var, resolved_type) =
-            btf_iterate_function_args(&btf, &base, "args.dentry->d_flags").unwrap();
+            btf_iterate_function_args_str(&btf, &base, "args.dentry->d_flags").unwrap();
         assert_eq!(resolved_var.name, "d_flags");
         assert_eq!(resolved_type.type_prefix, "unsigned int");
     }

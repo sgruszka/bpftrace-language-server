@@ -6,8 +6,8 @@ use std::time::Instant;
 use tree_sitter::Node;
 
 use crate::btf_rd::{
-    btf_iterate_function_args, btf_iterate_function_args_vec, btf_iterate_members, btf_module_get,
-    btf_resolve_func, btf_resolve_struct, btf_resolve_type, btf_resolve_union,
+    btf_iterate_function_args, btf_iterate_members, btf_module_get, btf_resolve_func,
+    btf_resolve_struct, btf_resolve_type, btf_resolve_union,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -396,7 +396,7 @@ fn encode_completion_for_field_expression(
             items = items_from_resolved_btf(btf, &(res_var, res_type))
         }
     } else if let Some((btf, resolved_func)) = probes.btf_probe_args {
-        if let Some(next_items) = btf_iterate_function_args_vec(&btf, &resolved_func, field_expr) {
+        if let Some(next_items) = btf_iterate_function_args(&btf, &resolved_func, field_expr) {
             items = items_from_resolved_btf(btf, &next_items)
         }
     }
@@ -1456,7 +1456,7 @@ fn get_details_and_docs_by_btf(
     let (btf, resolved_func) = probes.btf_probe_args.as_ref()?;
     let func_name = resolved_func.name.clone();
 
-    let (res_var, res_type) = btf_iterate_function_args_vec(btf, resolved_func, field_expr)?;
+    let (res_var, res_type) = btf_iterate_function_args(btf, resolved_func, field_expr)?;
 
     let mut details = String::new();
     let mut docs = String::new();
