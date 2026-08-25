@@ -5,13 +5,14 @@ use std::process::Output;
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use crate::log_err;
-use crate::log_mod;
+use crate::log_mod::{self, CMAND};
+use crate::{log_dbg, log_err};
 
 static USE_SUDO: OnceLock<bool> = OnceLock::new();
 static CUSTOM_COMMAND: OnceLock<String> = OnceLock::new();
 
 #[allow(unused)]
+#[derive(Default, Debug)]
 struct Version {
     major: u32,
     minor: u32,
@@ -20,6 +21,7 @@ struct Version {
 }
 
 #[allow(unused)]
+#[derive(Default, Debug)]
 struct Bpftrace {
     version: Version,
     use_dry_run: bool,
@@ -151,6 +153,27 @@ fn bpftrace_properties(ver: Version) -> Bpftrace {
         has_fentry_fexit,
     }
 }
+
+fn bpftrace_properties_from_version() -> Option<Bpftrace> {
+    let Ok(output) = sudo_bpftrace_command(false, &["--version"]) else {
+        log_err!("Failed to get output from bpftrace --version");
+        return None;
+    };
+
+    let Ok(version_str) = String::from_utf8(output.stdout) else {
+        log_err!("Failed to convert stdout to string");
+        return None;
+    };
+    log_dbg!(CMAND, "Found {}", version_str.trim());
+
+    let Some(version) = parse_version(&version_str) else {
+        log_err!("Failed to parse bpftrace version string");
+        return None;
+    };
+
+    Some(bpftrace_properties(version))
+}
+
 pub fn init_bpftrace_command(custom_cmd_opt: Option<String>) {
     let start = Instant::now();
 
@@ -161,29 +184,15 @@ pub fn init_bpftrace_command(custom_cmd_opt: Option<String>) {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
     }
 
-    // TODO: handle errors better or provide message to client
+    // TODO: we initialize to defaults, but really we should make
+    // the client know we can not find version of bpftrace
+    let bpftrace = bpftrace_properties_from_version().unwrap_or_default();
+    log_dbg!(CMAND, "Properties {:?} ", bpftrace);
 
-    let Ok(output) = sudo_bpftrace_command(false, &["--version"]) else {
-        log_err!("Failed to get output from bpftrace --version");
-        return;
-    };
-
-    let Ok(version_str) = String::from_utf8(output.stdout) else {
-        log_err!("Failed to convert stdout to string");
-        return;
-    };
-
-    let Some(version) = parse_version(&version_str) else {
-        log_err!("Failed to parse bpftrace version string");
-        return;
-    };
-
-    let bpftrace = bpftrace_properties(version);
     let _ = BPFTRACE.set(bpftrace);
-
-    log_err!(
-        "Command interface for {} initialized after {:?} ",
-        version_str.trim(),
+    log_dbg!(
+        CMAND,
+        "Bpftrace command initialized after {:?} ",
         start.elapsed()
     );
 }
