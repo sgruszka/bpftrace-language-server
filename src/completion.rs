@@ -2085,6 +2085,24 @@ mod tests {
     }
 
     #[test]
+    fn test_args_completion_find_ge_pid_retval_anonymous() {
+        let text = r#"fexit:vmlinux:find_ge_pid { retval->attr-> }"#;
+        let json_content = document_content_setup(text, 0, text.len() - 2);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() > 0);
+
+        let fields = vec![
+            "attr_mask",
+            "xattrs",
+            "cgroupid",
+            "exit_code",
+            "coredump_mask",
+        ];
+        check_completion_resutls(result, fields);
+    }
+
+    #[test]
     fn test_args_completion_for_wildcard_tracepoint() {
         init_bpftrace_dry_run();
 
