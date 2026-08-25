@@ -364,13 +364,59 @@ fn probe_properties(probe: &str) -> ProbeProperties {
     }
 }
 
+fn encode_completion_for_field_expression(
+    probes: Probes,
+    field_expr: Vec<&str>,
+) -> Option<json::JsonValue> {
+    if field_expr.is_empty() {
+        return None;
+    }
+    let mut items = json::JsonValue::new_array();
+
+    let probes_vec = &probes.probes_vec;
+    let probe = probes_vec.first()?;
+
+    if field_expr[0] == "args" && !probes.properties.has_args {
+        return None;
+    }
+
+    if field_expr[0] == "retval" && !probes.properties.has_retval {
+        return None;
+    }
+
+    if probes.btf_probe_args.is_none() {
+        let probe_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
+        let probe_args_iter = probe_args.into_iter();
+
+        if field_expr.len() == 1 && field_expr[0] == "args" {
+            items = items_from_probe_args(probe_args_iter)
+        } else if let Some((btf, res_var, res_type)) =
+            resolve_container_members(probe_args_iter, field_expr)
+        {
+            items = items_from_resolved_btf(btf, &(res_var, res_type))
+        }
+    } else if let Some((btf, resolved_func)) = probes.btf_probe_args {
+        if let Some(next_items) = btf_iterate_function_args_vec(&btf, &resolved_func, field_expr) {
+            items = items_from_resolved_btf(btf, &next_items)
+        }
+    }
+
+    // Completion list can change if switch from args to retval or vice versa
+    let data = object! {
+        "result": {
+            "isIncomplete": true,
+            "items": items,
+        }
+    };
+
+    Some(data)
+}
+
 // Complete args. i.e. kfunc:xe:__fini_dbm { printf("%s\n", str(args.drm->driver->name)) }
 fn encode_completion_for_args_or_retval(
     probes: Probes,
     args_with_fields: &str,
 ) -> Option<json::JsonValue> {
-    log_dbg!(COMPL, "Complete for argument: {}", args_with_fields);
-
     let probes_vec = &probes.probes_vec;
     let probe = probes_vec.first()?;
 
@@ -1065,11 +1111,35 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
     if loc == SyntaxLocation::Action {
         let probes_vec = parser::find_probes_for_action(&node, text);
         log_dbg!(COMPL, "Action completion for probes vec {:?}", probes_vec);
+
         let probes = Probes::new(probes_vec);
 
-        if let Some(args) = parser::is_args_or_retval(line_str, char_nr) {
-            // TODO handle probes with wildcard
-
+        if let Some(args) = parser::is_location_args_keyword(&node, line_nr, char_nr)
+            .and_then(|node| node.utf8_text(text.as_bytes()).ok())
+        {
+            log_dbg!(COMPL, "Completion for args: '{}'", args);
+            if let Some(data) = encode_completion_for_field_expression(probes, vec![args]) {
+                return data;
+            }
+        } else if let Some(retval) = parser::is_location_retval_identifier(&node, line_nr, char_nr)
+            .and_then(|node| node.utf8_text(text.as_bytes()).ok())
+        {
+            log_dbg!(COMPL, "Completion for retval: '{}'", retval);
+            if let Some(data) = encode_completion_for_field_expression(probes, vec![retval]) {
+                return data;
+            }
+        } else if let Some((field_expr, last_field)) =
+            parser::is_location_field_expression(&node, line_nr, char_nr)
+        {
+            let vec = parser::field_expr_to_vec(text, &field_expr, &last_field);
+            log_dbg!(COMPL, "Completion for field expression: '{:?}'", vec);
+            if let Some(data) = encode_completion_for_field_expression(probes, vec) {
+                return data;
+            }
+            // We do not handle errors on syntax tree well yet, fallback to to manual
+            // string parsing if not detect field expression
+        } else if let Some(args) = parser::is_args_or_retval(line_str, char_nr) {
+            log_dbg!(COMPL, "Completion for args_or_retval: '{:?}'", args);
             if let Some(data) = encode_completion_for_args_or_retval(probes, &args) {
                 return data;
             }
@@ -1084,6 +1154,11 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
 
     if loc == SyntaxLocation::SourceFile && node.has_error() {
         if let Some(args) = parser::is_args_or_retval(line_str, char_nr) {
+            log_dbg!(
+                COMPL,
+                "Parse error completion for args_or_retval: '{:?}'",
+                args
+            );
             if let Some(error_node) = parser::find_error_location(text, &node, line_nr, char_nr) {
                 let probes_vec = parser::find_probes_vec_for_error(&error_node, text);
                 log_dbg!(

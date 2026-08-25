@@ -348,7 +348,8 @@ pub fn is_location_field_expression<'t>(
         return Some((field_expr, last_field));
     }
 
-    if node.is_error() {
+    // TODO: handle errors properly
+    if node.is_error() || node.kind() == "." || node.kind() == "->" {
         if let Some(parent) = node.parent() {
             let field_expr;
             if parent.kind() == "field_expression" {
@@ -378,6 +379,7 @@ pub fn is_location_args_keyword<'t>(
     char_nr: usize,
 ) -> Option<Node<'t>> {
     let node = position_to_node(main_node, line_nr, char_nr)?;
+    // TODO: handle errors properly
 
     if node.kind() == "args_keyword" {
         Some(node)
@@ -392,6 +394,7 @@ pub fn is_location_retval_identifier<'t>(
     char_nr: usize,
 ) -> Option<Node<'t>> {
     let node = position_to_node(main_node, line_nr, char_nr)?;
+    // TODO: handle errors properly
 
     if node.kind() == "retval_identifier" {
         Some(node)
