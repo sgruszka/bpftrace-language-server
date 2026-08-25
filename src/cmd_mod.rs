@@ -3,13 +3,30 @@ use std::io;
 use std::process::Command;
 use std::process::Output;
 use std::sync::OnceLock;
+use std::time::Instant;
 
 use crate::log_err;
 use crate::log_mod;
 
 static USE_SUDO: OnceLock<bool> = OnceLock::new();
-static USE_DRY_RUN: OnceLock<bool> = OnceLock::new();
 static CUSTOM_COMMAND: OnceLock<String> = OnceLock::new();
+
+#[allow(unused)]
+struct Version {
+    major: u32,
+    minor: u32,
+    patch: u32,
+    hash: Option<String>,
+}
+
+#[allow(unused)]
+struct Bpftrace {
+    version: Version,
+    use_dry_run: bool,
+    has_fentry_fexit: bool,
+}
+
+static BPFTRACE: OnceLock<Bpftrace> = OnceLock::new();
 
 fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
     let mut cmd = if use_sudo {
@@ -78,32 +95,97 @@ pub fn bpftrace_dry_run_command(prog: &str) -> io::Result<Output> {
     let args_dry_run = vec!["--dry-run", "-e", prog];
     let args_d = vec!["-d", "-e", prog];
 
-    if let Some(use_dry_run) = USE_DRY_RUN.get() {
-        if *use_dry_run {
+    if let Some(bpftrace) = BPFTRACE.get() {
+        if bpftrace.use_dry_run {
             return bpftrace_command(&args_dry_run);
         } else {
             return bpftrace_command(&args_d);
         }
     }
 
+    // TODO: we should never get here, log error.
     if let Ok(output) = bpftrace_command(&args_dry_run) {
         if output.status.success() {
-            let _ = USE_DRY_RUN.set(true);
             return Ok(output);
         }
     }
 
-    let _ = USE_DRY_RUN.set(false);
     bpftrace_command(&args_d)
 }
 
+fn parse_version(version: &str) -> Option<Version> {
+    let version = version.strip_prefix("bpftrace v")?;
+    let mut parts = version.splitn(2, '-');
+
+    let numbers = parts.next()?.trim();
+    let hash = parts.next().map(String::from);
+
+    let mut nums = numbers.split('.');
+
+    let major = nums.next()?.parse().ok()?;
+    let minor = nums.next()?.parse().ok()?;
+    let patch = nums.next()?.parse().ok()?;
+
+    Some(Version {
+        major,
+        minor,
+        patch,
+        hash,
+    })
+}
+
+fn bpftrace_properties(ver: Version) -> Bpftrace {
+    let mut use_dry_run = false;
+    if ver.minor >= 22 {
+        use_dry_run = true;
+    }
+
+    let mut has_fentry_fexit = false;
+    if ver.minor >= 20 {
+        has_fentry_fexit = true
+    }
+
+    Bpftrace {
+        version: ver,
+        use_dry_run,
+        has_fentry_fexit,
+    }
+}
 pub fn init_bpftrace_command(custom_cmd_opt: Option<String>) {
+    let start = Instant::now();
+
     // Environment variable takes precedence
     if let Ok(custom_cmd) = env::var("BPFTRACE_LS_COMMAND") {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
     } else if let Some(custom_cmd) = custom_cmd_opt {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
     }
+
+    // TODO: handle errors better or provide message to client
+
+    let Ok(output) = sudo_bpftrace_command(false, &["--version"]) else {
+        log_err!("Failed to get output from bpftrace --version");
+        return;
+    };
+
+    let Ok(version_str) = String::from_utf8(output.stdout) else {
+        log_err!("Failed to convert stdout to string");
+        return;
+    };
+
+    let Some(version) = parse_version(&version_str) else {
+        log_err!("Failed to parse bpftrace version string");
+        return;
+    };
+
+    let bpftrace = bpftrace_properties(version);
+    let _ = BPFTRACE.set(bpftrace);
+
+    log_err!(
+        "Command interface for {} initialized after {:?} ",
+        version_str.trim(),
+        start.elapsed()
+    );
 }
 
 pub fn init_bpftrace_dry_run() {
