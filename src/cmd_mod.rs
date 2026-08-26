@@ -30,6 +30,20 @@ struct Bpftrace {
 
 static BPFTRACE: OnceLock<Bpftrace> = OnceLock::new();
 
+pub enum BpftraceProperty {
+    HasFentryFexit,
+}
+
+pub fn bpftrace_has_property(prop: BpftraceProperty) -> bool {
+    let Some(bpftrace) = BPFTRACE.get() else {
+        return false;
+    };
+
+    match prop {
+        BpftraceProperty::HasFentryFexit => bpftrace.has_fentry_fexit,
+    }
+}
+
 fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
     let mut cmd = if use_sudo {
         Command::new("sudo")
@@ -190,6 +204,7 @@ pub fn init_bpftrace_command(custom_cmd_opt: Option<String>) {
     log_dbg!(CMAND, "Properties {:?} ", bpftrace);
 
     let _ = BPFTRACE.set(bpftrace);
+
     log_dbg!(
         CMAND,
         "Bpftrace command initialized after {:?} ",

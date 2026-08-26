@@ -11,7 +11,9 @@ use crate::btf_rd::{
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
-use crate::cmd_mod::{bpftrace_command, bpftrace_list_probes_verbose};
+use crate::cmd_mod::{
+    bpftrace_command, bpftrace_has_property, bpftrace_list_probes_verbose, BpftraceProperty,
+};
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_functions,
 };
@@ -726,14 +728,13 @@ fn encode_completion_for_probe_list(
         || line_tokens[0] == "fentry"
         || line_tokens[0] == "fexit"
     {
-        let fentry_kfunc_name = FENTRY_KFUNC_NAME.get_or_init(||
-            // TOOD: rewrite this to have separte lines for each probe type
+        let fentry_kfunc_name = FENTRY_KFUNC_NAME.get_or_init(|| {
             if available_traces.contains("\nfentry") {
                 "fentry"
             } else {
                 "kfunc"
             }
-        );
+        });
         line_tokens[0] = fentry_kfunc_name;
     } else if line_tokens[0] == "kretprobe" {
         line_tokens[0] = "kprobe";
@@ -894,7 +895,7 @@ fn encode_no_completion() -> json::JsonValue {
 }
 
 fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
-    let prefixes = [
+    let mut prefixes = vec![
         ("begin", None),
         ("end", None),
         ("test", None),
@@ -911,9 +912,15 @@ fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
         ("kretprobe", Some("kr")),
         ("kfunc", None),
         ("kretfunc", None),
-        ("fentry", Some("f")),
-        ("fexit", Some("fr")),
     ];
+
+    if bpftrace_has_property(BpftraceProperty::HasFentryFexit) {
+        let fentry = ("fentry", Some("f"));
+        let fexit = ("fexit", Some("fr"));
+
+        prefixes.push(fentry);
+        prefixes.push(fexit);
+    }
 
     if !line_str.trim().is_empty() {
         for prefix in prefixes.iter() {
@@ -1739,7 +1746,9 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd_mod::{bpftrace_list_probes_verbose, init_bpftrace_dry_run};
+    use crate::cmd_mod::{
+        bpftrace_list_probes_verbose, init_bpftrace_command, init_bpftrace_dry_run,
+    };
     use std::process::Command;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{LazyLock, Mutex};
@@ -1970,6 +1979,7 @@ mod tests {
 
     #[test]
     fn test_probes_completion_for_vmlinux() {
+        init_bpftrace_command(None);
         for text in vec!["kfunc:v", "kretfunc:v", "fentry:v", "fexit:v"].into_iter() {
             let json_content = document_content_setup(text, 0, text.len());
 
@@ -1982,6 +1992,7 @@ mod tests {
 
     #[test]
     fn test_probes_completion_for_modules() {
+        init_bpftrace_command(None);
         for text in vec!["kfunc:", "kretfunc:", "fentry:", "fexit:"].into_iter() {
             let json_content = document_content_setup(text, 0, text.len());
 
