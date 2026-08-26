@@ -1470,6 +1470,7 @@ fn get_details_and_docs_by_btf(
     let mut docs = String::new();
 
     let hover_name = btf_item_to_str(&res_type, Some(&res_var));
+    log_dbg!(COMPL | HOVER, "Found by btf: {}\n", hover_name);
 
     let c_open;
     let c_close;
@@ -1520,7 +1521,12 @@ fn get_details_and_docs_by_cmd(
     if probe_args.is_empty() {
         return None;
     }
-    log_dbg!(HOVER, "Found probe args by command: {:?}\n", probe_args);
+
+    log_dbg!(
+        COMPL | HOVER,
+        "Found probe args by command: {:?}\n",
+        probe_args
+    );
 
     let c_open;
     let c_close;
