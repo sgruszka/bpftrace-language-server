@@ -165,7 +165,16 @@ fn bpftrace_properties(ver: Version) -> Bpftrace {
 }
 
 fn bpftrace_properties_from_version() -> Option<Bpftrace> {
-    let Ok(output) = sudo_bpftrace_command(false, &["--version"]) else {
+    // We need to properly initialize sudo with bpftrace command that
+    // require root privileges, so can not run bpftrace_command() here,
+    // but still want custom command if specified
+    let result = if let Some(_custom_cmd) = CUSTOM_COMMAND.get() {
+        bpftrace_command(&["--version"])
+    } else {
+        sudo_bpftrace_command(false, &["--version"])
+    };
+
+    let Ok(output) = result else {
         log_err!("Failed to get output from bpftrace --version");
         return None;
     };
