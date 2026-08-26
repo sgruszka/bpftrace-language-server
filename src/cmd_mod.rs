@@ -26,12 +26,14 @@ struct Bpftrace {
     version: Version,
     use_dry_run: bool,
     has_fentry_fexit: bool,
+    has_dot_deref: bool,
 }
 
 static BPFTRACE: OnceLock<Bpftrace> = OnceLock::new();
 
 pub enum BpftraceProperty {
     HasFentryFexit,
+    HasDotDeref,
 }
 
 pub fn bpftrace_has_property(prop: BpftraceProperty) -> bool {
@@ -41,6 +43,7 @@ pub fn bpftrace_has_property(prop: BpftraceProperty) -> bool {
 
     match prop {
         BpftraceProperty::HasFentryFexit => bpftrace.has_fentry_fexit,
+        BpftraceProperty::HasDotDeref => bpftrace.has_dot_deref,
     }
 }
 
@@ -151,20 +154,13 @@ fn parse_version(version: &str) -> Option<Version> {
 }
 
 fn bpftrace_properties(ver: Version) -> Bpftrace {
-    let mut use_dry_run = false;
-    if ver.minor >= 22 {
-        use_dry_run = true;
-    }
-
-    let mut has_fentry_fexit = false;
-    if ver.minor >= 20 {
-        has_fentry_fexit = true
-    }
+    let minor = ver.minor;
 
     Bpftrace {
         version: ver,
-        use_dry_run,
-        has_fentry_fexit,
+        use_dry_run: minor >= 22,
+        has_fentry_fexit: minor >= 20,
+        has_dot_deref: minor >= 25,
     }
 }
 

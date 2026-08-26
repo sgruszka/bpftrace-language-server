@@ -8,6 +8,7 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use std::ops::Deref;
 
+use crate::cmd_mod::{bpftrace_has_property, BpftraceProperty};
 use crate::log_mod::{self, BTFRD};
 use crate::{log_dbg, log_err};
 use std::ffi::CStr;
@@ -1425,7 +1426,9 @@ fn iterate_over_names_chain(
                 return None;
             }
         } else if *op == "." {
-            // Newer bpftrace allow dereferencing pointers using dot
+            if !bpftrace_has_property(BpftraceProperty::HasDotDeref) && is_pointer {
+                return None;
+            }
         } else {
             return None;
         }
@@ -1930,13 +1933,17 @@ mod tests {
         assert_eq!(actual_type.type_name, "struct inode");
         assert_eq!(actual_type.members[0].name, "i_mode");
 
-        let (resolved_var, resolved_type) =
-            btf_iterate_function_args_str(&btf, &base, "args.path.dentry").unwrap();
-        assert_eq!(resolved_var.name, "dentry");
-        assert_eq!(resolved_type.type_prefix, "struct dentry *");
-        let actual_type = resolved_type.actual_type.unwrap();
-        assert_eq!(actual_type.type_name, "struct dentry");
-        assert_eq!(actual_type.members[0].name, "d_flags");
+        let opt = btf_iterate_function_args_str(&btf, &base, "args.path.dentry");
+        if bpftrace_has_property(BpftraceProperty::HasDotDeref) {
+            let (resolved_var, resolved_type) = opt.unwrap();
+            assert_eq!(resolved_var.name, "dentry");
+            assert_eq!(resolved_type.type_prefix, "struct dentry *");
+            let actual_type = resolved_type.actual_type.unwrap();
+            assert_eq!(actual_type.type_name, "struct dentry");
+            assert_eq!(actual_type.members[0].name, "d_flags");
+        } else {
+            assert!(opt.is_none());
+        }
     }
 
     #[test]
