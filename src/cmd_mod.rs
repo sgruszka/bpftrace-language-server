@@ -14,10 +14,26 @@ static CUSTOM_COMMAND: OnceLock<String> = OnceLock::new();
 #[allow(unused)]
 #[derive(Default, Debug)]
 struct Version {
-    major: u32,
-    minor: u32,
-    patch: u32,
+    major: u16,
+    minor: u16,
+    patch: u16,
     hash: Option<String>,
+}
+
+macro_rules! bpftrace_version {
+    ($major:literal, $minor:literal, $patch:literal) => {{
+        const _: () = assert!($major >= 0 && $major <= 10);
+        const _: () = assert!($minor >= 0 && $minor <= 100);
+        ($major as u64) << 32 | ($minor as u64) << 16 | ($patch)
+    }};
+}
+
+fn to_flat_version(ver: &Version) -> u64 {
+    let major = ver.major as u64;
+    let minor = ver.minor as u64;
+    let patch = ver.patch as u64;
+
+    major << 32 | minor << 16 | patch
 }
 
 #[allow(unused)]
@@ -154,13 +170,11 @@ fn parse_version(version: &str) -> Option<Version> {
 }
 
 fn bpftrace_properties(ver: Version) -> Bpftrace {
-    let minor = ver.minor;
-
     Bpftrace {
+        use_dry_run: to_flat_version(&ver) >= bpftrace_version!(0, 22, 0),
+        has_fentry_fexit: to_flat_version(&ver) >= bpftrace_version!(0, 20, 0),
+        has_dot_deref: to_flat_version(&ver) >= bpftrace_version!(0, 25, 0),
         version: ver,
-        use_dry_run: minor >= 22,
-        has_fentry_fexit: minor >= 20,
-        has_dot_deref: minor >= 25,
     }
 }
 
