@@ -63,6 +63,14 @@ pub fn bpftrace_has_property(prop: BpftraceProperty) -> bool {
     }
 }
 
+pub fn bpftrace_major_minor_version() -> (u16, u16) {
+    let Some(bpftrace) = BPFTRACE.get() else {
+        return (0, 0); // TODO: sane defaults
+    };
+
+    (bpftrace.version.major, bpftrace.version.minor)
+}
+
 fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
     let mut cmd = if use_sudo {
         Command::new("sudo")

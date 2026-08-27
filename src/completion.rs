@@ -12,7 +12,8 @@ use crate::btf_rd::{
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
 use crate::cmd_mod::{
-    bpftrace_command, bpftrace_has_property, bpftrace_list_probes_verbose, BpftraceProperty,
+    bpftrace_command, bpftrace_has_property, bpftrace_list_probes_verbose,
+    bpftrace_major_minor_version, BpftraceProperty,
 };
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_functions,
@@ -602,7 +603,7 @@ fn add_completion_items_for_block(
         if let Some(probes) = probes_opt {
             add_args_and_retval_keywords(&probes, items);
         }
-        bpftrace_stdlib_functions(items);
+        bpftrace_stdlib_functions(items, bpftrace_major_minor_version());
         add_block_keywords(items);
         add_source_file_macros(node, text, items);
     }
@@ -1572,7 +1573,7 @@ fn encode_hover_for_function(
     let empty_data = object! { "result": json::JsonValue::Null };
 
     let mut items = json::JsonValue::new_array();
-    bpftrace_stdlib_functions(&mut items);
+    bpftrace_stdlib_functions(&mut items, bpftrace_major_minor_version());
 
     let Ok(func) = node.utf8_text(text.as_bytes()) else {
         return empty_data;

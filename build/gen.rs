@@ -139,16 +139,19 @@ pub fn bpftrace_probe_providers(items: &mut json::JsonValue) {
     text
 }
 
-fn gen_completion_stdlib(stdlib_md: &str) -> String {
+fn gen_completion_stdlib(stdlib_md: &str, ver: &str) -> String {
     let mut doc_item = DocItem::default();
     let mut collected_item = false;
     let mut after_label = false;
-    let mut in_full_docs = false;
+    // let mut in_full_docs = false;
 
-    let mut text = r#"
-pub fn bpftrace_stdlib_functions(items: &mut json::JsonValue) {
-    "#
-    .to_string();
+    let ver = ver.replace(".", "_");
+
+    let mut text = format!(
+        r#"
+fn bpftrace_stdlib_{ver}(items: &mut json::JsonValue) {{
+"#
+    );
 
     for line in stdlib_md.lines() {
         if line.trim().starts_with("### ") {
@@ -161,27 +164,65 @@ pub fn bpftrace_stdlib_functions(items: &mut json::JsonValue) {
             collected_item = true;
 
             after_label = true;
-            in_full_docs = false;
             continue;
         }
 
         if after_label {
-            if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
-                doc_item.variants.push_str(&line[3..line.len() - 1]);
-                doc_item.variants.push('\n');
-            } else if !line.trim().is_empty() {
-                after_label = false;
-                in_full_docs = true;
-            }
-        }
-
-        if in_full_docs {
             doc_item.full_info.push_str(line);
             doc_item.full_info.push('\n');
         }
     }
 
     text.push_str("}");
+
+    text
+}
+
+fn gen_completion_stdlib_dispatch(versions: &[&str]) -> String {
+    let mut text = r#"
+    #[allow(unused_comparisons)]
+pub fn bpftrace_stdlib_functions(items: &mut json::JsonValue, (major, minor): (u16, u16)) {
+    "#
+    .to_string();
+
+    let first = versions[0];
+    let mut nums = first.split(".");
+    let major: u16 = nums.next().unwrap().parse().ok().unwrap();
+    let minor: u16 = nums.next().unwrap().parse().ok().unwrap();
+
+    let entry = format!(
+        r#"
+        if major >= {major} && minor >= {minor} {{
+            return bpftrace_stdlib_{major}_{minor}(items);
+        }}"#
+    );
+    text.push_str(&entry);
+
+    for ver in &versions[1..versions.len() - 1] {
+        let mut nums = ver.split(".");
+        let major: u16 = nums.next().unwrap().parse().ok().unwrap();
+        let minor: u16 = nums.next().unwrap().parse().ok().unwrap();
+
+        let entry = format!(
+            r#"
+            if major == {major} && minor == {minor} {{
+                return bpftrace_stdlib_{major}_{minor}(items);
+            }}"#
+        );
+        text.push_str(&entry);
+    }
+
+    let last = versions[versions.len() - 1];
+    let mut nums = last.split(".");
+    let major: u16 = nums.next().unwrap().parse().ok().unwrap();
+    let minor: u16 = nums.next().unwrap().parse().ok().unwrap();
+
+    let last_entry = format!(
+        r#"
+            bpftrace_stdlib_{major}_{minor}(items)
+        }}"#
+    );
+    text.push_str(&last_entry);
 
     text
 }
