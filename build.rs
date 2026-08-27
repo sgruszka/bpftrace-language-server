@@ -21,7 +21,7 @@ use json::object;
     text.push_str(&gen_completion_config_variables(&conf_vars_md));
 
     // Descent order needed
-    let versions = ["0.26", "0.25", "0.24"];
+    let versions = ["0.27", "0.26", "0.25", "0.24"];
     for ver in versions {
         let path = format!("build/v{ver}/stdlib.md");
         println!("cargo:rerun-if-changed={}", path);
