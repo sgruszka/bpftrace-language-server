@@ -1959,7 +1959,8 @@ mod tests {
         assert!(result["result"]["items"].len() > 0);
 
         let functions = vec![
-            "printf", "print", "str", "strlen", "assert", "cpu", "curtask", "exit", "is_ptr",
+            "bswap", "buf", "printf", "print", "str", "signal", "strncmp", "cpu", "curtask",
+            "exit", "count", "avg", "kptr", "uptr",
         ];
         check_completion_resutls(result, functions);
     }
