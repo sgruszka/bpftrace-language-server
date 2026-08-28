@@ -1089,16 +1089,17 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
             if let Some(data) = encode_completion_for_field_expression(probes, vec![retval]) {
                 return data;
             }
-        } else if let Some((field_expr, last_field)) =
-            parser::is_location_field_expression(&node, line_nr, char_nr)
-        {
-            let vec = parser::field_expr_to_vec(text, &field_expr, &last_field);
-            log_dbg!(COMPL, "Completion for field expression: '{:?}'", vec);
-            if let Some(data) = encode_completion_for_field_expression(probes, vec) {
-                return data;
-            }
-            // We do not handle errors on syntax tree well yet, fallback to to manual
-            // string parsing if not detect field expression
+        // TODO: make this work better for when there are parse errors
+        // } else if let Some((field_expr, last_field)) =
+        //     parser::is_location_field_expression(&node, line_nr, char_nr)
+        // {
+        //     let vec = parser::field_expr_to_vec(text, &field_expr, &last_field);
+        //     log_dbg!(COMPL, "Completion for field expression: '{:?}'", vec);
+        //     if let Some(data) = encode_completion_for_field_expression(probes, vec) {
+        //         return data;
+        //     }
+        //     // We do not handle errors on syntax tree well yet, fallback to to manual
+        //     // string parsing if not detect field expression
         } else if let Some(args) = parser::is_args_or_retval(line_str, char_nr) {
             log_dbg!(COMPL, "Completion for args_or_retval: '{:?}'", args);
             if let Some(data) = encode_completion_for_args_or_retval(probes, &args) {
