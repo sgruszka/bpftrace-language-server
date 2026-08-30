@@ -79,7 +79,7 @@ fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
     };
 
     if use_sudo {
-        cmd.arg("bpftrace");
+        cmd.args(["-n", "bpftrace"]);
     }
 
     cmd.args(args).output()
@@ -92,7 +92,7 @@ pub fn bpftrace_list_probes_verbose(probes_str: &str) -> Option<String> {
         let mut sudo = "";
         if let Some(use_sudo) = USE_SUDO.get() {
             if *use_sudo {
-                sudo = "sudo ";
+                sudo = "sudo -n ";
             }
         }
 
