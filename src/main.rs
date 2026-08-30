@@ -245,6 +245,23 @@ fn encode_shutdown() -> json::JsonValue {
     data
 }
 
+fn show_message_notification(msg_type: u32, msg: &str) -> String {
+    let params = object! {
+        "type": msg_type,
+        "message": msg,
+    };
+
+    let data = object! {
+        "jasonrpc": JSON_RPC_VERSION,
+        "method": "window/showMessage",
+        "params": params,
+    };
+
+    let notif = data.dump();
+
+    format!("Content-Length: {}\r\n\r\n{}\r\n", notif.len() + 2, notif)
+}
+
 fn encode_no_definition() -> json::JsonValue {
     object! { "result": json::JsonValue::Null }
 }
@@ -765,7 +782,7 @@ fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
     ))
 }
 
-fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
+fn encode_message(id: u64, method: &str, content: json::JsonValue) -> (String, Option<String>) {
     let mut data = match method {
         "initialize" => encode_initalize_result(),
         "shutdown" => encode_shutdown(),
@@ -785,7 +802,9 @@ fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
     data["jasonrpc"] = JSON_RPC_VERSION.into();
 
     let resp = data.dump();
-    format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp)
+    let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp);
+
+    (msg, None)
 }
 
 fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
@@ -998,11 +1017,15 @@ fn handle_client_msg(
 
     match msg_type {
         LspMessageType::Request(id) => {
-            let s = encode_message(id, &method, content);
+            let (msg, win_msg) = encode_message(id, &method, content);
             let time_diff = start_time.elapsed();
             log_dbg!(PROTO, "Response time {:?}", time_diff);
-            log_vdbg!(PROTO, "Answer:\n{}", s);
-            send_message(s);
+            log_vdbg!(PROTO, "Answer:\n{}", msg);
+            send_message(msg);
+
+            if let Some(msg2) = win_msg {
+                send_message(msg2);
+            }
             // TOOD response with InvalidRequest after shutdown
             // if method == "shutdown" {
             //     break;
