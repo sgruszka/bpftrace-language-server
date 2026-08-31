@@ -123,6 +123,13 @@ pub fn bpftrace_command(args: &[&str]) -> io::Result<Output> {
         return sudo_bpftrace_command(*use_sudo, args);
     }
 
+    if let Ok(output) = sudo_bpftrace_command(true, args) {
+        if output.status.success() {
+            let _ = USE_SUDO.set(true);
+            return Ok(output);
+        }
+    }
+
     if let Ok(output) = sudo_bpftrace_command(false, args) {
         if output.status.success() {
             let _ = USE_SUDO.set(false);
@@ -130,8 +137,7 @@ pub fn bpftrace_command(args: &[&str]) -> io::Result<Output> {
         }
     }
 
-    let _ = USE_SUDO.set(true);
-    sudo_bpftrace_command(true, args)
+    Err(io::ErrorKind::PermissionDenied.into())
 }
 
 pub fn bpftrace_dry_run_command(prog: &str) -> io::Result<Output> {
@@ -186,38 +192,41 @@ fn bpftrace_properties(ver: Version) -> Bpftrace {
     }
 }
 
-fn bpftrace_properties_from_version() -> Option<Bpftrace> {
+fn bpftrace_properties_from_version() -> Result<Bpftrace, io::Error> {
     // We need to properly initialize sudo with bpftrace command that
     // require root privileges, so can not run bpftrace_command() here,
     // but still want custom command if specified
-    let result = if let Some(_custom_cmd) = CUSTOM_COMMAND.get() {
-        bpftrace_command(&["--version"])
+    let output = if let Some(_custom_cmd) = CUSTOM_COMMAND.get() {
+        bpftrace_command(&["--version"])?
     } else {
-        sudo_bpftrace_command(false, &["--version"])
-    };
-
-    let Ok(output) = result else {
-        log_err!("Failed to get output from bpftrace --version");
-        return None;
+        sudo_bpftrace_command(false, &["--version"])?
     };
 
     let Ok(version_str) = String::from_utf8(output.stdout) else {
         log_err!("Failed to convert stdout to string");
-        return None;
+        return Err(io::ErrorKind::InvalidData.into());
     };
     log_dbg!(CMAND, "Found {}", version_str.trim());
 
     let Some(version) = parse_version(&version_str) else {
         log_err!("Failed to parse bpftrace version string");
-        return None;
+        return Err(io::ErrorKind::InvalidData.into());
     };
 
-    Some(bpftrace_properties(version))
+    Ok(bpftrace_properties(version))
 }
 
-pub fn init_bpftrace_command(custom_cmd_opt: Option<String>) {
-    let start = Instant::now();
+fn get_used_command<'a>() -> &'a str {
+    if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
+        custom_cmd
+    } else if USE_SUDO.get().copied().unwrap_or(false) {
+        "sudo bpftrace"
+    } else {
+        "bpftrace"
+    }
+}
 
+pub fn init_bpftrace(custom_cmd_opt: Option<String>) -> Result<(), String> {
     // Environment variable takes precedence
     if let Ok(custom_cmd) = env::var("BPFTRACE_LS_COMMAND") {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
@@ -225,23 +234,48 @@ pub fn init_bpftrace_command(custom_cmd_opt: Option<String>) {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
     }
 
-    // TODO: we initialize to defaults, but really we should make
-    // the client know we can not find version of bpftrace
-    let bpftrace = bpftrace_properties_from_version().unwrap_or_default();
-    log_dbg!(CMAND, "Properties {:?} ", bpftrace);
+    let bpftrace = match bpftrace_properties_from_version() {
+        Ok(bpftrace) => bpftrace,
+        Err(e) => {
+            let cmd = get_used_command();
+            return Err(format!(
+                "'{cmd} --version' failed with '{e}'. LSP functionality limited, see README.md"
+            ));
+        }
+    };
 
+    log_dbg!(CMAND, "Properties {:?} ", bpftrace);
     let _ = BPFTRACE.set(bpftrace);
+    Ok(())
+}
+
+pub fn setup_bpftrace_root_permissions() -> Result<(), String> {
+    let start = Instant::now();
+    let cmd;
+
+    let euid = unsafe { libc::geteuid() };
+    if euid == 0 {
+        let _ = USE_SUDO.set(false);
+        cmd = get_used_command();
+    } else {
+        // 'bptrace --info' is faster than 'bpftrace --dry-run -e "BEGIN { exit() }'
+        // How much faster depends on bpftrace version. Use it since is faster,
+        // even if it might not test all needed CAPABILITIES.
+        let result = bpftrace_command(&["--info"]);
+        cmd = get_used_command();
+
+        if let Err(_e) = result {
+            return Err(format!(
+                "'Can not run {cmd} with root permissions. LSP functionality limited, see README.md"
+            ));
+        }
+    }
 
     log_dbg!(
         CMAND,
-        "Bpftrace command initialized after {:?} ",
+        "'{cmd}' command is root capable, detected after {:?} ",
         start.elapsed()
     );
-}
 
-pub fn init_bpftrace_dry_run() {
-    let result = bpftrace_dry_run_command("BEGIN { exit() }");
-    if let Err(e) = result {
-        log_err!("Failed to detect bpftrace dry-run command, error {:?}", e);
-    }
+    Ok(())
 }

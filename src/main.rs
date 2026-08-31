@@ -130,6 +130,7 @@ enum LspMessageType {
 
 enum NotificationAction {
     None,
+    Init,
     Exit,
     SendDiagnostics(String),
 }
@@ -193,6 +194,9 @@ fn handle_notification(method: String, content: json::JsonValue) -> Notification
             let text_document = &content["params"]["textDocument"];
             let uri = text_document["uri"].to_string();
             return NotificationAction::SendDiagnostics(uri);
+        }
+        "initialized" => {
+            return NotificationAction::Init;
         }
         "exit" => {
             return NotificationAction::Exit;
@@ -1007,6 +1011,7 @@ fn thread_diagnostics(
 fn handle_client_msg(
     lsp_client_msg: LspClientMessage,
     diag_tx: &mpsc::Sender<DiagnosticsCommand>,
+    init_err_msg: &Option<String>,
 ) -> bool {
     let LspClientMessage {
         msg_type,
@@ -1043,6 +1048,13 @@ fn handle_client_msg(
                         send_message(s);
                     }
                 }
+                NotificationAction::Init => {
+                    if let Some(err_msg) = init_err_msg {
+                        let s = show_message_notification(2, err_msg);
+                        log_dbg!(PROTO, "Send show message: {}", s);
+                        send_message(s);
+                    }
+                }
                 NotificationAction::Exit => {
                     log_dbg!(PROTO, "Exiting");
                     send_diag_exit(diag_tx);
@@ -1067,33 +1079,50 @@ fn main() {
     let args = Args::from_env_or_exit();
 
     if let Err(e) = log_mod::create_logger(args.log_file) {
-        println!("Failed to create logger, error {e}");
+        eprintln!("Failed to create logger, error {e}");
     }
 
-    log_dbg!(PROTO, "{} {} started", PKG_NAME, PKG_VERSION);
+    log_dbg!(PROTO, "{} {} start", PKG_NAME, PKG_VERSION);
 
-    cmd_mod::init_bpftrace_command(args.cmd);
-
-    let completion_init = thread::spawn(completion::init_available_traces);
-    let command_init = thread::spawn(cmd_mod::init_bpftrace_dry_run);
+    let start = Instant::now();
 
     let (mpsc_tx, mpsc_rx) = mpsc::channel::<MpscMessage>();
     let diag_mpsc_tx = mpsc_tx.clone();
     thread::spawn(move || thread_input(mpsc_tx));
 
     let (diag_tx, diag_rx) = mpsc::channel::<DiagnosticsCommand>();
-    thread::spawn(move || {
-        let _ = completion_init.join();
-        let _ = command_init.join();
-        thread_diagnostics(diag_mpsc_tx, diag_rx)
-    });
+
+    let mut init_err_msg = None;
+    match cmd_mod::init_bpftrace(args.cmd) {
+        Ok(_) => {
+            let permissions_init = thread::spawn(cmd_mod::setup_bpftrace_root_permissions);
+            let _traces_init = thread::spawn(completion::init_available_traces);
+
+            if let Ok(Err(e)) = permissions_init.join() {
+                init_err_msg = Some(e);
+            }
+
+            thread::spawn(move || thread_diagnostics(diag_mpsc_tx, diag_rx));
+        }
+        Err(e) => {
+            init_err_msg = Some(e);
+        }
+    }
+
+    log_dbg!(
+        PROTO,
+        "{} {} initalized after {:?}",
+        PKG_NAME,
+        PKG_VERSION,
+        start.elapsed()
+    );
 
     loop {
         match mpsc_rx.recv() {
             Ok(mpsc_msg) => {
                 match mpsc_msg {
                     MpscMessage::ClientMessage(client_msg) => {
-                        let do_exit = handle_client_msg(client_msg, &diag_tx);
+                        let do_exit = handle_client_msg(client_msg, &diag_tx, &init_err_msg);
                         if do_exit {
                             break;
                         }

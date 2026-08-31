@@ -1755,7 +1755,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
 mod tests {
     use super::*;
     use crate::cmd_mod::{
-        bpftrace_list_probes_verbose, init_bpftrace_command, init_bpftrace_dry_run,
+        bpftrace_list_probes_verbose, init_bpftrace, setup_bpftrace_root_permissions,
     };
     use std::process::Command;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1766,7 +1766,7 @@ mod tests {
         LazyLock::new(|| Mutex::new(HashMap::new()));
 
     fn preload_probes_args(probes_vec: &[&str]) {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let probes_str = probes_vec.join(",");
 
@@ -1988,7 +1988,7 @@ mod tests {
 
     #[test]
     fn test_probes_completion_for_vmlinux() {
-        init_bpftrace_command(None);
+        assert_eq!(init_bpftrace(None), Ok(()));
         for text in vec!["kfunc:v", "kretfunc:v", "fentry:v", "fexit:v"].into_iter() {
             let json_content = document_content_setup(text, 0, text.len());
 
@@ -2001,7 +2001,7 @@ mod tests {
 
     #[test]
     fn test_probes_completion_for_modules() {
-        init_bpftrace_command(None);
+        assert_eq!(init_bpftrace(None), Ok(()));
         for text in vec!["kfunc:", "kretfunc:", "fentry:", "fexit:"].into_iter() {
             let json_content = document_content_setup(text, 0, text.len());
 
@@ -2124,7 +2124,7 @@ mod tests {
 
     #[test]
     fn test_args_completion_for_wildcard_tracepoint() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r#"tracepoint:syscalls:sys_enter_opena*, { args."#;
         let json_content = document_content_setup(text, 0, text.len());
@@ -2280,7 +2280,7 @@ k:posix_acl_from_xattr {
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_cma_tracepoint_page_completion() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r#"
 tracepoint:cma:cma_release {
@@ -2310,7 +2310,7 @@ tracepoint:cma:cma_release {
     #[ignore] // works only on newer bpftrace 0.25 or 0.26
     #[test]
     fn test_rawtracepoint_struct_competion() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r#"
 rawtracepoint:vmlinux:xhci_queue_trb {
@@ -2337,7 +2337,7 @@ rawtracepoint:vmlinux:xhci_queue_trb {
 
     #[test]
     fn test_missing_right_bracket_action() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r#"t:syscalls:sys_enter_bpf { args."#;
         let json_content = document_content_setup(text, 0, text.len());
@@ -2350,7 +2350,7 @@ rawtracepoint:vmlinux:xhci_queue_trb {
 
     #[test]
     fn test_missing_left_bracket_action() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r#"t:syscalls:sys_enter_bpf args. }"#;
         let json_content = document_content_setup(text, 0, text.len() - 2);
@@ -2496,7 +2496,7 @@ fentry:vmlinux:find_ge_pid {
 
     #[test]
     fn test_hover_for_tracepoint_args() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r"
 tracepoint:dma:dma_alloc {
@@ -2522,7 +2522,7 @@ tracepoint:dma:dma_alloc {
 
     #[test]
     fn test_hover_multiple_tracepoint_args() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r#"
 tracepoint:syscalls:sys_enter_open,
@@ -2602,7 +2602,7 @@ fentry:vmlinux:async_schedule_node_domain {
     #[cfg(feature = "live_btf_tests")]
     #[test]
     fn test_hover_for_tracepoint_struct() {
-        init_bpftrace_dry_run();
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
 
         let text = r"
 tracepoint:xhci-hcd:xhci_dbc_alloc_request {
