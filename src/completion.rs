@@ -706,7 +706,6 @@ fn encode_completion_for_probe_list(
     );
 
     // TOOD separate traces for each type i.e. kprobe, tracepoint
-    // TODO add kretprobe, kretfunc support
     let Some(available_traces) = AVAILABE_TRACES.get_or_init(bpftrace_get_traces_list) else {
         return Some(encode_no_completion());
     };
@@ -895,8 +894,46 @@ fn encode_no_completion() -> json::JsonValue {
     empty_data
 }
 
+fn encode_completion_for_probe_provider(
+    line_str: &str,
+    providers: Vec<(&str, Option<&str>)>,
+) -> Option<json::JsonValue> {
+    if !line_str.trim().is_empty() {
+        for prefix in providers.iter() {
+            if !line_str.trim().starts_with(prefix.0) {
+                continue;
+            }
+            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, None) {
+                return Some(data);
+            }
+        }
+
+        for prefix in providers.iter() {
+            let Some(short_prefix) = prefix.1 else {
+                continue;
+            };
+
+            if line_str.trim().len() <= short_prefix.len()
+                || line_str.trim().chars().nth(short_prefix.len()) != Some(':')
+            {
+                continue;
+            }
+
+            if !line_str.trim().starts_with(short_prefix) {
+                continue;
+            }
+
+            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, prefix.1) {
+                return Some(data);
+            }
+        }
+    }
+
+    None
+}
+
 fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
-    let mut prefixes = vec![
+    let mut providers = vec![
         ("begin", None),
         ("end", None),
         ("test", None),
@@ -919,39 +956,12 @@ fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
         let fentry = ("fentry", Some("f"));
         let fexit = ("fexit", Some("fr"));
 
-        prefixes.push(fentry);
-        prefixes.push(fexit);
+        providers.push(fentry);
+        providers.push(fexit);
     }
 
-    if !line_str.trim().is_empty() {
-        for prefix in prefixes.iter() {
-            if !line_str.trim().starts_with(prefix.0) {
-                continue;
-            }
-            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, None) {
-                return data;
-            }
-        }
-
-        for prefix in prefixes.iter() {
-            let Some(short_prefix) = prefix.1 else {
-                continue;
-            };
-
-            if line_str.trim().len() <= short_prefix.len()
-                || line_str.trim().chars().nth(short_prefix.len()) != Some(':')
-            {
-                continue;
-            }
-
-            if !line_str.trim().starts_with(short_prefix) {
-                continue;
-            }
-
-            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, prefix.1) {
-                return data;
-            }
-        }
+    if let Some(data) = encode_completion_for_probe_provider(line_str, providers) {
+        return data;
     }
 
     encode_completion_for_new_line(line_str)
