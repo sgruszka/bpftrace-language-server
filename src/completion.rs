@@ -813,6 +813,16 @@ fn encode_completion_for_probe_list(
     Some(data)
 }
 
+fn encode_completion_for_uprobe(
+    _prefix: &str,
+    line_str: &str,
+    _short_prefix: Option<&str>,
+) -> Option<json::JsonValue> {
+    let mut _line_tokens: Vec<&str> = line_str.split(":").collect();
+
+    None
+}
+
 pub fn add_empty_line_keywords(items: &mut json::JsonValue) {
     // TODO "config" is only allowed in preamble
     let keywords = ["config", "import", "macro", "let"];
@@ -897,13 +907,14 @@ fn encode_no_completion() -> json::JsonValue {
 fn encode_completion_for_probe_provider(
     line_str: &str,
     providers: Vec<(&str, Option<&str>)>,
+    encode_completion: impl Fn(&str, &str, Option<&str>) -> Option<json::JsonValue>,
 ) -> Option<json::JsonValue> {
     if !line_str.trim().is_empty() {
         for prefix in providers.iter() {
             if !line_str.trim().starts_with(prefix.0) {
                 continue;
             }
-            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, None) {
+            if let Some(data) = encode_completion(prefix.0, line_str, None) {
                 return Some(data);
             }
         }
@@ -923,7 +934,7 @@ fn encode_completion_for_probe_provider(
                 continue;
             }
 
-            if let Some(data) = encode_completion_for_probe_list(prefix.0, line_str, prefix.1) {
+            if let Some(data) = encode_completion(prefix.0, line_str, prefix.1) {
                 return Some(data);
             }
         }
@@ -960,7 +971,17 @@ fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
         providers.push(fexit);
     }
 
-    if let Some(data) = encode_completion_for_probe_provider(line_str, providers) {
+    if let Some(data) =
+        encode_completion_for_probe_provider(line_str, providers, encode_completion_for_probe_list)
+    {
+        return data;
+    }
+
+    let providers = vec![("uprobe", Some("u")), ("uretprobe", Some("ur"))];
+
+    if let Some(data) =
+        encode_completion_for_probe_provider(line_str, providers, encode_completion_for_uprobe)
+    {
         return data;
     }
 
