@@ -1,6 +1,7 @@
 use glob_match::glob_match;
 use json::{self, object};
 use std::collections::HashMap;
+use std::fs;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use tree_sitter::Node;
@@ -813,12 +814,97 @@ fn encode_completion_for_probe_list(
     Some(data)
 }
 
+fn encode_completion_for_file_path(path: &str) -> Option<json::JsonValue> {
+    let mut head;
+    let mut tail = "";
+
+    if path.is_empty() {
+        head = ".";
+    } else if path == "/" {
+        head = "/"
+    } else {
+        (head, tail) = path.rsplit_once("/").unwrap_or((path, ""));
+
+        if head.is_empty() {
+            if path.starts_with('/') {
+                head = "/";
+            } else {
+                head = ".";
+            }
+        }
+    }
+
+    let dir = &format!("{}/", head);
+
+    log_dbg!(COMPL, "Listing files in '{}' with '{}'", dir, tail);
+
+    let entries = fs::read_dir(dir).ok()?;
+    let mut items = json::JsonValue::new_array();
+
+    for entry in entries {
+        let Ok(path) = entry.map(|e| e.path()) else {
+            continue;
+        };
+
+        let Some(path_str) = path.to_str() else {
+            continue;
+        };
+
+        // TODO symlinks,
+        if path.is_dir() || path.is_file() {
+            // TOOD check if file is executable ?
+
+            let base_name = path_str.strip_prefix(dir).unwrap_or(path_str);
+
+            let item = if path.is_dir() {
+                object! {
+                    "label": format!("{}/", base_name),
+                    "kind": CompletionItemKind::Folder
+                }
+            } else {
+                object! {
+                    "label" : base_name,
+                    "kind": CompletionItemKind::File
+                }
+            };
+
+            let _ = items.push(item);
+        }
+    }
+
+    let data = object! {
+        "result": {
+            "isIncomplete": true,
+            "items": items,
+        }
+    };
+
+    Some(data)
+}
+
 fn encode_completion_for_uprobe(
-    _prefix: &str,
+    prefix: &str,
     line_str: &str,
-    _short_prefix: Option<&str>,
+    short_prefix: Option<&str>,
 ) -> Option<json::JsonValue> {
-    let mut _line_tokens: Vec<&str> = line_str.split(":").collect();
+    log_dbg!(
+        COMPL,
+        "Check completion for prefix '{}' with short name {:?}",
+        prefix,
+        short_prefix
+    );
+
+    let line_tokens: Vec<&str> = line_str.split(":").collect();
+    log_dbg!(
+        COMPL,
+        "line_tokens {:?} len {}",
+        line_tokens,
+        line_tokens.len()
+    );
+
+    if line_tokens.len() == 2 {
+        return encode_completion_for_file_path(line_tokens[1]);
+    }
 
     None
 }

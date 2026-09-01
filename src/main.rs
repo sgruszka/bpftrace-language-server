@@ -220,7 +220,7 @@ fn encode_initalize_result() -> json::JsonValue {
         "referencesProvider": true,
         // "codeActionProvider": true,
         "completionProvider": {
-            "triggerCharacters": [":", ".", ">", "$", "@"],
+            "triggerCharacters": [":", ".", ">", "$", "@", "/"],
             // TODO "resolveProvider": true,
 
         },
