@@ -2179,6 +2179,7 @@ mod tests {
             check_completion_resutls(result, modules);
         }
     }
+
     #[test]
     fn test_probes_completion_for_vfs_functions() {
         let text = "kfunc:vmlinux:vfs_";
@@ -2198,6 +2199,39 @@ mod tests {
             "vfs_writev",
             "vfs_truncate",
             "vfs_unlink",
+        ];
+        check_completion_resutls(result, functions);
+    }
+
+    #[test]
+    fn test_completion_for_uprobe_files() {
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
+        let text = "uprobe:target/debug/ ";
+
+        let json_content = document_content_setup(text, 0, text.len() - 1);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() > 0);
+
+        let functions = vec!["build/", "deps/", "examples/", "bpftrace-ls"];
+        check_completion_resutls(result, functions);
+    }
+
+    #[test]
+    fn test_completion_for_uprobe_functions() {
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
+        let text = "uprobe:target/debug/bpftrace-ls: ";
+
+        let json_content = document_content_setup(text, 0, text.len() - 1);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() > 0);
+
+        let functions = vec![
+            "main",
+            "__rust_try",
+            "ts_language_abi_version",
+            "ts_query_new",
         ];
         check_completion_resutls(result, functions);
     }
