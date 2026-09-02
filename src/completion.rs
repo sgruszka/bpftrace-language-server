@@ -13,7 +13,7 @@ use crate::btf_rd::{
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
 use crate::cmd_mod::{
-    bpftrace_command, bpftrace_has_property, bpftrace_list_probes_verbose,
+    bpftrace_command, bpftrace_has_property, bpftrace_list_probes, bpftrace_list_probes_verbose,
     bpftrace_major_minor_version, BpftraceProperty,
 };
 use crate::gen::completion::{
@@ -882,6 +882,35 @@ fn encode_completion_for_file_path(path: &str) -> Option<json::JsonValue> {
     Some(data)
 }
 
+fn encode_completion_for_uprobe_functions(line_tokens: Vec<&str>) -> Option<json::JsonValue> {
+    assert!(line_tokens.len() > 2);
+
+    let uprobe = line_tokens[0..2].join(":") + ":*";
+    log_dbg!(COMPL, "Looking for completion items for '{}'", uprobe);
+
+    let functions = bpftrace_list_probes(&uprobe, true)?;
+    let mut items = json::JsonValue::new_array();
+
+    for func in functions.lines() {
+        let item = object! {
+            "label": func.trim().strip_prefix(&uprobe[0..uprobe.len() - 1]),
+            "kind": CompletionItemKind::Property,
+            // "detail": "TODO",
+            // "documentation": "need better documentation",
+        };
+        let _ = items.push(item);
+    }
+
+    let data = object! {
+        "result": {
+            "isIncomplete": false,
+            "items": items,
+        }
+    };
+
+    Some(data)
+}
+
 fn encode_completion_for_uprobe(
     prefix: &str,
     line_str: &str,
@@ -904,6 +933,8 @@ fn encode_completion_for_uprobe(
 
     if line_tokens.len() == 2 {
         return encode_completion_for_file_path(line_tokens[1]);
+    } else if line_tokens.len() == 3 {
+        return encode_completion_for_uprobe_functions(line_tokens);
     }
 
     None
