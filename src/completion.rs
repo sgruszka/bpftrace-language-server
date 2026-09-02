@@ -541,6 +541,17 @@ fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
 
     for (i, var) in resolved_func.args.iter().enumerate() {
         let detail = if let Some(res_type) = btf_resolve_type(btf, var.type_id) {
+            let arg_i_type = btf_item_to_str(&res_type, None);
+            let cast = format!("(({})arg{})", arg_i_type, i);
+
+            let snippet = object! {
+                "label": format!("arg{}", i),
+                "kind" : CompletionItemKind::Snippet,
+                "detail" : cast.clone(),
+                "insertText": cast,
+            };
+            let _ = items.push(snippet);
+
             btf_item_to_str(&res_type, Some(var))
         } else {
             var.name.clone()
