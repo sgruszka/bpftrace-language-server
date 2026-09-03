@@ -893,18 +893,27 @@ fn encode_completion_for_file_path(path: &str) -> Option<json::JsonValue> {
     Some(data)
 }
 
-fn encode_completion_for_uprobe_functions(line_tokens: Vec<&str>) -> Option<json::JsonValue> {
+fn encode_completion_for_user_space_functions(line_tokens: Vec<&str>) -> Option<json::JsonValue> {
     assert!(line_tokens.len() > 2);
 
-    let uprobe = line_tokens[0..2].join(":") + ":*";
-    log_dbg!(COMPL, "Looking for completion items for '{}'", uprobe);
+    let num_tokens = if line_tokens.len() > 3 { 3 } else { 2 };
+    let probe_match = line_tokens[0..num_tokens].join(":") + ":*";
+    log_dbg!(COMPL, "Looking for completion items for '{}'", probe_match);
 
-    let functions = bpftrace_list_probes(&uprobe, true)?;
+    let functions = bpftrace_list_probes(&probe_match, true)?;
     let mut items = json::JsonValue::new_array();
 
     for func in functions.lines() {
+        let Some(tail) = func
+            .trim()
+            .strip_prefix(&probe_match[0..probe_match.len() - 1])
+        else {
+            continue;
+        };
+        let (label, _) = tail.split_once(":").unwrap_or((tail, ""));
+
         let item = object! {
-            "label": func.trim().strip_prefix(&uprobe[0..uprobe.len() - 1]),
+            "label": label,
             "kind": CompletionItemKind::Property,
             // "detail": "TODO",
             // "documentation": "need better documentation",
@@ -922,7 +931,7 @@ fn encode_completion_for_uprobe_functions(line_tokens: Vec<&str>) -> Option<json
     Some(data)
 }
 
-fn encode_completion_for_uprobe(
+fn encode_completion_for_user_probes(
     prefix: &str,
     line_str: &str,
     short_prefix: Option<&str>,
@@ -944,8 +953,8 @@ fn encode_completion_for_uprobe(
 
     if line_tokens.len() == 2 {
         return encode_completion_for_file_path(line_tokens[1]);
-    } else if line_tokens.len() == 3 {
-        return encode_completion_for_uprobe_functions(line_tokens);
+    } else if line_tokens.len() >= 3 {
+        return encode_completion_for_user_space_functions(line_tokens);
     }
 
     None
@@ -1105,10 +1114,14 @@ fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
         return data;
     }
 
-    let providers = vec![("uprobe", Some("u")), ("uretprobe", Some("ur"))];
+    let providers = vec![
+        ("uprobe", Some("u")),
+        ("uretprobe", Some("ur")),
+        ("usdt", Some("U")),
+    ];
 
     if let Some(data) =
-        encode_completion_for_probe_provider(line_str, providers, encode_completion_for_uprobe)
+        encode_completion_for_probe_provider(line_str, providers, encode_completion_for_user_probes)
     {
         return data;
     }
