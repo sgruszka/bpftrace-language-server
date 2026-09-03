@@ -72,14 +72,22 @@ pub fn bpftrace_major_minor_version() -> (u16, u16) {
 }
 
 fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
+    // TODO: we do not handle args correctly in custom command,
+    // at minimum add information in README.md
+    let cmd_str = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
+        custom_cmd
+    } else {
+        "bpftrace"
+    };
+
     let mut cmd = if use_sudo {
         Command::new("sudo")
     } else {
-        Command::new("bpftrace")
+        Command::new(cmd_str)
     };
 
     if use_sudo {
-        cmd.args(["-n", "bpftrace"]);
+        cmd.args(["-n", cmd_str]);
     }
 
     cmd.args(args).output()
@@ -114,18 +122,20 @@ pub fn bpftrace_list_probes(probes_str: &str, _uprobe: bool) -> Option<String> {
 }
 
 pub fn bpftrace_list_probes_verbose(probes_str: &str) -> Option<String> {
-    let cmd = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
-        custom_cmd.to_string()
+    let cmd_str = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
+        custom_cmd
     } else {
-        let mut sudo = "";
-        if let Some(use_sudo) = USE_SUDO.get() {
-            if *use_sudo {
-                sudo = "sudo -n ";
-            }
-        }
-
-        format!("{}bpftrace", sudo)
+        "bpftrace"
     };
+
+    let mut sudo = "";
+    if let Some(use_sudo) = USE_SUDO.get() {
+        if *use_sudo {
+            sudo = "sudo -n ";
+        }
+    }
+
+    let cmd = format!("{}{}", sudo, cmd_str);
 
     // bpftrace -l -v mixes stdout (for probe names) and stderr (for args),
     // run in sub shell to get coherent output
@@ -143,24 +153,20 @@ pub fn bpftrace_list_probes_verbose(probes_str: &str) -> Option<String> {
 }
 
 pub fn bpftrace_command(args: &[&str]) -> io::Result<Output> {
-    if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
-        return Command::new(custom_cmd).args(args).output();
-    }
-
     if let Some(use_sudo) = USE_SUDO.get() {
         return sudo_bpftrace_command(*use_sudo, args);
-    }
-
-    if let Ok(output) = sudo_bpftrace_command(true, args) {
-        if output.status.success() {
-            let _ = USE_SUDO.set(true);
-            return Ok(output);
-        }
     }
 
     if let Ok(output) = sudo_bpftrace_command(false, args) {
         if output.status.success() {
             let _ = USE_SUDO.set(false);
+            return Ok(output);
+        }
+    }
+
+    if let Ok(output) = sudo_bpftrace_command(true, args) {
+        if output.status.success() {
+            let _ = USE_SUDO.set(true);
             return Ok(output);
         }
     }
@@ -180,14 +186,7 @@ pub fn bpftrace_dry_run_command(prog: &str) -> io::Result<Output> {
         }
     }
 
-    // TODO: we should never get here, log error.
-    if let Ok(output) = bpftrace_command(&args_dry_run) {
-        if output.status.success() {
-            return Ok(output);
-        }
-    }
-
-    bpftrace_command(&args_d)
+    Err(io::ErrorKind::PermissionDenied.into())
 }
 
 fn parse_version(version: &str) -> Option<Version> {
@@ -221,14 +220,7 @@ fn bpftrace_properties(ver: Version) -> Bpftrace {
 }
 
 fn bpftrace_properties_from_version() -> Result<Bpftrace, io::Error> {
-    // We need to properly initialize sudo with bpftrace command that
-    // require root privileges, so can not run bpftrace_command() here,
-    // but still want custom command if specified
-    let output = if let Some(_custom_cmd) = CUSTOM_COMMAND.get() {
-        bpftrace_command(&["--version"])?
-    } else {
-        sudo_bpftrace_command(false, &["--version"])?
-    };
+    let output = sudo_bpftrace_command(false, &["--version"])?;
 
     let Ok(version_str) = String::from_utf8(output.stdout) else {
         log_err!("Failed to convert stdout to string");
