@@ -81,15 +81,15 @@ struct Warnings {
     messages: Vec<String>,
 }
 
-struct WarningsToClient(LazyLock<Mutex<Warnings>>);
+pub struct WarningsToClient(LazyLock<Mutex<Warnings>>);
 
-static WARNINGS_TO_CLIENT: WarningsToClient =
+pub static WARNINGS_TO_CLIENT: WarningsToClient =
     WarningsToClient(LazyLock::new(|| Mutex::new(Warnings::default())));
 
-enum WarningType {
+pub enum WarningType {
     NoBpftrace = 0,
     NoRoot = 1,
-    // NoBtf = 2,
+    NoBtf = 2,
 }
 
 impl WarningsToClient {

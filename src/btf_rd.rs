@@ -10,7 +10,7 @@ use std::ops::Deref;
 
 use crate::cmd_mod::{bpftrace_has_property, BpftraceProperty};
 use crate::log_mod::{self, BTFRD};
-use crate::{log_dbg, log_err};
+use crate::{log_dbg, log_err, WarningType, WARNINGS_TO_CLIENT};
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
@@ -1095,6 +1095,10 @@ fn btf_setup_vmlinux_btf() -> Option<Arc<Btf>> {
         }
         Err(e) => {
             log_err!("Failed to build vmlinux BTF from {vmlinux_btf} with error {e}");
+            WARNINGS_TO_CLIENT.push(
+                WarningType::NoBtf,
+                "BTF not available. LSP functionality limited, see README.md".to_owned(),
+            );
             None
         }
     }
