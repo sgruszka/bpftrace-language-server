@@ -6,7 +6,7 @@ use json::{self, object};
 use std::{
     collections::HashMap,
     io::{self, Read, Write},
-    sync::{mpsc, Arc, LazyLock, RwLock},
+    sync::{mpsc, Arc, LazyLock, Mutex, RwLock},
     thread,
     time::{Duration, Instant},
 };
@@ -75,6 +75,51 @@ impl DocumentsState {
     }
 }
 
+#[derive(Default)]
+struct Warnings {
+    sent_mask: u32,
+    messages: Vec<String>,
+}
+
+struct WarningsToClient(LazyLock<Mutex<Warnings>>);
+
+static WARNINGS_TO_CLIENT: WarningsToClient =
+    WarningsToClient(LazyLock::new(|| Mutex::new(Warnings::default())));
+
+enum WarningType {
+    NoBpftrace = 0,
+    NoRoot = 1,
+    // NoBtf = 2,
+}
+
+impl WarningsToClient {
+    fn push(&self, warn_id: WarningType, msg: String) {
+        let Ok(mut warnings) = self.0.lock() else {
+            return;
+        };
+
+        let bit_nr = 1u32 << (warn_id as u32);
+        if warnings.sent_mask & bit_nr != 0 {
+            return;
+        }
+
+        warnings.sent_mask |= bit_nr;
+        warnings.messages.push(msg);
+    }
+
+    fn pop(&self) -> Option<Vec<String>> {
+        let Ok(mut warnings) = self.0.lock() else {
+            return None;
+        };
+
+        let mut out = Vec::new();
+        out.append(&mut warnings.messages);
+
+        Some(out)
+    }
+}
+//
+
 pub fn unpack_text_document_info(content: json::JsonValue) -> (String, usize, usize) {
     let uri = content["params"]["textDocument"]["uri"].to_string();
 
@@ -130,7 +175,6 @@ enum LspMessageType {
 
 enum NotificationAction {
     None,
-    Init,
     Exit,
     SendDiagnostics(String),
 }
@@ -196,7 +240,8 @@ fn handle_notification(method: String, content: json::JsonValue) -> Notification
             return NotificationAction::SendDiagnostics(uri);
         }
         "initialized" => {
-            return NotificationAction::Init;
+            log_dbg!(NOTIF, "Client initalized");
+            return NotificationAction::None;
         }
         "exit" => {
             return NotificationAction::Exit;
@@ -786,7 +831,7 @@ fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
     ))
 }
 
-fn encode_message(id: u64, method: &str, content: json::JsonValue) -> (String, Option<String>) {
+fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
     let mut data = match method {
         "initialize" => encode_initalize_result(),
         "shutdown" => encode_shutdown(),
@@ -808,7 +853,7 @@ fn encode_message(id: u64, method: &str, content: json::JsonValue) -> (String, O
     let resp = data.dump();
     let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp);
 
-    (msg, None)
+    msg
 }
 
 fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
@@ -1011,7 +1056,6 @@ fn thread_diagnostics(
 fn handle_client_msg(
     lsp_client_msg: LspClientMessage,
     diag_tx: &mpsc::Sender<DiagnosticsCommand>,
-    init_err_msg: &Option<String>,
 ) -> bool {
     let LspClientMessage {
         msg_type,
@@ -1022,15 +1066,12 @@ fn handle_client_msg(
 
     match msg_type {
         LspMessageType::Request(id) => {
-            let (msg, win_msg) = encode_message(id, &method, content);
+            let msg = encode_message(id, &method, content);
             let time_diff = start_time.elapsed();
             log_dbg!(PROTO, "Response time {:?}", time_diff);
             log_vdbg!(PROTO, "Answer:\n{}", msg);
             send_message(msg);
 
-            if let Some(msg2) = win_msg {
-                send_message(msg2);
-            }
             // TOOD response with InvalidRequest after shutdown
             // if method == "shutdown" {
             //     break;
@@ -1045,13 +1086,6 @@ fn handle_client_msg(
                 NotificationAction::SendDiagnostics(uri) => {
                     if let Some(s) = do_diagnostics(uri, diag_tx) {
                         log_dbg!(DIAGN, "Send diagnostics: {}", s);
-                        send_message(s);
-                    }
-                }
-                NotificationAction::Init => {
-                    if let Some(err_msg) = init_err_msg {
-                        let s = show_message_notification(2, err_msg);
-                        log_dbg!(PROTO, "Send show message: {}", s);
                         send_message(s);
                     }
                 }
@@ -1092,21 +1126,18 @@ fn main() {
 
     let (diag_tx, diag_rx) = mpsc::channel::<DiagnosticsCommand>();
 
-    let mut init_err_msg = None;
     match cmd_mod::init_bpftrace(args.cmd) {
         Ok(_) => {
             let permissions_init = thread::spawn(cmd_mod::setup_bpftrace_root_permissions);
             let _traces_init = thread::spawn(completion::init_available_traces);
 
             if let Ok(Err(e)) = permissions_init.join() {
-                init_err_msg = Some(e);
+                WARNINGS_TO_CLIENT.push(WarningType::NoRoot, e)
             }
 
             thread::spawn(move || thread_diagnostics(diag_mpsc_tx, diag_rx));
         }
-        Err(e) => {
-            init_err_msg = Some(e);
-        }
+        Err(e) => WARNINGS_TO_CLIENT.push(WarningType::NoBpftrace, e),
     }
 
     log_dbg!(
@@ -1122,7 +1153,7 @@ fn main() {
             Ok(mpsc_msg) => {
                 match mpsc_msg {
                     MpscMessage::ClientMessage(client_msg) => {
-                        let do_exit = handle_client_msg(client_msg, &diag_tx, &init_err_msg);
+                        let do_exit = handle_client_msg(client_msg, &diag_tx);
                         if do_exit {
                             break;
                         }
@@ -1138,6 +1169,14 @@ fn main() {
             Err(err) => {
                 log_err!("Subthread error {}", err);
                 break;
+            }
+        }
+
+        if let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop() {
+            while let Some(msg) = warn_msgs.pop() {
+                let s = show_message_notification(2, &msg);
+                log_dbg!(PROTO, "Send show message: {}", s);
+                send_message(s);
             }
         }
     }
