@@ -94,19 +94,22 @@ fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
 }
 
 pub fn bpftrace_list_probes(probes_str: &str, _uprobe: bool) -> Option<String> {
-    let cmd = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
-        custom_cmd.to_string()
+    let cmd_str = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
+        custom_cmd
     } else {
-        // TOOD: new bpftrace does not requre root permissions for uprobes
-        let mut sudo = "";
-        if let Some(use_sudo) = USE_SUDO.get() {
-            if *use_sudo {
-                sudo = "sudo -n ";
-            }
-        }
-
-        format!("{}bpftrace", sudo)
+        "bpftrace"
     };
+
+    // TODO: this depends on setup_bpftrace_root_permissions() finish
+    // Need to wait, or do something similar like in bpftrace_command()
+    let mut sudo = "";
+    if let Some(use_sudo) = USE_SUDO.get() {
+        if *use_sudo {
+            sudo = "sudo -n ";
+        }
+    }
+
+    let cmd = format!("{}{}", sudo, cmd_str);
 
     let shell_cmd = format!(r#"({} -l '{}') 2>&1"#, cmd, probes_str);
 
@@ -128,6 +131,8 @@ pub fn bpftrace_list_probes_verbose(probes_str: &str) -> Option<String> {
         "bpftrace"
     };
 
+    // TODO: this depends on setup_bpftrace_root_permissions() finish
+    // Need to wait or do something similar like in bpftrace_command()
     let mut sudo = "";
     if let Some(use_sudo) = USE_SUDO.get() {
         if *use_sudo {

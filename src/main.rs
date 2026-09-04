@@ -1128,13 +1128,13 @@ fn main() {
 
     match cmd_mod::init_bpftrace(args.cmd) {
         Ok(_) => {
-            let permissions_init = thread::spawn(cmd_mod::setup_bpftrace_root_permissions);
-            let _traces_init = thread::spawn(completion::init_available_traces);
+            thread::spawn(|| {
+                if let Err(e) = cmd_mod::setup_bpftrace_root_permissions() {
+                    WARNINGS_TO_CLIENT.push(WarningType::NoRoot, e);
+                }
+            });
 
-            if let Ok(Err(e)) = permissions_init.join() {
-                WARNINGS_TO_CLIENT.push(WarningType::NoRoot, e)
-            }
-
+            thread::spawn(completion::init_available_traces);
             thread::spawn(move || thread_diagnostics(diag_mpsc_tx, diag_rx));
         }
         Err(e) => WARNINGS_TO_CLIENT.push(WarningType::NoBpftrace, e),
