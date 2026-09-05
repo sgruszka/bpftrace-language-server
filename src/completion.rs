@@ -1417,16 +1417,12 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
 
     log_dbg!(COMPL, "Common arguments:\n{:?}", common_args);
 
-    if !common_args.is_empty() {
-        Some(
-            common_args
-                .into_iter()
-                .map(|s| s.trim().to_string())
-                .collect(),
-        )
-    } else {
-        None
-    }
+    Some(
+        common_args
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .collect(),
+    )
 }
 
 fn find_common_args_by_btf(probes_vec: &[String]) -> Option<(Arc<Btf>, BtfFunction)> {
@@ -1621,8 +1617,22 @@ fn get_details_and_docs_by_btf(
     field_expr: Vec<&str>,
     hover: bool,
 ) -> Option<(String, String)> {
+    log_dbg!(
+        COMPL | HOVER,
+        "Looking for details of field expression '{:?}' with probes '{:?}' using BTF",
+        field_expr,
+        probes.probes_vec
+    );
+
     if field_expr.is_empty() {
         return None;
+    }
+
+    if probes.probes_vec.is_empty() {
+        return Some((
+            "".to_owned(),
+            "Probe list did not resolve to any probes, no valid arguments".to_owned(),
+        ));
     }
 
     let mut is_args = false;
@@ -1639,12 +1649,15 @@ fn get_details_and_docs_by_btf(
     let func_name = resolved_func.name.clone();
 
     let (res_var, res_type) = btf_iterate_function_args(btf, resolved_func, field_expr)?;
+    let declaration = btf_item_to_str(&res_type, Some(&res_var));
+    log_dbg!(
+        COMPL | HOVER,
+        "Found BTF variable declaration {}",
+        declaration
+    );
 
     let mut details = String::new();
     let mut docs = String::new();
-
-    let hover_name = btf_item_to_str(&res_type, Some(&res_var));
-    log_dbg!(COMPL | HOVER, "Found by btf: {}\n", hover_name);
 
     let c_open;
     let c_close;
@@ -1660,12 +1673,12 @@ fn get_details_and_docs_by_btf(
         details.push_str(&get_args_details(&probes.probes_vec));
     } else if is_retval {
         details.push_str(&format!("Return value of {}\n", func_name));
-        docs.push_str(&format!("{}{};{}\n", c_open, hover_name, c_close));
+        docs.push_str(&format!("{}{};{}\n", c_open, declaration, c_close));
     } else if res_type.actual_type.is_some() {
-        details = hover_name;
+        details = declaration;
         details.push_str(":\n");
     } else {
-        details = format!("{}{};{}\n", c_open, hover_name, c_close)
+        details = format!("{}{};{}\n", c_open, declaration, c_close)
     }
 
     if let Some(actual_type) = res_type.actual_type {
@@ -1691,10 +1704,25 @@ fn get_details_and_docs_by_cmd(
     field_expr: Vec<&str>,
     hover: bool,
 ) -> Option<(String, String)> {
-    let probe_args = find_common_args_by_cmd(&probes.probes_vec)?;
-    if probe_args.is_empty() {
+    log_dbg!(
+        COMPL | HOVER,
+        "Looking for details of field expression '{:?}' with probes '{:?}' using command line",
+        field_expr,
+        probes.probes_vec
+    );
+
+    if field_expr.is_empty() {
         return None;
     }
+
+    if probes.probes_vec.is_empty() {
+        return Some((
+            "".to_owned(),
+            "Probe list did not resolve to any probes, no valid arguments".to_owned(),
+        ));
+    }
+
+    let probe_args = find_common_args_by_cmd(&probes.probes_vec)?;
 
     log_dbg!(
         COMPL | HOVER,
