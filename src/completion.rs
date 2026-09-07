@@ -1221,8 +1221,8 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
     let (text, loc, node, line_str) =
         get_document_state!(text_doc, line_nr, char_nr, encode_no_completion(), COMPL);
 
-    if loc == SyntaxLocation::Action {
-        let probes_vec = parser::find_probes_for_action(&node, text);
+    if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
+        let probes_vec = parser::find_probes_for_node(&node, text);
         log_dbg!(COMPL, "Action completion for probes vec {:?}", probes_vec);
 
         let probes = Probes::new(probes_vec);
@@ -1785,7 +1785,7 @@ fn encode_hover_for_field_expression(
 
     let empty_data = object! { "result": json::JsonValue::Null };
 
-    let probes_vec = parser::find_probes_for_action(main_node, text);
+    let probes_vec = parser::find_probes_for_node(main_node, text);
     if probes_vec.is_empty() {
         return empty_data;
     }
@@ -1902,7 +1902,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
                   },
             };
         }
-    } else if loc == SyntaxLocation::Action {
+    } else if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
         // TODO handle probes with wildcard
         if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr) {
             data = encode_hover_for_function(&func, text, line_str, char_nr);

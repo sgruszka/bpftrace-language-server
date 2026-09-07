@@ -538,17 +538,31 @@ fn probes_list_to_vec(probes_list: &Node, text: &str) -> Vec<String> {
     probes_vec
 }
 
-pub fn find_probes_for_action(action: &Node, text: &str) -> Vec<String> {
-    assert_eq!(action.kind(), "action");
+pub fn find_probes_for_node(node: &Node, text: &str) -> Vec<String> {
+    assert!(node.kind() == "action" || node.kind() == "predicate");
 
-    let Some(action_block) = action.parent() else {
+    let Some(action_block) = node.parent() else {
+        log_err!("Action block missing");
         return Vec::new();
     };
-    // TODO: handle broken tree - remove assertions
-    assert_eq!(action_block.kind(), "action_block");
+
+    if action_block.kind() != "action_block" {
+        log_err!(
+            "Action block not detected, got {} instead",
+            action_block.kind()
+        );
+        return Vec::new();
+    }
 
     let probes_list = action_block.child(0).unwrap();
-    assert_eq!(probes_list.kind(), "probes_list");
+    if probes_list.kind() != "probes_list" {
+        log_err!(
+            "Probes list not detected, got {} instead",
+            probes_list.kind()
+        );
+
+        return Vec::new();
+    }
 
     probes_list_to_vec(&probes_list, text)
 }
@@ -658,7 +672,7 @@ pub fn find_scratch_variables_for_block(
     line_nr: usize,
     char_nr: usize,
 ) -> Vec<String> {
-    assert!(node.kind() == "action" || node.kind() == "block");
+    assert!(node.kind() == "action" || node.kind() == "block" || node.kind() == "predicate");
 
     let mut results = Vec::new();
     add_scratch_variables_for_block(node, text, line_nr, char_nr, &mut results);
@@ -667,7 +681,7 @@ pub fn find_scratch_variables_for_block(
 }
 
 pub fn find_map_variables_for_block(node: &Node, text: &str) -> Vec<String> {
-    assert!(node.kind() == "action" || node.kind() == "block");
+    assert!(node.kind() == "action" || node.kind() == "block" || node.kind() == "predicate");
 
     let mut results = Vec::new();
     add_source_file_map_variables(node, text, &mut results);
@@ -1031,7 +1045,7 @@ tracepoint:syscalls:sys_enter_openat {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let probes = find_probes_for_action(&action, text);
+        let probes = find_probes_for_node(&action, text);
         assert_eq!(probes.len(), 1);
         assert_eq!(probes[0], "kretfunc:mac80211:ieee80211_deauth");
     }
@@ -1067,7 +1081,7 @@ kfunc:vmlinux:posix_timer_fn {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let probes = find_probes_for_action(&action, text);
+        let probes = find_probes_for_node(&action, text);
         assert_eq!(probes.len(), 1);
         assert_eq!(probes[0], "kfunc:vmlinux:posix_timer_fn");
 
