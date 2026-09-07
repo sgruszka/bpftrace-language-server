@@ -447,12 +447,14 @@ fn add_block_variables(
     line_nr: usize,
     char_nr: usize,
     items: &mut json::JsonValue,
-    map_variables: bool,
+    var_type: parser::VariableType,
 ) {
-    let variables = if map_variables {
-        parser::find_map_variables_for_block(node, text)
-    } else {
-        parser::find_scratch_variables_for_block(node, text, line_nr, char_nr)
+    // TODO do match in parser
+    let variables = match var_type {
+        parser::VariableType::Map => parser::find_map_variables_for_block(node, text),
+        parser::VariableType::Scratch => {
+            parser::find_scratch_variables_for_block(node, text, line_nr, char_nr)
+        }
     };
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
@@ -595,22 +597,11 @@ fn add_completion_items_for_block(
     node: &Node,
     line_nr: usize,
     char_nr: usize,
-    line_str: &str,
     probes_opt: Option<Probes>,
     items: &mut json::JsonValue,
 ) {
-    let up_to_char = char_nr.saturating_add(1);
-    let line_head = if let Some(splited_line) = line_str.split_at_checked(up_to_char) {
-        let (head, _tail) = splited_line;
-        head
-    } else {
-        line_str
-    };
-
-    if line_head.ends_with("$") {
-        add_block_variables(node, text, line_nr, char_nr, items, false);
-    } else if line_head.ends_with("@") {
-        add_block_variables(node, text, line_nr, char_nr, items, true);
+    if let Some((var_type, _n)) = parser::is_location_variable(text, node, line_nr, char_nr) {
+        add_block_variables(node, text, line_nr, char_nr, items, var_type)
     } else {
         if let Some(probes) = probes_opt {
             add_args_and_retval_keywords(&probes, items);
@@ -626,7 +617,6 @@ fn encode_completion_for_action(
     node: &Node,
     line_nr: usize,
     char_nr: usize,
-    line_str: &str,
     probes: Probes,
 ) -> Option<json::JsonValue> {
     log_dbg!(COMPL, "Complete for action block");
@@ -634,15 +624,7 @@ fn encode_completion_for_action(
     // TODO preload btf module
     let mut items = json::JsonValue::new_array();
 
-    add_completion_items_for_block(
-        text,
-        node,
-        line_nr,
-        char_nr,
-        line_str,
-        Some(probes),
-        &mut items,
-    );
+    add_completion_items_for_block(text, node, line_nr, char_nr, Some(probes), &mut items);
 
     let data = object! {
         "result": {
@@ -659,18 +641,16 @@ fn encode_completion_for_macro(
     node: &Node,
     line_nr: usize,
     char_nr: usize,
-    line_str: &str,
 ) -> Option<json::JsonValue> {
     log_dbg!(COMPL, "Complete for macro");
 
     let mut items = json::JsonValue::new_array();
 
-    add_completion_items_for_block(text, node, line_nr, char_nr, line_str, None, &mut items);
+    add_completion_items_for_block(text, node, line_nr, char_nr, None, &mut items);
 
-    let is_incomplete = false; // Currently we provide complete list
     let data = object! {
         "result": {
-            "isIncomplete": is_incomplete,
+            "isIncomplete": true,
             "items": items,
         }
     };
@@ -1278,8 +1258,7 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
                 return data;
             }
         } else {
-            if let Some(data) =
-                encode_completion_for_action(text, &node, line_nr, char_nr, line_str, probes)
+            if let Some(data) = encode_completion_for_action(text, &node, line_nr, char_nr, probes)
             {
                 return data;
             }
@@ -1310,10 +1289,8 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
     }
 
     if loc == SyntaxLocation::MacroDefinition {
-        if let Some(data) =
-            parser::is_location_macro_body(&node, line_nr, char_nr).and_then(|block_node| {
-                encode_completion_for_macro(text, &block_node, line_nr, char_nr, line_str)
-            })
+        if let Some(data) = parser::is_location_macro_body(&node, line_nr, char_nr)
+            .and_then(|block_node| encode_completion_for_macro(text, &block_node, line_nr, char_nr))
         {
             return data;
         }

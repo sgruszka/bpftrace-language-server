@@ -403,6 +403,38 @@ pub fn is_location_retval_identifier<'t>(
     }
 }
 
+pub enum VariableType {
+    Scratch,
+    Map,
+}
+
+pub fn is_location_variable<'t>(
+    text: &str,
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<(VariableType, Node<'t>)> {
+    let node = position_to_node(main_node, line_nr, char_nr)?;
+
+    if node.kind() == "map_variable" {
+        return Some((VariableType::Map, node));
+    } else if node.kind() == "scratch_variable" {
+        return Some((VariableType::Scratch, node));
+    }
+
+    if node.is_error() {
+        if let Ok(s) = node.utf8_text(text.as_bytes()) {
+            if s.starts_with('@') {
+                return Some((VariableType::Map, node));
+            } else if s.starts_with('$') {
+                return Some((VariableType::Scratch, node));
+            }
+        }
+    }
+
+    None
+}
+
 pub fn find_error_location<'t>(
     text: &str,
     root_node: &Node<'t>,
