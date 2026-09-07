@@ -554,7 +554,9 @@ fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
             };
             let _ = items.push(snippet);
 
-            btf_item_to_str(&res_type, Some(var))
+            let mut arg_var = var.clone();
+            arg_var.name = format!("arg{}", i);
+            btf_item_to_str(&res_type, Some(&arg_var))
         } else {
             var.name.clone()
         };
