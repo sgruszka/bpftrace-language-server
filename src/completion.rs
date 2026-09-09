@@ -838,12 +838,8 @@ fn encode_completion_for_probe_list(
                     // "documentation": "need better documentation",
                 };
 
-                if (trace_tokens[0] == "kfunc" || trace_tokens[0] == "fentry")
-                    && kind == CompletionItemKind::Property
-                {
-                    if let Some((_btf, resolved_func)) = find_kfunc_args_by_btf(trace_line) {
-                        item["detail"] = resolved_func.full_name.into();
-                    }
+                if kind == CompletionItemKind::Property {
+                    item["data"] = trace_line.into();
                 }
 
                 log_vdbg!(
@@ -1384,13 +1380,32 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
 }
 
 pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
-    // TODO
     log_dbg!(COMPL, "Completion resolve for: {}", content);
 
-    let params = content["params"].clone();
-    // TOOD: use clangd to get documentation ?
-    // params["documentation"] = "Do this MARKUP".into();
-    log_dbg!(COMPL, "documentation {}", params["documentation"]);
+    let mut params = content["params"].clone();
+
+    if !params.is_null() {
+        if let Some(probe) = params["data"].as_str() {
+            if probe_use_btf(probe) || probe_sim_btf(probe) {
+                if let Some((_btf, resolved_func)) = find_kfunc_args_by_btf(probe) {
+                    params["detail"] = resolved_func.full_name.into();
+                }
+            } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
+                if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
+                    let mut docs = String::new();
+
+                    docs.push_str("```c\n{\n");
+                    for arg in args {
+                        docs.push_str(&format!("{:<indent$}{};\n", "", arg.trim(), indent = 2));
+                    }
+                    docs.push_str("};\n");
+
+                    params["detail"] = probe.into();
+                    params["documentation"] = docs.into();
+                }
+            }
+        }
+    }
 
     let data = object! {
         "result": params,

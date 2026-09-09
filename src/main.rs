@@ -266,8 +266,7 @@ fn encode_initalize_result() -> json::JsonValue {
         // "codeActionProvider": true,
         "completionProvider": {
             "triggerCharacters": [":", ".", ">", "$", "@", "/"],
-            // TODO "resolveProvider": true,
-
+            "resolveProvider": true,
         },
     };
 
