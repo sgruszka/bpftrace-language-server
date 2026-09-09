@@ -167,10 +167,11 @@ fn is_kretprobe_probe(probe: &str) -> bool {
 }
 
 fn is_tracepoint_probe(probe: &str) -> bool {
-    probe.starts_with("tracepoint")
-        || probe.starts_with("rawtracepoint")
-        || probe.starts_with("t:")
-        || probe.starts_with("rt:")
+    probe.starts_with("tracepoint") || probe.starts_with("t:")
+}
+
+fn is_rawtracepoint_probe(probe: &str) -> bool {
+    probe.starts_with("rawtracepoint") || probe.starts_with("rt:")
 }
 
 fn probe_use_btf(probe: &str) -> bool {
@@ -726,7 +727,7 @@ fn bpftrace_init_tracepoint_args() -> Option<HashMap<String, Vec<String>>> {
 
     log_dbg!(
         COMPL,
-        "Got list of tracpeoint args after {:?}",
+        "Got list of tracepoint args after {:?}",
         start.elapsed()
     );
 
@@ -1402,10 +1403,25 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
     let all_probes = probes_vec.join(",");
     log_dbg!(COMPL, "Looking for arguments for probes {:?}", all_probes);
 
+    if probes_vec.len() == 1 && is_tracepoint_probe(&probes_vec[0]) {
+        if let Some(map) = TRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_tracepoint_args) {
+            let args = map.get(&probes_vec[0]).cloned();
+            log_dbg!(
+                COMPL,
+                "Found arguments using TRACEPOINT_ARGS_MAP: {:?}",
+                args
+            );
+            return args;
+        }
+    }
+
+    let all_probes = probes_vec.join(",");
+    log_dbg!(COMPL, "Looking for arguments for probes {:?}", all_probes);
+
     let all_probes_args = bpftrace_list_probes_verbose(&all_probes)?;
     log_dbg!(
         COMPL,
-        "Found arguments using command line\n{}",
+        "Found arguments using command line:\n{}",
         all_probes_args
     );
 
@@ -1933,7 +1949,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
                       },
                 };
             }
-        } else if is_tracepoint_probe(probe) {
+        } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
             log_dbg!(HOVER, "Probe is tracepoint");
             let probes_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
             let mut probe_args_iter = probes_args.into_iter();
