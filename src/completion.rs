@@ -1379,6 +1379,28 @@ pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
     encode_no_completion()
 }
 
+fn args_to_block(args: &Vec<String>, hover: bool) -> String {
+    let mut docs = String::new();
+
+    let c_open;
+    let c_close;
+    if hover {
+        c_open = "```c \n";
+        c_close = "";
+    } else {
+        c_open = "```c \n";
+        c_close = "\n"
+    }
+
+    docs.push_str(&format!("{}{{\n", c_open));
+    for arg in args {
+        docs.push_str(&format!("{:<indent$}{};\n", "", arg.trim(), indent = 2));
+    }
+    docs.push_str(&format!("}}{}", c_close));
+
+    docs
+}
+
 pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
     log_dbg!(COMPL, "Completion resolve for: {}", content);
 
@@ -1392,14 +1414,7 @@ pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
                 }
             } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
                 if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
-                    let mut docs = String::new();
-
-                    docs.push_str("```c\n{\n");
-                    for arg in args {
-                        docs.push_str(&format!("{:<indent$}{};\n", "", arg.trim(), indent = 2));
-                    }
-                    docs.push_str("};\n");
-
+                    let docs = args_to_block(&args, false);
                     params["detail"] = probe.into();
                     params["documentation"] = docs.into();
                 }
@@ -2012,22 +2027,12 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
             }
         } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
             log_dbg!(HOVER, "Probe is tracepoint");
-            let probes_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
-            let mut probe_args_iter = probes_args.into_iter();
-
-            let (_, name) = probe.rsplit_once(":").unwrap_or_default();
-            let first_param = probe_args_iter.next().unwrap_or_default();
-
-            let mut proto = "```c\n".to_string();
-            proto.push_str(&format!("void {}({}", name, first_param.trim()));
-            for arg in probe_args_iter {
-                proto.push_str(&format!(", {}", arg.trim()));
-            }
-            proto.push_str(")\n");
+            let args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
+            let docs = args_to_block(&args, true);
 
             data = object! {
                   "result": {
-                      "contents": format!("{}\n{}", probe, proto),
+                      "contents": format!("{}\n{}", probe, docs),
                   },
             };
         }
