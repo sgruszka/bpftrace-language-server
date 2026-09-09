@@ -1128,7 +1128,7 @@ fn main() {
 
     match cmd_mod::init_bpftrace(args.cmd) {
         Ok(_) => {
-            thread::spawn(|| {
+            let perms_handle = thread::spawn(|| {
                 if let Err(e) = cmd_mod::setup_bpftrace_root_permissions() {
                     WARNINGS_TO_CLIENT.push(WarningType::NoRoot, e);
                 }
@@ -1136,6 +1136,11 @@ fn main() {
 
             thread::spawn(completion::init_available_traces);
             thread::spawn(move || thread_diagnostics(diag_mpsc_tx, diag_rx));
+
+            thread::spawn(move || {
+                let _ = perms_handle.join();
+                completion::init_tracepoints_args();
+            });
         }
         Err(e) => WARNINGS_TO_CLIENT.push(WarningType::NoBpftrace, e),
     }

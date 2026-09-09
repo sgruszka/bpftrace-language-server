@@ -64,6 +64,8 @@ static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
 
 static FENTRY_KFUNC_NAME: OnceLock<&'static str> = OnceLock::new();
 
+static TRACEPOINT_ARGS_MAP: OnceLock<Option<HashMap<String, Vec<String>>>> = OnceLock::new();
+
 fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) -> String {
     let mut s = res_type.type_prefix.clone();
 
@@ -685,6 +687,54 @@ fn bpftrace_get_traces_list() -> Option<String> {
 
 pub fn init_available_traces() {
     let _ = AVAILABE_TRACES.get_or_init(bpftrace_get_traces_list);
+}
+
+fn bpftrace_init_tracepoint_args() -> Option<HashMap<String, Vec<String>>> {
+    let start = Instant::now();
+
+    let Some(all_tracepoint_args) = bpftrace_list_probes_verbose("tracepoint:*") else {
+        log_err!("Failed to get output from bpftrace -lv command");
+        return None;
+    };
+
+    let mut probe_idx = 0;
+    let mut probe = String::new();
+    let mut args = Vec::new();
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+
+    for line in all_tracepoint_args.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        if !line.chars().next().is_some_and(|c| c.is_whitespace()) {
+            if probe_idx > 1 {
+                map.insert(probe, args);
+                args = Vec::new();
+            }
+            probe = line.to_string();
+            probe_idx += 1;
+        } else {
+            args.push(line.to_string());
+        }
+    }
+
+    // In the loop we did not handle last probe
+    if probe_idx >= 1 {
+        map.insert(probe, args);
+    }
+
+    log_dbg!(
+        COMPL,
+        "Got list of tracpeoint args after {:?}",
+        start.elapsed()
+    );
+
+    Some(map)
+}
+
+pub fn init_tracepoints_args() {
+    let _ = TRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_tracepoint_args);
 }
 
 fn encode_completion_for_probe_list(
