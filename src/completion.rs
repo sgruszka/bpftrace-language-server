@@ -65,6 +65,7 @@ static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
 static FENTRY_KFUNC_NAME: OnceLock<&'static str> = OnceLock::new();
 
 static TRACEPOINT_ARGS_MAP: OnceLock<Option<HashMap<String, Vec<String>>>> = OnceLock::new();
+static RAWTRACEPOINT_ARGS_MAP: OnceLock<Option<HashMap<String, Vec<String>>>> = OnceLock::new();
 
 fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) -> String {
     let mut s = res_type.type_prefix.clone();
@@ -690,10 +691,10 @@ pub fn init_available_traces() {
     let _ = AVAILABE_TRACES.get_or_init(bpftrace_get_traces_list);
 }
 
-fn bpftrace_init_tracepoint_args() -> Option<HashMap<String, Vec<String>>> {
+fn bpftrace_init_pattern_args(pattern: &str) -> Option<HashMap<String, Vec<String>>> {
     let start = Instant::now();
 
-    let Some(all_tracepoint_args) = bpftrace_list_probes_verbose("tracepoint:*") else {
+    let Some(all_tracepoint_args) = bpftrace_list_probes_verbose(pattern) else {
         log_err!("Failed to get output from bpftrace -lv command");
         return None;
     };
@@ -727,15 +728,28 @@ fn bpftrace_init_tracepoint_args() -> Option<HashMap<String, Vec<String>>> {
 
     log_dbg!(
         COMPL,
-        "Got list of tracepoint args after {:?}",
+        "Got list of {} args after {:?}",
+        pattern,
         start.elapsed()
     );
 
     Some(map)
 }
 
+fn bpftrace_init_tracepoint_args() -> Option<HashMap<String, Vec<String>>> {
+    bpftrace_init_pattern_args("tracepoint:*")
+}
+
+fn bpftrace_init_rawtracepoint_args() -> Option<HashMap<String, Vec<String>>> {
+    bpftrace_init_pattern_args("rawtracepoint:*")
+}
+
 pub fn init_tracepoints_args() {
     let _ = TRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_tracepoint_args);
+}
+
+pub fn init_rawtracepoints_args() {
+    let _ = RAWTRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_rawtracepoint_args);
 }
 
 fn encode_completion_for_probe_list(
@@ -1397,15 +1411,16 @@ fn cmp_arg(a: &BtfVariable, b: &BtfVariable) -> bool {
     true
 }
 
-// For multiple probes we can have common arguments that will work,
-// but need having matching type and name.
-fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
-    let all_probes = probes_vec.join(",");
-    log_dbg!(COMPL, "Looking for arguments for probes {:?}", all_probes);
+fn find_preloaded_cmd_args(probe_str: &str) -> Option<Vec<String>> {
+    if is_tracepoint_probe(probe_str) {
+        let mut tokens: Vec<&str> = probe_str.split(":").collect();
+        if tokens[0] == "t" {
+            tokens[0] = "tracepoint";
+        }
+        let probe = tokens.join(":");
 
-    if probes_vec.len() == 1 && is_tracepoint_probe(&probes_vec[0]) {
         if let Some(map) = TRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_tracepoint_args) {
-            let args = map.get(&probes_vec[0]).cloned();
+            let args = map.get(&probe).cloned();
             log_dbg!(
                 COMPL,
                 "Found arguments using TRACEPOINT_ARGS_MAP: {:?}",
@@ -1415,8 +1430,39 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
         }
     }
 
+    if is_rawtracepoint_probe(probe_str) {
+        let mut tokens: Vec<&str> = probe_str.split(":").collect();
+        if tokens[0] == "rt" {
+            tokens[0] = "rawtracepoint";
+        }
+        let probe = tokens.join(":");
+        if let Some(map) = RAWTRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_rawtracepoint_args) {
+            let args = map.get(&probe).cloned();
+            log_dbg!(
+                COMPL,
+                "Found arguments using RAWTRACEPOINT_ARGS_MAP: {:?}",
+                args
+            );
+            return args;
+        }
+    }
+
+    None
+}
+
+// For multiple probes we can have common arguments that will work,
+// but need having matching type and name.
+fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
     let all_probes = probes_vec.join(",");
     log_dbg!(COMPL, "Looking for arguments for probes {:?}", all_probes);
+
+    // TODO: use for expanded multi probe
+    // For single tracepoint, rawtracepoint, try preloaded hash map first
+    if probes_vec.len() == 1 && !probes_vec[0].contains('*') {
+        if let Some(args) = find_preloaded_cmd_args(&probes_vec[0]) {
+            return Some(args);
+        }
+    }
 
     let all_probes_args = bpftrace_list_probes_verbose(&all_probes)?;
     log_dbg!(

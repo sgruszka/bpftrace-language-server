@@ -1139,6 +1139,8 @@ fn main() {
 
             thread::spawn(move || {
                 let _ = perms_handle.join();
+
+                thread::spawn(completion::init_rawtracepoints_args);
                 completion::init_tracepoints_args();
             });
         }
