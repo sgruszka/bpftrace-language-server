@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
+use std::process;
 use std::sync::{mpsc, OnceLock};
 use std::thread;
 
@@ -128,9 +129,13 @@ pub fn create_logger(filename_opt: Option<String>) -> Result<(), std::io::Error>
     };
 
     let mut log_file_opt = match env::var("BPFTRACE_LS_LOG_FILE") {
-        Ok(env_filename) => File::create(env_filename).ok(),
+        Ok(env_filename) => {
+            let filename = env_filename.replace("%p", &format!("{}", process::id()));
+            File::create(filename).ok()
+        }
         Err(_) => {
-            if let Some(filename) = filename_opt {
+            if let Some(opt_filename) = filename_opt {
+                let filename = opt_filename.replace("%p", &format!("{}", process::id()));
                 File::create(filename).ok()
             } else {
                 None
