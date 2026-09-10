@@ -183,6 +183,22 @@ fn probe_sim_btf(probe: &str) -> bool {
     is_kprobe_probe(probe) || is_kretprobe_probe(probe)
 }
 
+fn is_uprobe(probe: &str) -> bool {
+    probe.starts_with("uprobe") || probe.starts_with("u:")
+}
+
+// fn is_uretprobe(probe: &str) -> bool {
+//     probe.starts_with("uretprobe") || probe.starts_with("ur:")
+// }
+
+fn is_usdt(probe: &str) -> bool {
+    probe.starts_with("usdt") || probe.starts_with("U:")
+}
+
+// fn is_user_probe(probe: &str) -> bool {
+//     is_uprobe(probe) || is_uretprobe(probe) || is_usdt(probe)
+// }
+
 fn kprobe_to_kfunc(probe: &str) -> String {
     let mut v: Vec<&str> = probe.split(":").collect();
     if v[0] == "kprobe" {
@@ -834,20 +850,13 @@ fn encode_completion_for_probe_list(
                 let mut item = object! {
                     "label": label,
                     "kind": kind,
-                    // "detail": "TODO",
-                    // "documentation": "need better documentation",
                 };
 
                 if kind == CompletionItemKind::Property {
                     item["data"] = trace_line.into();
                 }
 
-                log_vdbg!(
-                    COMPL,
-                    "Adding complete item: {} : {}",
-                    label,
-                    item["detail"]
-                );
+                log_vdbg!(COMPL, "Adding complete item: {}", item);
 
                 let _ = items.push(item);
                 count -= 1;
@@ -958,9 +967,12 @@ fn encode_completion_for_user_space_functions(line_tokens: Vec<&str>) -> Option<
         let item = object! {
             "label": label,
             "kind": CompletionItemKind::Property,
-            // "detail": "TODO",
-            // "documentation": "need better documentation",
+            // TODO: it can be 4th or 3rd argument, what needs details
+            "data": func.trim(),
         };
+
+        log_vdbg!(COMPL, "Adding complete item: {}", item);
+
         let _ = items.push(item);
     }
 
@@ -1401,6 +1413,21 @@ fn args_to_block(args: &Vec<String>, hover: bool) -> String {
     docs
 }
 
+fn args_to_func_proto(func_name: &str, args: &[String]) -> String {
+    let mut proto = String::new();
+
+    let first_arg = if args.len() > 1 { &args[0] } else { "" };
+    proto.push_str(&format!("void {}({}", func_name, first_arg));
+
+    for arg in args.iter().skip(1) {
+        proto.push_str(&format!(", {}", arg.trim()));
+    }
+
+    proto.push_str(")\n");
+
+    proto
+}
+
 pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
     log_dbg!(COMPL, "Completion resolve for: {}", content);
 
@@ -1412,11 +1439,21 @@ pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
                 if let Some((_btf, resolved_func)) = find_kfunc_args_by_btf(probe) {
                     params["detail"] = resolved_func.full_name.into();
                 }
-            } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
+            } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) || is_usdt(probe)
+            {
                 if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
                     let docs = args_to_block(&args, false);
                     params["detail"] = probe.into();
                     params["documentation"] = docs.into();
+                }
+            } else if is_uprobe(probe)
+            /* TODO || is_uretprobe(probe) */
+            {
+                if let Some(func_name) = params["label"].as_str() {
+                    if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
+                        let proto = args_to_func_proto(func_name, &args);
+                        params["detail"] = proto.into();
+                    }
                 }
             }
         }
