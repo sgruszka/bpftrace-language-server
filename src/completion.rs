@@ -22,7 +22,7 @@ use crate::gen::completion::{
 use crate::log_mod::{self, COMPL, HOVER};
 use crate::parser::{self, SyntaxLocation};
 use crate::{get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
-use crate::{log_dbg, log_err, log_vdbg};
+use crate::{log_dbg, log_err, log_vdbg, WarningType, WARNINGS_TO_CLIENT};
 
 #[allow(unused)]
 #[derive(PartialEq, Clone, Copy)]
@@ -1521,7 +1521,11 @@ fn find_preloaded_cmd_args(probe_str: &str) -> Option<Vec<String>> {
 // but need having matching type and name.
 fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
     let all_probes = probes_vec.join(",");
-    log_dbg!(COMPL, "Looking for arguments for probes {:?}", all_probes);
+    log_dbg!(
+        COMPL | HOVER,
+        "Looking for arguments for probes {:?}",
+        all_probes
+    );
 
     // TODO: use for expanded multi probe
     // For single tracepoint, rawtracepoint, try preloaded hash map first
@@ -1533,7 +1537,7 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
 
     let all_probes_args = bpftrace_list_probes_verbose(&all_probes)?;
     log_dbg!(
-        COMPL,
+        COMPL | HOVER,
         "Found arguments using command line:\n{}",
         all_probes_args
     );
@@ -1547,6 +1551,14 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
     for line in all_probes_args.lines() {
         if line.trim().is_empty() {
             continue;
+        }
+
+        // uprobe no DWARF warning
+        if line.contains("WARNING: No DWARF") {
+            log_dbg!(COMPL | HOVER, "No DWARF for {}", all_probes);
+            WARNINGS_TO_CLIENT.push(WarningType::NoDwarf, line.to_string());
+
+            return None;
         }
 
         if line.chars().next().is_some_and(|c| c.is_whitespace()) {
@@ -1573,7 +1585,7 @@ fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
         common_args.retain(|arg| new_args.contains(arg));
     }
 
-    log_dbg!(COMPL, "Common arguments:\n{:?}", common_args);
+    log_dbg!(COMPL | HOVER, "Common arguments:\n{:?}", common_args);
 
     Some(
         common_args
@@ -2072,6 +2084,19 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
                       "contents": format!("{}\n{}", probe, docs),
                   },
             };
+        } else if is_uprobe(probe)
+        /* TODO || is_uretprobe(probe) */
+        {
+            if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
+                let (_, func_name) = probe.rsplit_once(":").unwrap_or_default();
+                let proto = args_to_func_proto(func_name, &args);
+
+                data = object! {
+                      "result": {
+                          "contents": format!("{}\n```c\n{}", probe, proto),
+                      },
+                };
+            }
         }
     } else if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
         // TODO handle probes with wildcard

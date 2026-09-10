@@ -90,6 +90,7 @@ pub enum WarningType {
     NoBpftrace = 0,
     NoRoot = 1,
     NoBtf = 2,
+    NoDwarf = 3,
 }
 
 impl WarningsToClient {
