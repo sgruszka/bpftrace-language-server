@@ -66,6 +66,8 @@ Built-in event
 **variants**
 * `begin`
 
+**short name**
+
 Special built-in event provided by the bpftrace runtime.
 `begin` is triggered before all other probes are attached.
 Can be used any number of times, and they will be executed in the same order they are declared.
@@ -75,6 +77,8 @@ Built-in event
 
 **variants**
 * `end`
+
+**short name**
 
 Special built-in event provided by the bpftrace runtime.
 `end` is triggered after all other probes are detached.
@@ -98,6 +102,8 @@ Built-in event
 **variants**
 * `test:name`
 
+**short name**
+
 `test` is a special built-in probe type for creating tests.
 bpftrace executes each `test` probe and checks the return value, error count and possible exit calls to determine a pass.
 If multiple `test` probes exist in a script, bpftrace executes them sequentially in the order they are specified.
@@ -119,6 +125,8 @@ Micro benchmarks
 
 **variants**
 * `bench:name`
+
+**short name**
 
 `bench` is a special built-in probe type for creating micro benchmarks.
 bpftrace executes each `bench` probe repeatedly to measure the average execution time of the contained code.
@@ -160,6 +168,8 @@ Built-in events
 
 **variants**
 * `self:signal:SIGUSR1`
+
+**short name**
 
 These are special built-in events provided by the bpftrace runtime.
 The trigger function is called by the bpftrace runtime when the bpftrace process receives specific events, such as a `SIGUSR1` signal.
