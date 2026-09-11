@@ -842,7 +842,10 @@ fn encode_completion_for_probe_list(
                 };
 
                 let kind = if match_tokens + 1 == trace_tokens.len() {
-                    CompletionItemKind::Property
+                    // We could be using Function for fentry, kprobe, ...
+                    // but this can give annoying client behavior - adding extra '()'
+                    // Using InsertText does not prevent this annoyance
+                    CompletionItemKind::Event
                 } else {
                     CompletionItemKind::Module
                 };
@@ -852,7 +855,7 @@ fn encode_completion_for_probe_list(
                     "kind": kind,
                 };
 
-                if kind == CompletionItemKind::Property {
+                if kind == CompletionItemKind::Event {
                     item["data"] = trace_line.into();
                 }
 
