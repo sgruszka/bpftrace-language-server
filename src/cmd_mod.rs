@@ -43,6 +43,7 @@ struct Bpftrace {
     use_dry_run: bool,
     has_fentry_fexit: bool,
     has_dot_deref: bool,
+    has_case_insensitive: bool,
 }
 
 static BPFTRACE: OnceLock<Bpftrace> = OnceLock::new();
@@ -50,6 +51,7 @@ static BPFTRACE: OnceLock<Bpftrace> = OnceLock::new();
 pub enum BpftraceProperty {
     HasFentryFexit,
     HasDotDeref,
+    HasCaseInsensitive,
 }
 
 pub fn bpftrace_has_property(prop: BpftraceProperty) -> bool {
@@ -60,6 +62,7 @@ pub fn bpftrace_has_property(prop: BpftraceProperty) -> bool {
     match prop {
         BpftraceProperty::HasFentryFexit => bpftrace.has_fentry_fexit,
         BpftraceProperty::HasDotDeref => bpftrace.has_dot_deref,
+        BpftraceProperty::HasCaseInsensitive => bpftrace.has_case_insensitive,
     }
 }
 
@@ -220,6 +223,7 @@ fn bpftrace_properties(ver: Version) -> Bpftrace {
         use_dry_run: to_flat_version(&ver) >= bpftrace_version!(0, 22, 0),
         has_fentry_fexit: to_flat_version(&ver) >= bpftrace_version!(0, 20, 0),
         has_dot_deref: to_flat_version(&ver) >= bpftrace_version!(0, 25, 0),
+        has_case_insensitive: to_flat_version(&ver) >= bpftrace_version!(0, 24, 0),
         version: ver,
     }
 }

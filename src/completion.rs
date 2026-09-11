@@ -1057,6 +1057,36 @@ fn add_map_declarations(items: &mut json::JsonValue) {
     let _ = items.push(item);
 }
 
+fn add_small_case_builtins(items: &mut json::JsonValue) {
+    let item = object! {
+        "label": r#"begin"#,
+        "kind" : 8,
+        "detail": r#"begin
+    "#,
+        "documentation" : {
+            "kind": "markdown",
+            "value": r#"Built-in event
+
+"#,
+        },
+    };
+    let _ = items.push(item);
+
+    let item = object! {
+        "label": r#"end"#,
+        "kind" : 8,
+        "detail": r#"end
+    "#,
+        "documentation" : {
+            "kind": "markdown",
+            "value": r#"Built-in event
+
+"#,
+        },
+    };
+    let _ = items.push(item);
+}
+
 fn encode_completion_for_new_line(line_str: &str) -> json::JsonValue {
     let mut items = json::JsonValue::new_array();
 
@@ -1072,6 +1102,10 @@ fn encode_completion_for_new_line(line_str: &str) -> json::JsonValue {
     } else if line.is_empty() || line.chars().all(|c| c.is_alphabetic()) {
         bpftrace_probe_providers(&mut items);
         add_empty_line_keywords(&mut items);
+
+        if bpftrace_has_property(BpftraceProperty::HasCaseInsensitive) {
+            add_small_case_builtins(&mut items);
+        }
     }
 
     let data = object! {
@@ -1137,8 +1171,6 @@ fn encode_completion_for_probe_provider(
 
 fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
     let mut providers = vec![
-        ("begin", None),
-        ("end", None),
         ("test", None),
         ("bench", None),
         ("self", None),

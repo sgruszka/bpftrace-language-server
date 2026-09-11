@@ -60,7 +60,7 @@ Most providers also support a short name which can be used instead of the full n
 | [`usdt`](#usdt) | `U` | User-level static tracepoints |
 | [`watchpoint/asyncwatchpoint`](#watchpoint-and-asyncwatchpoint) | `w`/`aw` | Memory watchpoints |
 
-### begin
+### BEGIN
 Built-in event
 
 **variants**
@@ -70,7 +70,7 @@ Special built-in event provided by the bpftrace runtime.
 `begin` is triggered before all other probes are attached.
 Can be used any number of times, and they will be executed in the same order they are declared.
 
-### end
+### END
 Built-in event
 
 **variants**
