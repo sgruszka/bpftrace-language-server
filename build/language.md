@@ -64,29 +64,27 @@ Most providers also support a short name which can be used instead of the full n
 Built-in event
 
 **variants**
-* `begin`
+* `BEGIN`
 
 **short name**
 
 Special built-in event provided by the bpftrace runtime.
-`begin` is triggered before all other probes are attached.
-Can be used any number of times, and they will be executed in the same order they are declared.
+`BEGIN` is triggered before all other probes are attached.
 
 ### END
 Built-in event
 
 **variants**
-* `end`
+* `END`
 
 **short name**
 
 Special built-in event provided by the bpftrace runtime.
-`end` is triggered after all other probes are detached.
-Each of these probes can be used any number of times, and they will be executed in the same order they are declared.
+`END` is triggered after all other probes are detached.
 
 #### Notes
-Specifying an `end` probe doesn’t override the printing of 'non-empty' maps at exit.
-To prevent printing all used maps need be cleared in the `end` probe:
+Specifying an `END` probe doesn’t override the printing of 'non-empty' maps at exit.
+To prevent printing all used maps need be cleared in the `END` probe:
 
 #### Example
 ```

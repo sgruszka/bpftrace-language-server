@@ -1067,6 +1067,8 @@ fn add_small_case_builtins(items: &mut json::JsonValue) {
             "kind": "markdown",
             "value": r#"Built-in event
 
+Special built-in event provided by the bpftrace runtime.
+`begin` is triggered before all other probes are attached.
 "#,
         },
     };
@@ -1080,6 +1082,22 @@ fn add_small_case_builtins(items: &mut json::JsonValue) {
         "documentation" : {
             "kind": "markdown",
             "value": r#"Built-in event
+
+Special built-in event provided by the bpftrace runtime.
+`end` is triggered after all other probes are detached.
+Each of these probes can be used any number of times, and they will be executed in the same order they are declared.
+
+#### Notes
+Specifying an `end` probe doesn’t override the printing of 'non-empty' maps at exit.
+To prevent printing all used maps need be cleared in the `end` probe:
+
+#### Example
+```
+end {
+    clear(@map1);
+    clear(@map2);
+}
+```
 
 "#,
         },
