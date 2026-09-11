@@ -841,7 +841,7 @@ fn encode_completion_for_probe_list(
                     Some(_) => continue,
                 };
 
-                let kind = if match_tokens == trace_tokens.len() - 1 {
+                let kind = if match_tokens + 1 == trace_tokens.len() {
                     CompletionItemKind::Property
                 } else {
                     CompletionItemKind::Module
@@ -952,24 +952,42 @@ fn encode_completion_for_user_space_functions(line_tokens: Vec<&str>) -> Option<
     let probe_match = line_tokens[0..num_tokens].join(":") + ":*";
     log_dbg!(COMPL, "Looking for completion items for '{}'", probe_match);
 
-    let functions = bpftrace_list_probes(&probe_match, true)?;
+    let matched_probes = bpftrace_list_probes(&probe_match, true)?;
+    let mut duplicates: HashMap<String, u32> = HashMap::new();
+
     let mut items = json::JsonValue::new_array();
 
-    for func in functions.lines() {
-        let Some(tail) = func
-            .trim()
-            .strip_prefix(&probe_match[0..probe_match.len() - 1])
-        else {
-            continue;
-        };
-        let (label, _) = tail.split_once(":").unwrap_or((tail, ""));
+    for probe_line in matched_probes.lines() {
+        let probe_tokens: Vec<&str> = probe_line.split(":").collect();
 
-        let item = object! {
-            "label": label,
-            "kind": CompletionItemKind::Property,
-            // TODO: it can be 4th or 3rd argument, what needs details
-            "data": func.trim(),
+        let mut match_tokens = 0;
+        for i in 0..std::cmp::min(probe_tokens.len(), line_tokens.len()) {
+            if probe_tokens[i] != line_tokens[i] {
+                break;
+            }
+            match_tokens += 1;
+        }
+
+        if probe_tokens.len() <= match_tokens {
+            continue;
+        }
+        let label = probe_tokens[match_tokens];
+
+        match duplicates.get(label) {
+            None => duplicates.insert(label.to_string(), 1),
+            Some(_) => continue,
         };
+
+        let mut item = object! {
+            "label": label,
+        };
+
+        if match_tokens + 1 == probe_tokens.len() {
+            item["kind"] = CompletionItemKind::Event.into();
+            item["data"] = probe_line.trim().into();
+        } else {
+            item["kind"] = CompletionItemKind::Module.into();
+        }
 
         log_vdbg!(COMPL, "Adding complete item: {}", item);
 
