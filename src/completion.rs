@@ -384,6 +384,11 @@ fn probe_properties(probe: &str) -> ProbeProperties {
         has_args = true;
     }
 
+    if is_uprobe(probe) {
+        // TODO: only if DWARF for binary is available
+        has_args = true;
+    }
+
     ProbeProperties {
         has_args,
         has_retval,
