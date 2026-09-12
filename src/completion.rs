@@ -380,6 +380,10 @@ fn probe_properties(probe: &str) -> ProbeProperties {
         has_args = true;
     }
 
+    if is_rawtracepoint_probe(probe) {
+        has_args = true;
+    }
+
     ProbeProperties {
         has_args,
         has_retval,
