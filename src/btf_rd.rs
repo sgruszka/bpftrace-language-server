@@ -28,6 +28,25 @@ struct BtfHeader {
     str_len: u32,
 }
 
+#[derive(Debug, BinRead)]
+struct BtfHeaderLayout {
+    layout_off: u32,
+    layout_len: u32,
+}
+
+#[derive(Debug, BinRead)]
+struct BtfRawLayout {
+    info_sz: u8,
+    elem_sz: u8,
+    _flags: u16,
+}
+
+struct BtfLayout<'a> {
+    data: &'a BtfData,
+    off: u32,
+    len: u32,
+}
+
 impl BtfHeader {
     fn read<R: Read + Seek>(reader: &mut R) -> binrw::BinResult<Self> {
         let hdr = BtfHeader::read_ne(reader)?;
@@ -274,6 +293,32 @@ fn inner_to_btf_type(btf_raw_type: BtfRawType, type_id: u32) -> Result<BtfType, 
             message: format!("Unknown BTF KIND {kind}"),
         }),
     }
+}
+
+fn unknow_kind_specific_size(
+    kind: u32,
+    vlen: u32,
+    layout: &BtfLayout,
+) -> Result<u64, binrw::Error> {
+    if kind < layout.len / (size_of::<BtfRawLayout>() as u32) {
+        let off = layout.off + kind * (size_of::<BtfRawLayout>() as u32);
+
+        let mut reader = Cursor::new(layout.data);
+        reader.seek(SeekFrom::Start(off as u64))?;
+
+        let btf_raw_layout = BtfRawLayout::read_ne(&mut reader)?;
+
+        let info_sz = btf_raw_layout.info_sz as u32;
+        let elem_sz = btf_raw_layout.elem_sz as u32;
+
+        let size = info_sz + vlen * elem_sz;
+        return Ok(size as u64);
+    }
+
+    Err(binrw::Error::AssertFail {
+        pos: 0,
+        message: format!("Unknown size for BTF KIND {kind}"),
+    })
 }
 
 #[enum_dispatch]
@@ -826,6 +871,8 @@ pub struct BtfSplit {
     header: BtfHeader,
     start_id: u32,
     start_str_off: u32,
+    layout_off: u32,
+    layout_len: u32,
     base_split: Option<Arc<BtfSplit>>,
     offsets: Vec<u32>,
     data: BtfData,
@@ -865,6 +912,31 @@ impl BtfSplit {
         let mut reader = Cursor::new(&data);
         let header = BtfHeader::read(&mut reader)?;
 
+        let (layout_off, layout_len, layout) = if header.hdr_len >= 32 {
+            let hl = BtfHeaderLayout::read_ne(&mut reader)?;
+            (
+                hl.layout_off,
+                hl.layout_len,
+                Some(BtfLayout {
+                    data: &data,
+                    off: hl.layout_off + header.hdr_len,
+                    len: hl.layout_len,
+                }),
+            )
+        } else if let Some(ref base_split) = base_split {
+            (
+                0,
+                0,
+                Some(BtfLayout {
+                    data: &base_split.data,
+                    off: base_split.layout_off + base_split.header.hdr_len,
+                    len: base_split.layout_len,
+                }),
+            )
+        } else {
+            (0, 0, None)
+        };
+
         let pos: u64 = (header.hdr_len + header.type_off) as u64;
         reader.seek(SeekFrom::Start(pos))?;
 
@@ -882,8 +954,23 @@ impl BtfSplit {
 
             let btf_type = BtfRawType::read_ne(&mut reader)?;
             let name_off = btf_type.name_off;
-            let btf_kind_type = inner_to_btf_type(btf_type, type_id)?;
-            let size = btf_kind_type.kind_specific_size();
+            let kind = btf_type.get_kind();
+            let vlen = btf_type.get_vlen();
+
+            let btf_kind_type = match inner_to_btf_type(btf_type, type_id) {
+                Ok(known_kind_type) => known_kind_type,
+                Err(e) => {
+                    let Some(ref layout) = layout else {
+                        return Err(e);
+                    };
+
+                    let size = unknow_kind_specific_size(kind, vlen, layout)?;
+
+                    reader.seek(SeekFrom::Current(size as i64))?;
+                    read += 12 + (size as u32);
+                    continue;
+                }
+            };
 
             let get_type_name = || {
                 let name = if name_off < start_str_off {
@@ -930,8 +1017,8 @@ impl BtfSplit {
                 _ => (),
             }
 
+            let size = btf_kind_type.kind_specific_size();
             reader.seek(SeekFrom::Current(size as i64))?;
-
             read += 12 + (size as u32);
         }
 
@@ -939,6 +1026,8 @@ impl BtfSplit {
             header,
             start_id,
             start_str_off,
+            layout_off,
+            layout_len,
             base_split,
             offsets,
             data,
