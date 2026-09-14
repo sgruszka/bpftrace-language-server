@@ -135,16 +135,16 @@ macro_rules! u32_get_field {
 }
 
 impl BtfRawType {
+    fn get_vlen(&self) -> u32 {
+        u32_get_field!(self.info, 0, 23)
+    }
+
     fn get_kind(&self) -> u32 {
-        u32_get_field!(self.info, 24, 28)
+        u32_get_field!(self.info, 24, 30)
     }
 
     fn get_kind_flag(&self) -> u32 {
         u32_get_field!(self.info, 31, 31)
-    }
-
-    fn get_vlen(&self) -> u32 {
-        u32_get_field!(self.info, 0, 15)
     }
 
     fn get_type_id(&self) -> u32 {
