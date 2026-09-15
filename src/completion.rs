@@ -2950,11 +2950,12 @@ fentry:vmlinux:find_ge_pid {
 
         println!("{hover:?}");
 
+        let hover = hover.replace(" *", "*");
         assert!(hover.contains(r"of ts_query_new"));
-        assert!(hover.contains(r"const TSLanguage * language;"));
-        assert!(hover.contains(r"TSQueryError * error_type;"));
+        assert!(hover.contains(r"const TSLanguage* language;"));
+        assert!(hover.contains(r"TSQueryError* error_type;"));
         assert!(hover.contains(r"uint32_t source_len;"));
-        assert!(hover.contains(r"const char * source;"));
+        assert!(hover.contains(r"const char* source;"));
     }
 
     #[test]
