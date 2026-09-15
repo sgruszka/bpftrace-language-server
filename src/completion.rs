@@ -2207,9 +2207,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd_mod::{
-        bpftrace_list_probes_verbose, init_bpftrace, setup_bpftrace_root_permissions,
-    };
+    use crate::cmd_mod::{init_bpftrace, setup_bpftrace_root_permissions};
     use std::process::Command;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{LazyLock, Mutex};
@@ -2808,10 +2806,36 @@ tracepoint:cma:cma_release {
     }
 
     #[cfg(feature = "live_btf_tests")]
-    #[ignore] // works only on newer bpftrace 0.25 or 0.26
+    #[ignore] // Works on bpftrace version >= 0.25
+    #[test]
+    fn test_rawtracepoint_args_completion() {
+        assert_eq!(init_bpftrace(None), Ok(()));
+
+        let (major, minor) = bpftrace_major_minor_version();
+        assert!(major >= 1 || minor >= 25);
+
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
+
+        let text = r#"rt:fuse:fuse_request_end { args."#;
+
+        let json_content = document_content_setup(text, 0, text.len());
+
+        let result = encode_completion(json_content);
+        assert_eq!(result["result"]["items"].len(), 1);
+
+        let fields = vec!["req"];
+        check_completion_resutls(result, fields);
+    }
+
+    #[cfg(feature = "live_btf_tests")]
+    #[ignore] // Works on bpftrace version >= 0.25
     #[test]
     fn test_rawtracepoint_struct_competion() {
+        assert_eq!(init_bpftrace(None), Ok(()));
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
+
+        let (major, minor) = bpftrace_major_minor_version();
+        assert!(major >= 1 || minor >= 25);
 
         let text = r#"
 rawtracepoint:vmlinux:xhci_queue_trb {
@@ -3148,5 +3172,34 @@ tracepoint:xhci-hcd:xhci_dbc_alloc_request {
         assert!(hover.contains("struct list_head list_pool;"));
         assert!(hover.contains("union xhci_trb * trb;"));
         assert!(hover.contains("unsigned int direction:1;"));
+    }
+
+    #[cfg(feature = "live_btf_tests")]
+    #[ignore] // Works only on bpftrace >= 0.25
+    #[test]
+    fn test_hover_for_rawtracepoint() {
+        assert_eq!(init_bpftrace(None), Ok(()));
+
+        let (major, minor) = bpftrace_major_minor_version();
+        assert!(major >= 1 || minor >= 25);
+
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
+
+        let text = r"rawtracepoint:mei:mei_reg_read { }";
+
+        let json_content = document_content_setup(text, 0, text.len() - 8);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+        assert!(hover.contains("const struct device * dev;"));
+        assert!(hover.contains("const char * reg;"));
+        assert!(hover.contains("u32 offs;"));
+        assert!(hover.contains("u32 val"));
     }
 }
