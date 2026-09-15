@@ -2542,6 +2542,20 @@ mod tests {
     }
 
     #[test]
+    fn test_completion_for_uprobe_args() {
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
+        let text = "u:target/debug/bpftrace-ls:ts_query_new { args. ";
+
+        let json_content = document_content_setup(text, 0, text.len() - 1);
+
+        let result = encode_completion(json_content);
+        assert!(result["result"]["items"].len() > 0);
+
+        let functions = vec!["language", "source", "source_len", "error_type"];
+        check_completion_resutls(result, functions);
+    }
+
+    #[test]
     fn test_args_completion_for_hrtimer_base() {
         let text = r#"kfunc:vmlinux:posix_timer_fn { printf("%d\n", args.timer->base-> ); }"#;
         let json_content = document_content_setup(text, 0, text.len() - 5);
@@ -2894,6 +2908,29 @@ fentry:vmlinux:find_ge_pid {
         assert!(hover.contains("int nr"));
         assert!(hover.contains("struct pid_namespace * ns"));
         assert!(hover.contains("} args;"));
+    }
+
+    #[test]
+    fn test_hover_for_uprobe_args() {
+        assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
+        let text = "u:target/debug/bpftrace-ls:ts_query_new { print(args) }";
+
+        let json_content = document_content_setup(text, 0, text.len() - 6);
+        let result = encode_hover(json_content);
+
+        let formatted_hover = result["result"]["contents"].as_str().unwrap();
+        let hover = formatted_hover
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{hover:?}");
+
+        assert!(hover.contains(r"of ts_query_new"));
+        assert!(hover.contains(r"const TSLanguage * language;"));
+        assert!(hover.contains(r"TSQueryError * error_type;"));
+        assert!(hover.contains(r"uint32_t source_len;"));
+        assert!(hover.contains(r"const char * source;"));
     }
 
     #[test]
