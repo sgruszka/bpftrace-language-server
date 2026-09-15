@@ -1839,6 +1839,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "live_btf_tests"))]
     #[test]
     fn test_resolve_alloc_mnt_ns() {
         let btf = btf_module_get("vmlinux").unwrap();
