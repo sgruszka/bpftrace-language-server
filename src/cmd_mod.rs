@@ -245,13 +245,17 @@ fn bpftrace_properties_from_version() -> Result<Bpftrace, io::Error> {
     Ok(bpftrace_properties(version))
 }
 
-fn get_used_command<'a>() -> &'a str {
-    if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
+fn get_used_command() -> String {
+    let cmd = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
         custom_cmd
-    } else if USE_SUDO.get().copied().unwrap_or(false) {
-        "sudo bpftrace"
     } else {
         "bpftrace"
+    };
+
+    if USE_SUDO.get().copied().unwrap_or(false) {
+        format!("sudo {}", cmd)
+    } else {
+        cmd.to_string()
     }
 }
 
