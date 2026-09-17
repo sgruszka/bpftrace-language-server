@@ -96,35 +96,18 @@ fn sudo_bpftrace_command(use_sudo: bool, args: &[&str]) -> io::Result<Output> {
     cmd.args(args).output()
 }
 
-pub fn bpftrace_list_probes(probes_str: &str, _uprobe: bool) -> Option<String> {
-    let cmd_str = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
-        custom_cmd
-    } else {
-        "bpftrace"
-    };
-
-    // TODO: this depends on setup_bpftrace_root_permissions() finish
-    // Need to wait, or do something similar like in bpftrace_command()
-    let mut sudo = "";
-    if let Some(use_sudo) = USE_SUDO.get() {
-        if *use_sudo {
-            sudo = "sudo -n ";
-        }
-    }
-
-    let cmd = format!("{}{}", sudo, cmd_str);
-
-    let shell_cmd = format!(r#"({} -l '{}') 2>&1"#, cmd, probes_str);
-
-    let Ok(output) = Command::new("sh").arg("-c").arg(shell_cmd).output() else {
+pub fn bpftrace_list_probes(probe_match: &str, _uprobe: bool) -> Option<String> {
+    let Ok(output) = bpftrace_command(&["-l", probe_match]) else {
+        log_err!("Failed to get output from bpftrace command");
         return None;
     };
 
-    let Ok(all_probes_args) = String::from_utf8(output.stdout) else {
+    let Ok(all_probes) = String::from_utf8(output.stdout) else {
+        log_err!("Failed to convert stdout to string");
         return None;
     };
 
-    Some(all_probes_args)
+    Some(all_probes)
 }
 
 pub fn bpftrace_list_probes_verbose(probes_str: &str) -> Option<String> {
