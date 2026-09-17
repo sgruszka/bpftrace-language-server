@@ -553,19 +553,17 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
         }
     }
 
-    if !details.is_empty() {
-        let completion_args = object! {
-            "label": "args",
-            "kind" : CompletionItemKind::Keyword,
-            "detail" : details,
-            "documentation" : {
-                "kind": "markdown",
-                "value": docs,
-            },
-        };
+    let completion_args = object! {
+        "label": "args",
+        "kind" : CompletionItemKind::Keyword,
+        "detail" : details,
+        "documentation" : {
+            "kind": "markdown",
+            "value": docs,
+        },
+    };
 
-        let _ = items.push(completion_args);
-    }
+    let _ = items.push(completion_args);
 }
 
 fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
