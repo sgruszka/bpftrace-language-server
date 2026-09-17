@@ -104,7 +104,7 @@ pub fn find_syntax_location<'t>(
     let mut current_node: Option<Node> = None;
 
     'matches_loop: while let Some(m) = matches.next() {
-        for cap in m.captures {
+        for cap in m.captures() {
             let node = cap.node;
 
             let pos = postition_relative_to_node(&node, line_nr, char_nr);
@@ -127,7 +127,7 @@ pub fn find_syntax_location<'t>(
     if (node.next_sibling().is_none() || postion_before_next_sibling(&node, line_nr, char_nr))
         && node.has_error()
     {
-        let right_child_idx = node.child_count().saturating_sub(1) as u32;
+        let right_child_idx = node.child_count().saturating_sub(1);
         if let Some(right_child) = node.child(right_child_idx) {
             if right_child.is_missing() {
                 return (node_to_syntax_location(&node), node);
@@ -158,7 +158,7 @@ fn location_within_query_match<'t>(
     let mut matches = query_cursor.matches(query, *root_node, text.as_bytes());
 
     'matches_loop: while let Some(m) = matches.next() {
-        for cap in m.captures {
+        for cap in m.captures() {
             let node = cap.node;
 
             let pos = postition_relative_to_node(&node, line_nr, char_nr);
@@ -276,7 +276,11 @@ pub fn is_location_macro_name<'t>(
     None
 }
 
-pub fn field_expr_to_vec<'a>(text: &'a str, field_expr: &Node, last_field: &Node) -> Vec<&'a str> {
+pub fn field_expr_to_vec<'a>(
+    text: &'a str,
+    field_expr: &Node<'a>,
+    last_field: &Node,
+) -> Vec<&'a str> {
     let mut vec: Vec<&str> = Vec::new();
     let mut field_expr = *field_expr;
 
@@ -285,7 +289,7 @@ pub fn field_expr_to_vec<'a>(text: &'a str, field_expr: &Node, last_field: &Node
         let mut op_idx: u32 = 1;
         if field_expr.child_count() > 3 {
             // TODO: introduce operator field_name in tree-sitter-bpftrace to avoid this
-            for idx in 1..field_expr.child_count() as u32 {
+            for idx in 1..field_expr.child_count() {
                 if let Some(n) = field_expr.child(idx) {
                     if n.kind() == "." || n.kind() == "->" {
                         op_idx = idx;
@@ -480,7 +484,7 @@ pub fn find_errors<'t>(text: &str, root_node: &Node<'t>) -> Vec<Node<'t>> {
     let mut results: Vec<Node> = vec![];
 
     while let Some(m) = matches.next() {
-        for cap in m.captures {
+        for cap in m.captures() {
             let node = cap.node;
             results.push(node);
         }
@@ -513,7 +517,7 @@ pub fn find_all_map_variable_assignments<'t>(text: &str, main_node: &Node<'t>) -
     let mut results: Vec<Node> = vec![];
 
     while let Some(m) = matches.next() {
-        for cap in m.captures {
+        for cap in m.captures() {
             let node = cap.node;
             results.push(node);
         }
@@ -523,9 +527,9 @@ pub fn find_all_map_variable_assignments<'t>(text: &str, main_node: &Node<'t>) -
 }
 
 fn probes_list_to_vec(probes_list: &Node, text: &str) -> Vec<String> {
-    let mut probes_vec: Vec<String> = Vec::with_capacity(probes_list.child_count());
+    let mut probes_vec: Vec<String> = Vec::with_capacity(probes_list.child_count() as usize);
     for i in 0..probes_list.child_count() {
-        let probe = probes_list.child(i as u32).unwrap();
+        let probe = probes_list.child(i).unwrap();
         if probe.kind() != "probe" {
             continue;
         }
@@ -747,7 +751,7 @@ where
 
     let mut refs = Vec::new();
     while let Some(m) = matches.next() {
-        for cap in m.captures {
+        for cap in m.captures() {
             let Ok(node_name) = cap.node.utf8_text(text.as_bytes()) else {
                 continue;
             };
