@@ -517,9 +517,8 @@ fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) 
 }
 
 fn add_retval(probes: &Probes, items: &mut json::JsonValue) {
-    let Some((details, docs)) = get_details_and_docs_by_btf(probes, vec!["retval"], false) else {
-        return;
-    };
+    let (details, docs) =
+        get_details_and_docs_by_btf(probes, vec!["retval"], false).unwrap_or_default();
 
     let retval_item = object! {
         "label": r#"retval"#,
