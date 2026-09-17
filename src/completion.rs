@@ -532,19 +532,25 @@ fn add_retval(probes: &Probes, items: &mut json::JsonValue) {
     let _ = items.push(retval_item);
 }
 
+#[allow(clippy::collapsible_else_if)]
 fn add_args(probes: &Probes, items: &mut json::JsonValue) {
     let mut details = String::new();
     let mut docs = String::new();
 
-    if let Some((btf_details, btf_docs)) = get_details_and_docs_by_btf(probes, vec!["args"], false)
-    {
-        details = btf_details;
-        docs = btf_docs;
-    } else if let Some((cmd_details, cmd_docs)) =
-        get_details_and_docs_by_cmd(probes, vec!["args"], false)
-    {
-        details = cmd_details;
-        docs = cmd_docs;
+    if probes.properties.use_btf {
+        if let Some((btf_details, btf_docs)) =
+            get_details_and_docs_by_btf(probes, vec!["args"], false)
+        {
+            details = btf_details;
+            docs = btf_docs;
+        }
+    } else {
+        if let Some((cmd_details, cmd_docs)) =
+            get_details_and_docs_by_cmd(probes, vec!["args"], false)
+        {
+            details = cmd_details;
+            docs = cmd_docs;
+        }
     }
 
     if !details.is_empty() {
