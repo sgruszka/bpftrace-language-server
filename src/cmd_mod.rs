@@ -243,11 +243,14 @@ fn get_used_command() -> String {
 }
 
 pub fn init_bpftrace(custom_cmd_opt: Option<String>) -> Result<(), String> {
-    // Environment variable takes precedence
-    if let Ok(custom_cmd) = env::var("BPFTRACE_LS_COMMAND") {
+    if let Some(custom_cmd) = custom_cmd_opt {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
-    } else if let Some(custom_cmd) = custom_cmd_opt {
-        let _ = CUSTOM_COMMAND.set(custom_cmd);
+    }
+
+    if cfg!(feature = "debug_command") {
+        if let Ok(custom_cmd) = env::var("BPFTRACE_LS_COMMAND") {
+            let _ = CUSTOM_COMMAND.set(custom_cmd);
+        }
     }
 
     let bpftrace = match bpftrace_properties_from_version() {
