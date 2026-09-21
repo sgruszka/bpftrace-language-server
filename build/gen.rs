@@ -47,6 +47,54 @@ fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     text.push_str(&obj);
 }
 
+fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, first_variant: Option<String>) {
+    let label = &doc_item.label;
+
+    if doc_item.variants.is_empty() {
+        &doc_item.label
+    } else {
+        &doc_item.variants
+    };
+
+    let mut docs = if doc_item.short_name.is_empty() {
+        doc_item.first_line.to_string()
+    } else {
+        format!(
+            "{}, short name {}",
+            doc_item.first_line, &doc_item.short_name
+        )
+    };
+
+    let mut kind = 3;
+    let mut detail = format!("stdlib function `{}`", label);
+    if let Some(variant) = first_variant {
+        if !variant.ends_with(")") {
+            kind = 6;
+            detail = format!("builtin variable `{}`", label);
+        }
+    }
+
+    docs.push_str("\n\n");
+    docs.push_str(&doc_item.full_info);
+
+    let obj = format!(
+        r##"
+    let json_obj = object! {{
+        "label": r#"{label}"#,
+        "kind" : {kind},
+        "detail": r#"{detail}"#,
+        "documentation" : {{
+            "kind": "markdown",
+            "value": r#"{docs}"#,
+        }},
+    }};
+    let _ = items.push(json_obj);
+    "##
+    );
+
+    text.push_str(&obj);
+}
+
 fn gen_completion_probes(language_md: &str) -> String {
     let mut probes_section = false;
     let mut collected_probe = false;
@@ -143,7 +191,7 @@ fn gen_completion_stdlib(stdlib_md: &str, ver: &str) -> String {
     let mut doc_item = DocItem::default();
     let mut collected_item = false;
     let mut after_label = false;
-    // let mut in_full_docs = false;
+    let mut first_variant = None;
 
     let ver = ver.replace(".", "_");
 
@@ -156,7 +204,7 @@ fn bpftrace_stdlib_{ver}(items: &mut json::JsonValue) {{
     for line in stdlib_md.lines() {
         if line.trim().starts_with("### ") {
             if collected_item {
-                add_json_obj(&mut text, &doc_item, 3);
+                stdlib_add_json_obj(&mut text, &doc_item, first_variant);
             }
 
             doc_item = DocItem::default();
@@ -164,10 +212,16 @@ fn bpftrace_stdlib_{ver}(items: &mut json::JsonValue) {{
             collected_item = true;
 
             after_label = true;
+            first_variant = None;
             continue;
         }
 
         if after_label {
+            if first_variant.is_none() {
+                if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
+                    first_variant = Some(line[3..line.len() - 1].to_string());
+                }
+            }
             doc_item.full_info.push_str(line);
             doc_item.full_info.push('\n');
         }
