@@ -799,7 +799,7 @@ fn encode_completion_for_probe_list(
 
     let mut items = json::JsonValue::new_array();
 
-    let max_count = 200;
+    let max_count = 10_000;
     let mut count = max_count;
     let mut duplicates: HashMap<String, u32> = HashMap::new();
 
@@ -884,7 +884,7 @@ fn encode_completion_for_probe_list(
 
     let data = object! {
         "result": {
-            "isIncomplete": true,
+            "isIncomplete": count < 0,
             "items": items,
         }
     };
