@@ -853,23 +853,21 @@ fn encode_completion_for_probe_list(
                     Some(_) => continue,
                 };
 
-                let kind = if match_tokens + 1 == trace_tokens.len() {
+                let item = if match_tokens + 1 == trace_tokens.len() {
                     // We could be using Function for fentry, kprobe, ...
                     // but this can give annoying client behavior - adding extra '()'
                     // Using InsertText does not prevent this annoyance
-                    CompletionItemKind::Event
+                    object! {
+                        "label": label,
+                        "kind": CompletionItemKind::Event,
+                        "data": trace_line,
+                    }
                 } else {
-                    CompletionItemKind::Module
+                    object! {
+                        "label": label,
+                        "kind": CompletionItemKind::Module,
+                    }
                 };
-
-                let mut item = object! {
-                    "label": label,
-                    "kind": kind,
-                };
-
-                if kind == CompletionItemKind::Event {
-                    item["data"] = trace_line.into();
-                }
 
                 log_vdbg!(COMPL, "Adding complete item: {}", item);
 
