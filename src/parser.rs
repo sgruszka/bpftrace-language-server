@@ -276,6 +276,21 @@ pub fn is_location_macro_name<'t>(
     None
 }
 
+pub fn is_location_probe_provider<'t>(
+    probe: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    assert_eq!(probe.kind(), "probe");
+    let provider = probe.child_by_field_name("provider")?;
+
+    let pos = postition_relative_to_node(&provider, line_nr, char_nr);
+    if pos == Position::Within {
+        return Some(provider);
+    }
+
+    None
+}
 pub fn field_expr_to_vec<'a>(
     text: &'a str,
     field_expr: &Node<'a>,

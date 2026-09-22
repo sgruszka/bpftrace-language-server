@@ -199,6 +199,23 @@ fn is_usdt(probe: &str) -> bool {
 //     is_uprobe(probe) || is_uretprobe(probe) || is_usdt(probe)
 // }
 
+fn provider_doc_name(name: &str) -> &str {
+    match name {
+        "k" => "kprobe",
+        "kr" => "kretprobe",
+        "f" => "fentry",
+        "fr" => "fexit",
+        "t" => "tracepoint",
+        "rt" => "rawtracepoint",
+        "u" => "uprobe",
+        "ur" => "uretprobe",
+        "U" => "usdt",
+        "begin" => "BEGIN",
+        "end" => "END",
+        _ => name,
+    }
+}
+
 fn kprobe_to_kfunc(probe: &str) -> String {
     let mut v: Vec<&str> = probe.split(":").collect();
     if v[0] == "kprobe" {
@@ -2020,38 +2037,61 @@ fn get_details_and_docs_by_cmd(
     Some((details, docs))
 }
 
-fn encode_hover_for_function(
-    node: &Node,
-    text: &str,
-    _line_str: &str,
-    _char_nr: usize,
-) -> json::JsonValue {
-    let empty_data = object! { "result": json::JsonValue::Null };
+fn hover_from_completion_items(
+    items: &json::JsonValue,
+    item_name: &str,
+) -> Option<json::JsonValue> {
+    let item = items.members().find(|item| item["label"] == item_name)?;
 
-    let mut items = json::JsonValue::new_array();
-    bpftrace_stdlib_functions(&mut items, bpftrace_major_minor_version());
+    log_dbg!(HOVER, "Hover for function '{}'", item_name);
+
+    let details = item["detail"].to_string();
+    let docs = &item["documentation"]["value"];
+
+    let hover = details + "\n" + &docs.to_string();
+    log_vdbg!(HOVER, "Hover:\n{:?}", hover);
+
+    Some(object! {
+          "result": {
+              "contents": hover,
+          },
+    })
+}
+
+fn encode_hover_for_function(node: &Node, text: &str) -> json::JsonValue {
+    let empty_data = object! { "result": json::JsonValue::Null };
 
     let Ok(func) = node.utf8_text(text.as_bytes()) else {
         return empty_data;
     };
 
-    let Some(func_item) = items.members().find(|item| item["label"] == func) else {
+    let mut items = json::JsonValue::new_array();
+    bpftrace_stdlib_functions(&mut items, bpftrace_major_minor_version());
+
+    let Some(hover) = hover_from_completion_items(&items, func) else {
         return empty_data;
     };
 
-    log_dbg!(HOVER, "Hover for function '{}'", func);
+    hover
+}
 
-    let details = func_item["detail"].to_string();
-    let docs = &func_item["documentation"]["value"];
+fn encode_hover_for_probe_provider(node: &Node, text: &str) -> json::JsonValue {
+    let empty_data = object! { "result": json::JsonValue::Null };
 
-    let hover = details + "\n" + &docs.to_string();
-    log_vdbg!(HOVER, "Hover:\n{:?}", hover);
+    let Ok(provider) = node.utf8_text(text.as_bytes()) else {
+        return empty_data;
+    };
 
-    object! {
-          "result": {
-              "contents": hover,
-          },
-    }
+    let mut items = json::JsonValue::new_array();
+    bpftrace_probe_providers(&mut items);
+
+    let provider_name = provider_doc_name(provider);
+
+    let Some(hover) = hover_from_completion_items(&items, provider_name) else {
+        return empty_data;
+    };
+
+    hover
 }
 
 fn encode_hover_for_field_expression(
@@ -2106,7 +2146,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         return data;
     };
 
-    let (text, loc, node, line_str) = get_document_state!(text_doc, line_nr, char_nr, data, HOVER);
+    let (text, loc, node, _line_str) = get_document_state!(text_doc, line_nr, char_nr, data, HOVER);
 
     if loc == SyntaxLocation::ProbesList {
         assert_eq!(node.kind(), "probes_list");
@@ -2118,9 +2158,12 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
         let Some(probe_node) = parser::find_probe_in_probes_list(&node, line_nr, char_nr) else {
             return data;
         };
-
         let probe = probe_node.utf8_text(text.as_bytes()).unwrap_or_default();
         log_dbg!(HOVER, "Hover for probe {}", probe);
+
+        if let Some(provider) = parser::is_location_probe_provider(&probe_node, line_nr, char_nr) {
+            return encode_hover_for_probe_provider(&provider, text);
+        }
 
         if probe.contains("*") {
             log_dbg!(HOVER, "Probe is wildcard");
@@ -2186,7 +2229,7 @@ pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
     } else if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
         // TODO handle probes with wildcard
         if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr) {
-            data = encode_hover_for_function(&func, text, line_str, char_nr);
+            data = encode_hover_for_function(&func, text);
         } else if let Some(args) = parser::is_location_args_keyword(&node, line_nr, char_nr)
             .and_then(|node| node.utf8_text(text.as_bytes()).ok())
         {
@@ -2914,6 +2957,41 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
         println!("{hover:?}");
         // TODO remove space in function arguments: struct hrtimer *hrtmer
         assert!(hover.contains(r"hrtimer_restart posix_timer_fn(struct hrtimer * timer)"));
+    }
+
+    #[test]
+    fn test_hover_for_fentry_provider() {
+        let text = r"fentry:vmlinux:posix_timer_fn {}";
+        let json_content = document_content_setup(text, 0, 2);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        println!("{hover:?}");
+        assert!(hover.contains(r"fentry[:module]:function"));
+        assert!(hover.contains(r"Kernel function entry (tracing with BTF support), short name `f`"));
+    }
+
+    #[test]
+    fn test_hover_for_t_provider() {
+        let text = r"t:dma:dma_free {}";
+        let json_content = document_content_setup(text, 0, 0);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        println!("{hover:?}");
+        assert!(hover.contains(r"tracepoint:subsys:event"));
+        assert!(hover.contains(r"Kernel static tracepoints, short name `t`"));
+    }
+
+    #[test]
+    fn test_hover_for_begin_provider() {
+        let text = r"begin { }";
+        let json_content = document_content_setup(text, 0, 2);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        println!("{hover:?}");
+        assert!(hover.contains(r"Special built-in event provided by the bpftrace runtime."));
     }
 
     #[test]
