@@ -1510,9 +1510,13 @@ fn args_to_func_proto(func_name: &str, args: &[String]) -> String {
 }
 
 pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
-    log_dbg!(COMPL, "Completion resolve for: {}", content);
-
     let mut params = content["params"].clone();
+    log_dbg!(
+        COMPL,
+        "Completion resolve for '{}' with data '{}'",
+        params["label"],
+        params["data"]
+    );
 
     if !params.is_null() {
         if let Some(probe) = params["data"].as_str() {
