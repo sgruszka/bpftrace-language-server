@@ -301,7 +301,7 @@ fn show_message_notification(msg_type: u32, msg: &str) -> String {
     };
 
     let data = object! {
-        "jasonrpc": JSON_RPC_VERSION,
+        "jsonrpc": JSON_RPC_VERSION,
         "method": "window/showMessage",
         "params": params,
     };
@@ -818,7 +818,7 @@ fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
     };
 
     let data = object! {
-        "jasonrpc": JSON_RPC_VERSION,
+        "jsonrpc": JSON_RPC_VERSION,
         "method": "textDocument/publishDiagnostics",
         "params": params,
     };
@@ -848,7 +848,7 @@ fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
     };
 
     data["id"] = id.into();
-    data["jasonrpc"] = JSON_RPC_VERSION.into();
+    data["jsonrpc"] = JSON_RPC_VERSION.into();
 
     let resp = data.dump();
     let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp);
