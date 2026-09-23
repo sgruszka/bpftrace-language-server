@@ -168,8 +168,14 @@ macro_rules! get_document_state {
 }
 
 #[derive(Debug)]
+enum LspRequestId {
+    IdInteger(i32),
+    IdString(String),
+}
+
+#[derive(Debug)]
 enum LspMessageType {
-    Request(u64),
+    Request(LspRequestId),
     Response,
     Notification,
 }
@@ -832,7 +838,7 @@ fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
     ))
 }
 
-fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
+fn encode_message(id: LspRequestId, method: &str, content: json::JsonValue) -> String {
     let mut data = match method {
         "initialize" => encode_initalize_result(),
         "shutdown" => encode_shutdown(),
@@ -848,8 +854,11 @@ fn encode_message(id: u64, method: &str, content: json::JsonValue) -> String {
         }
     };
 
-    data["id"] = id.into();
     data["jsonrpc"] = JSON_RPC_VERSION.into();
+    data["id"] = match id {
+        LspRequestId::IdString(s) => s.into(),
+        LspRequestId::IdInteger(i) => i.into(),
+    };
 
     let resp = data.dump();
     let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp);
@@ -867,11 +876,17 @@ fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
 
     let msg_type;
 
-    if let Some(id) = content["id"].as_u64() {
+    if let Some(id) = content["id"].as_i32() {
         if !content["result"].is_null() || !content["error"].is_null() {
             msg_type = LspMessageType::Response;
         } else {
-            msg_type = LspMessageType::Request(id);
+            msg_type = LspMessageType::Request(LspRequestId::IdInteger(id));
+        }
+    } else if let Some(id) = content["id"].as_str() {
+        if !content["result"].is_null() || !content["error"].is_null() {
+            msg_type = LspMessageType::Response;
+        } else {
+            msg_type = LspMessageType::Request(LspRequestId::IdString(id.to_string()));
         }
     } else {
         msg_type = LspMessageType::Notification;
@@ -1238,7 +1253,10 @@ mod tests {
         let msg = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{"general":{"positionEncodings":["utf-16"]}}}}"#;
 
         let (msg_type, method, _content) = decode_message(msg.to_string());
-        assert!(matches!(msg_type, LspMessageType::Request(1)));
+        assert!(matches!(
+            msg_type,
+            LspMessageType::Request(LspRequestId::IdInteger(1))
+        ));
 
         assert!(method == "initialize");
     }
