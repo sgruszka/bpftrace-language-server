@@ -201,6 +201,7 @@ struct DiagnosticsRequest {
 enum MpscMessage {
     ClientMessage(LspClientMessage),
     Diagnostics(DiagnosticsResutls),
+    InputError,
 }
 
 enum DiagnosticsCommand {
@@ -881,58 +882,72 @@ fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
     (msg_type, method.to_string(), content)
 }
 
-fn recv_message() -> Result<String, i32> {
-    log_vdbg!(PROTO, "Wait for the next message");
-    let mut header = String::new();
-    io::stdin()
-        .read_line(&mut header)
-        .expect("Failed to read header");
+fn recv_message() -> io::Result<String> {
+    log_vdbg!(PROTO, "Waiting for the next message");
+    let mut line1 = String::new();
+    io::stdin().read_line(&mut line1)?;
 
-    let start_idx = "Content-Length: ".len();
-    if header.len() < start_idx {
-        log_err!("Not enough input, got header: '{}'\n", header);
-        return Err(-1);
+    let mut opt_line2 = String::new();
+    io::stdin().read_line(&mut opt_line2)?;
+
+    // Find Content-Length... line, there can be optional Conent-Type... line as first or second line
+    if !opt_line2.trim().is_empty() {
+        // Skip empty line
+        let mut empty_line = String::new();
+        io::stdin().read_line(&mut empty_line)?;
     }
 
+    let header = if line1.starts_with("Content-Length: ") {
+        line1
+    } else if opt_line2.starts_with("Content-Length: ") {
+        opt_line2
+    } else {
+        log_err!("Content-Lenght not found");
+        return Err(io::ErrorKind::InvalidData.into());
+    };
+
+    let start_idx = "Content-Length: ".len();
     let parse_result = header[start_idx..].trim().parse::<usize>();
     let len = match parse_result {
         Ok(val) => val,
         Err(_) => {
             log_err!("Failed to parse length");
-            return Err(-2);
+            return Err(io::ErrorKind::InvalidData.into());
         }
     };
-    // let mut buf: Vec<u8> = Vec::with_capacity(len);
+
+    // TODO
+    // if len > 64*1024*1024 {
+    //    return Err()
+    // }
+
     let mut buf: Vec<u8> = vec![0; len];
     let mut n_read = 0;
     let mut idx = 0;
-    let mut count = 0;
-
-    // Skip empty line
-    io::stdin()
-        .read_line(&mut header)
-        .expect("Failed to eat empty line");
 
     loop {
         match io::stdin().read(&mut buf[idx..]) {
             Ok(n) => {
                 log_dbg!(PROTO, "Read n bytes {} buf.len() {}", n, buf.len());
-                n_read += n;
-                count += 0;
-                if count > 9 {
-                    break;
+
+                if n == 0 {
+                    log_err!("Truncated data, got only {} of {}", n_read, len);
+                    return Err(io::ErrorKind::UnexpectedEof.into());
                 }
+
+                n_read += n;
+                if n_read < len {
+                    idx = n_read;
+                    continue;
+                }
+
+                break;
             }
-            Err(e) => log_err!("Read error {}", e),
+            Err(e) => {
+                log_err!("Read error {}", e);
+                return Err(e);
+            }
         }
-
-        // TODO: handle partial messages
-        if n_read < len {
-            idx = n_read;
-            continue;
-        }
-
-        break;
     }
 
     match String::from_utf8(buf) {
@@ -943,7 +958,7 @@ fn recv_message() -> Result<String, i32> {
         Err(e) => log_err!("Failed to convert to string: {}", e),
     }
 
-    Err(-1)
+    Err(io::ErrorKind::InvalidData.into())
 }
 
 fn send_message(s: String) {
@@ -955,8 +970,6 @@ fn send_message(s: String) {
 }
 
 fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
-    let mut error_count = 0;
-
     loop {
         match recv_message() {
             Ok(msg) => {
@@ -989,11 +1002,11 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
 
             Err(e) => {
                 log_err!("Read error {}", e);
-                error_count += 1;
-                if error_count >= 10 {
-                    log_err!("To many read errors, exiting ...");
-                    break;
+                let res = mpsc_tx.send(MpscMessage::InputError);
+                if let Err(err) = res {
+                    log_err!("MPSC send error {}", err);
                 }
+                break;
             }
         }
     }
@@ -1170,6 +1183,10 @@ fn main() {
                             log_dbg!(DIAGN, "Send diagnostics: {}", s);
                             send_message(s);
                         }
+                    }
+                    MpscMessage::InputError => {
+                        log_err!("Input error, exiting");
+                        break;
                     }
                 };
             }
