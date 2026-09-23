@@ -875,15 +875,16 @@ fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
     //log_dbg!(PROTO, "client Info {}", client_info);
 
     let msg_type;
+    let is_response = content.has_key("result") || content.has_key("error");
 
     if let Some(id) = content["id"].as_i32() {
-        if !content["result"].is_null() || !content["error"].is_null() {
+        if is_response {
             msg_type = LspMessageType::Response;
         } else {
             msg_type = LspMessageType::Request(LspRequestId::IdInteger(id));
         }
     } else if let Some(id) = content["id"].as_str() {
-        if !content["result"].is_null() || !content["error"].is_null() {
+        if is_response {
             msg_type = LspMessageType::Response;
         } else {
             msg_type = LspMessageType::Request(LspRequestId::IdString(id.to_string()));
@@ -1259,6 +1260,17 @@ mod tests {
         ));
 
         assert!(method == "initialize");
+    }
+
+    #[test]
+    fn test_decode_null_result_response() {
+        for msg in [
+            r#"{"jsonrpc":"2.0","id":-1,"result":null}"#,
+            r#"{"jsonrpc":"2.0","id":"req-1","result":null}"#,
+        ] {
+            let (msg_type, _, _) = decode_message(msg.to_string());
+            assert!(matches!(msg_type, LspMessageType::Response));
+        }
     }
 
     #[test]
