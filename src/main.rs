@@ -850,7 +850,12 @@ fn encode_message(id: LspRequestId, method: &str, content: json::JsonValue) -> S
         "completionItem/resolve" => completion::encode_completion_resolve(content),
         unhandled_method => {
             log_dbg!(PROTO, "No handler for method: {}", unhandled_method);
-            object! {}
+            object! {
+                "error": {
+                    "code": -32601,
+                    "message": format!("Method not found: {}", unhandled_method),
+                }
+            }
         }
     };
 
@@ -1271,6 +1276,29 @@ mod tests {
             let (msg_type, _, _) = decode_message(msg.to_string());
             assert!(matches!(msg_type, LspMessageType::Response));
         }
+    }
+
+    #[test]
+    fn test_unknown_method_returns_method_not_found_error() {
+        let response = encode_message(
+            LspRequestId::IdString("request-1".to_string()),
+            "unknown/method",
+            json::JsonValue::Null,
+        );
+        let body = response
+            .split_once("\r\n\r\n")
+            .unwrap()
+            .1
+            .trim_end_matches("\r\n");
+        let parsed = json::parse(body).unwrap();
+
+        assert_eq!(parsed["jsonrpc"].as_str(), Some(JSON_RPC_VERSION));
+        assert_eq!(parsed["id"].as_str(), Some("request-1"));
+        assert_eq!(parsed["error"]["code"].as_i32(), Some(-32601));
+        assert_eq!(
+            parsed["error"]["message"].as_str(),
+            Some("Method not found: unknown/method")
+        );
     }
 
     #[test]
