@@ -208,6 +208,7 @@ enum MpscMessage {
     ClientMessage(LspClientMessage),
     Diagnostics(DiagnosticsResutls),
     InputError,
+    ParseError,
 }
 
 enum DiagnosticsCommand {
@@ -871,10 +872,21 @@ fn encode_message(id: LspRequestId, method: &str, content: json::JsonValue) -> S
     msg
 }
 
-fn decode_message(msg: String) -> (LspMessageType, String, json::JsonValue) {
-    // TODO remove unwrap() and handle errors
-    let content = json::parse(&msg).unwrap();
+fn encode_parse_error() -> String {
+    let data = object! {
+        "jsonrpc": JSON_RPC_VERSION,
+        "id": json::JsonValue::Null,
+        "error": {
+            "code": -32700,
+            "message": "Parse error",
+        }
+    };
 
+    let body = data.dump();
+    format!("Content-Length: {}\r\n\r\n{}\r\n", body.len() + 2, body)
+}
+
+fn decode_message(content: json::JsonValue) -> (LspMessageType, String, json::JsonValue) {
     let method = &content["method"];
     //let client_info = &content["params"]["clientInfo"];
     //log_dbg!(PROTO, "client Info {}", client_info);
@@ -995,7 +1007,19 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
         match recv_message() {
             Ok(msg) => {
                 let start_time = Instant::now();
-                let (msg_type, method, content) = decode_message(msg);
+                let msg_content = match json::parse(&msg) {
+                    Ok(content) => content,
+                    Err(err) => {
+                        log_err!("JSON parse error: {}", err);
+                        if let Err(send_err) = mpsc_tx.send(MpscMessage::ParseError) {
+                            log_err!("MPSC send error {}", send_err);
+                            break;
+                        }
+                        continue;
+                    }
+                };
+
+                let (msg_type, method, content) = decode_message(msg_content);
 
                 let exit: bool = match &msg_type {
                     LspMessageType::Notification => method == "exit",
@@ -1205,6 +1229,10 @@ fn main() {
                             send_message(s);
                         }
                     }
+                    MpscMessage::ParseError => {
+                        log_err!("Sending JSON-RPC parse error");
+                        send_message(encode_parse_error());
+                    }
                     MpscMessage::InputError => {
                         log_err!("Input error, exiting");
                         break;
@@ -1258,7 +1286,7 @@ mod tests {
     fn test_decode_message() {
         let msg = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{"general":{"positionEncodings":["utf-16"]}}}}"#;
 
-        let (msg_type, method, _content) = decode_message(msg.to_string());
+        let (msg_type, method, _content) = decode_message(json::parse(msg).unwrap());
         assert!(matches!(
             msg_type,
             LspMessageType::Request(LspRequestId::IdInteger(1))
@@ -1273,7 +1301,7 @@ mod tests {
             r#"{"jsonrpc":"2.0","id":-1,"result":null}"#,
             r#"{"jsonrpc":"2.0","id":"req-1","result":null}"#,
         ] {
-            let (msg_type, _, _) = decode_message(msg.to_string());
+            let (msg_type, _, _) = decode_message(json::parse(msg).unwrap());
             assert!(matches!(msg_type, LspMessageType::Response));
         }
     }
