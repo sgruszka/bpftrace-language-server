@@ -1003,9 +1003,9 @@ fn recv_message() -> Result<String, RecvMessageError> {
 }
 
 fn send_message(s: String) {
-    let res = io::stdout().write(s.as_bytes());
+    let res = io::stdout().write_all(s.as_bytes());
     match res {
-        Ok(n) => log_dbg!(PROTO, "Send {} bytes out of {}", n, s.len()),
+        Ok(_) => log_dbg!(PROTO, "Send all {} bytes", s.len()),
         Err(e) => log_err!("Failed to write to stdout with error {}", e),
     }
 }
