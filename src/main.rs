@@ -211,6 +211,17 @@ enum MpscMessage {
     ParseError,
 }
 
+enum RecvMessageError {
+    Io(io::Error),
+    InvalidUtf8,
+}
+
+impl From<io::Error> for RecvMessageError {
+    fn from(err: io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
 enum DiagnosticsCommand {
     DiagRequest(DiagnosticsRequest),
     Exit,
@@ -915,7 +926,7 @@ fn decode_message(content: json::JsonValue) -> (LspMessageType, String, json::Js
     (msg_type, method.to_string(), content)
 }
 
-fn recv_message() -> io::Result<String> {
+fn recv_message() -> Result<String, RecvMessageError> {
     log_vdbg!(PROTO, "Waiting for the next message");
     let mut line1 = String::new();
     io::stdin().read_line(&mut line1)?;
@@ -936,7 +947,7 @@ fn recv_message() -> io::Result<String> {
         opt_line2
     } else {
         log_err!("Content-Lenght not found");
-        return Err(io::ErrorKind::InvalidData.into());
+        return Err(io::Error::from(io::ErrorKind::InvalidData).into());
     };
 
     let start_idx = "Content-Length: ".len();
@@ -945,7 +956,7 @@ fn recv_message() -> io::Result<String> {
         Ok(val) => val,
         Err(_) => {
             log_err!("Failed to parse length");
-            return Err(io::ErrorKind::InvalidData.into());
+            return Err(io::Error::from(io::ErrorKind::InvalidData).into());
         }
     };
 
@@ -958,27 +969,22 @@ fn recv_message() -> io::Result<String> {
     let mut n_read = 0;
     let mut idx = 0;
 
-    loop {
+    while n_read < len {
         match io::stdin().read(&mut buf[idx..]) {
             Ok(n) => {
                 log_dbg!(PROTO, "Read n bytes {} buf.len() {}", n, buf.len());
 
                 if n == 0 {
                     log_err!("Truncated data, got only {} of {}", n_read, len);
-                    return Err(io::ErrorKind::UnexpectedEof.into());
+                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into());
                 }
 
                 n_read += n;
-                if n_read < len {
-                    idx = n_read;
-                    continue;
-                }
-
-                break;
+                idx = n_read;
             }
             Err(e) => {
                 log_err!("Read error {}", e);
-                return Err(e);
+                return Err(e.into());
             }
         }
     }
@@ -988,10 +994,11 @@ fn recv_message() -> io::Result<String> {
             log_vdbg!(PROTO, "Read message: '{}'", s);
             return Ok(s);
         }
-        Err(e) => log_err!("Failed to convert to string: {}", e),
+        Err(e) => {
+            log_err!("Failed to convert message body to UTF-8: {}", e);
+            return Err(RecvMessageError::InvalidUtf8);
+        }
     }
-
-    Err(io::ErrorKind::InvalidData.into())
 }
 
 fn send_message(s: String) {
@@ -1045,7 +1052,15 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
                 }
             }
 
-            Err(e) => {
+            Err(RecvMessageError::InvalidUtf8) => {
+                log_err!("Invalid UTF-8 in complete message body");
+                if let Err(err) = mpsc_tx.send(MpscMessage::ParseError) {
+                    log_err!("MPSC send error {}", err);
+                    break;
+                }
+            }
+
+            Err(RecvMessageError::Io(e)) => {
                 log_err!("Read error {}", e);
                 let res = mpsc_tx.send(MpscMessage::InputError);
                 if let Err(err) = res {
