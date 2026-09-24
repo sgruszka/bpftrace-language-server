@@ -993,11 +993,11 @@ fn recv_message() -> Result<String, RecvMessageError> {
     match String::from_utf8(buf) {
         Ok(s) => {
             log_vdbg!(PROTO, "Read message: '{}'", s);
-            return Ok(s);
+            Ok(s)
         }
         Err(e) => {
             log_err!("Failed to convert message body to UTF-8: {}", e);
-            return Err(RecvMessageError::InvalidUtf8);
+            Err(RecvMessageError::InvalidUtf8)
         }
     }
 }
