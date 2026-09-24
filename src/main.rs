@@ -6,7 +6,7 @@ use json::{self, object};
 use std::{
     collections::HashMap,
     io::{self, Read, Write},
-    sync::{mpsc, Arc, LazyLock, Mutex, RwLock},
+    sync::{mpsc, Arc, LazyLock, Mutex, OnceLock, RwLock},
     thread,
     time::{Duration, Instant},
 };
@@ -75,6 +75,11 @@ impl DocumentsState {
     }
 }
 
+static CLIENT_INITALIZED: OnceLock<bool> = OnceLock::new();
+
+pub static WARNINGS_TO_CLIENT: WarningsToClient =
+    WarningsToClient(LazyLock::new(|| Mutex::new(Warnings::default())));
+
 #[derive(Default)]
 struct Warnings {
     sent_mask: u32,
@@ -82,10 +87,6 @@ struct Warnings {
 }
 
 pub struct WarningsToClient(LazyLock<Mutex<Warnings>>);
-
-pub static WARNINGS_TO_CLIENT: WarningsToClient =
-    WarningsToClient(LazyLock::new(|| Mutex::new(Warnings::default())));
-
 pub enum WarningType {
     NoBpftrace = 0,
     NoRoot = 1,
@@ -119,7 +120,6 @@ impl WarningsToClient {
         Some(out)
     }
 }
-//
 
 pub fn unpack_text_document_info(content: json::JsonValue) -> (String, usize, usize) {
     let uri = content["params"]["textDocument"]["uri"].to_string();
@@ -261,6 +261,7 @@ fn handle_notification(method: String, content: json::JsonValue) -> Notification
         }
         "initialized" => {
             log_dbg!(NOTIF, "Client initalized");
+            let _ = CLIENT_INITALIZED.set(true);
             return NotificationAction::None;
         }
         "exit" => {
@@ -1260,11 +1261,13 @@ fn main() {
             }
         }
 
-        if let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop() {
-            while let Some(msg) = warn_msgs.pop() {
-                let s = show_message_notification(2, &msg);
-                log_dbg!(PROTO, "Send show message: {}", s);
-                send_message(s);
+        if CLIENT_INITALIZED.get().is_some() {
+            if let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop() {
+                while let Some(msg) = warn_msgs.pop() {
+                    let s = show_message_notification(2, &msg);
+                    log_dbg!(PROTO, "Send show message: {}", s);
+                    send_message(s);
+                }
             }
         }
     }
