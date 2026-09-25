@@ -1165,7 +1165,6 @@ fn handle_client_msg(
                 }
                 NotificationAction::Exit => {
                     log_dbg!(PROTO, "Exiting");
-                    send_diag_exit(diag_tx);
                     return true;
                 }
                 NotificationAction::None => {}
@@ -1236,6 +1235,7 @@ fn main() {
                     MpscMessage::ClientMessage(client_msg) => {
                         let do_exit = handle_client_msg(client_msg, &diag_tx);
                         if do_exit {
+                            send_diag_exit(&diag_tx);
                             break;
                         }
                     }
@@ -1251,6 +1251,7 @@ fn main() {
                     }
                     MpscMessage::InputError => {
                         log_err!("Input error, exiting");
+                        send_diag_exit(&diag_tx);
                         break;
                     }
                 };
