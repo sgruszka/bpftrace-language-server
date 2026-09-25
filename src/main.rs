@@ -1005,7 +1005,7 @@ fn recv_message() -> Result<String, RecvMessageError> {
     }
 }
 
-fn queue_message(output_tx: &mpsc::Sender<OutputCommand>, message: String) {
+fn send_out_message(output_tx: &mpsc::Sender<OutputCommand>, message: String) {
     if let Err(err) = output_tx.send(OutputCommand::Message(message)) {
         log_err!("Output channel send error {}", err);
     }
@@ -1037,7 +1037,7 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<Outp
                     Ok(content) => content,
                     Err(err) => {
                         log_err!("JSON parse error: {}", err);
-                        queue_message(&output_tx, encode_parse_error());
+                        send_out_message(&output_tx, encode_parse_error());
                         continue;
                     }
                 };
@@ -1070,7 +1070,7 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<Outp
 
             Err(RecvMessageError::InvalidUtf8) => {
                 log_err!("Invalid UTF-8 in complete message body");
-                queue_message(&output_tx, encode_parse_error());
+                send_out_message(&output_tx, encode_parse_error());
             }
 
             Err(RecvMessageError::Io(e)) => {
@@ -1126,7 +1126,7 @@ fn thread_diagnostics(
                     };
                     if let Some(message) = publish_diagnostics(diag_results) {
                         log_dbg!(DIAGN, "Send diagnostics: {}", message);
-                        queue_message(&output_tx, message);
+                        send_out_message(&output_tx, message);
                     }
                 }
                 DiagnosticsCommand::Exit => {
@@ -1160,7 +1160,7 @@ fn handle_client_msg(
             let time_diff = start_time.elapsed();
             log_dbg!(PROTO, "Response time {:?}", time_diff);
             log_vdbg!(PROTO, "Answer:\n{}", msg);
-            queue_message(output_tx, msg);
+            send_out_message(output_tx, msg);
 
             // TOOD response with InvalidRequest after shutdown
             // if method == "shutdown" {
@@ -1176,7 +1176,7 @@ fn handle_client_msg(
                 NotificationAction::SendDiagnostics(uri) => {
                     if let Some(s) = do_diagnostics(uri, diag_tx) {
                         log_dbg!(DIAGN, "Send diagnostics: {}", s);
-                        queue_message(output_tx, s);
+                        send_out_message(output_tx, s);
                     }
                 }
                 NotificationAction::Exit => {
@@ -1280,7 +1280,7 @@ fn main() {
                 while let Some(msg) = warn_msgs.pop() {
                     let s = show_message_notification(2, &msg);
                     log_dbg!(PROTO, "Send show message: {}", s);
-                    queue_message(&output_tx, s);
+                    send_out_message(&output_tx, s);
                 }
             }
         }
