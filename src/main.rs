@@ -213,7 +213,6 @@ struct DiagnosticsRequest {
 
 enum MpscMessage {
     ClientMessage(LspClientMessage),
-    Diagnostics(DiagnosticsResutls),
     InputError,
 }
 
@@ -1087,7 +1086,7 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<Outp
 }
 
 fn thread_diagnostics(
-    mpsc_tx: mpsc::Sender<MpscMessage>,
+    output_tx: mpsc::Sender<OutputCommand>,
     diag_rx: mpsc::Receiver<DiagnosticsCommand>,
 ) {
     loop {
@@ -1120,12 +1119,15 @@ fn thread_diagnostics(
 
                     let diagnostics = do_bpftrace_diagnostics(&text_doc.text);
 
-                    let diag_msg = DiagnosticsResutls {
+                    let diag_results = DiagnosticsResutls {
                         uri,
                         version,
                         diagnostics,
                     };
-                    let _res = mpsc_tx.send(MpscMessage::Diagnostics(diag_msg));
+                    if let Some(message) = publish_diagnostics(diag_results) {
+                        log_dbg!(DIAGN, "Send diagnostics: {}", message);
+                        queue_message(&output_tx, message);
+                    }
                 }
                 DiagnosticsCommand::Exit => {
                     log_dbg!(DIAGN, "Exit diagnostics thread");
@@ -1208,7 +1210,6 @@ fn main() {
     let start = Instant::now();
 
     let (mpsc_tx, mpsc_rx) = mpsc::channel::<MpscMessage>();
-    let diag_mpsc_tx = mpsc_tx.clone();
 
     let (output_tx, output_rx) = mpsc::channel::<OutputCommand>();
     let input_output_tx = output_tx.clone();
@@ -1217,6 +1218,7 @@ fn main() {
     let input_handle = thread::spawn(move || thread_input(mpsc_tx, input_output_tx));
 
     let (diag_tx, diag_rx) = mpsc::channel::<DiagnosticsCommand>();
+    let mut diag_handle = None;
 
     match cmd_mod::init_bpftrace(args.cmd) {
         Ok(_) => {
@@ -1227,7 +1229,11 @@ fn main() {
             });
 
             thread::spawn(completion::init_available_traces);
-            thread::spawn(move || thread_diagnostics(diag_mpsc_tx, diag_rx));
+
+            let diag_output_tx = output_tx.clone();
+            diag_handle = Some(thread::spawn(move || {
+                thread_diagnostics(diag_output_tx, diag_rx)
+            }));
 
             thread::spawn(move || {
                 let _ = perms_handle.join();
@@ -1254,19 +1260,11 @@ fn main() {
                     MpscMessage::ClientMessage(client_msg) => {
                         let do_exit = handle_client_msg(client_msg, &diag_tx, &output_tx);
                         if do_exit {
-                            send_diag_exit(&diag_tx);
                             break;
-                        }
-                    }
-                    MpscMessage::Diagnostics(diag_results) => {
-                        if let Some(s) = publish_diagnostics(diag_results) {
-                            log_dbg!(DIAGN, "Send diagnostics: {}", s);
-                            queue_message(&output_tx, s);
                         }
                     }
                     MpscMessage::InputError => {
                         log_err!("Input error, exiting");
-                        send_diag_exit(&diag_tx);
                         break;
                     }
                 };
@@ -1291,6 +1289,14 @@ fn main() {
     if let Err(err) = input_handle.join() {
         log_err!("Input thread join error: {:?}", err);
     }
+
+    send_diag_exit(&diag_tx);
+    if let Some(handle) = diag_handle {
+        if let Err(err) = handle.join() {
+            log_err!("Diagnostics thread join error: {:?}", err);
+        }
+    }
+
     if let Err(err) = output_tx.send(OutputCommand::Exit) {
         log_err!("Output channel send error {}", err);
     }
