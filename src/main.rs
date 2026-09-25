@@ -217,7 +217,7 @@ enum MpscMessage {
 }
 
 enum OutputCommand {
-    Message(String),
+    SendToClient(JsonValue),
     Exit,
 }
 
@@ -324,7 +324,7 @@ fn encode_shutdown() -> JsonValue {
     data
 }
 
-fn show_message_notification(msg_type: u32, msg: &str) -> String {
+fn show_message_notification(msg_type: u32, msg: &str) -> JsonValue {
     let params = object! {
         "type": msg_type,
         "message": msg,
@@ -336,9 +336,7 @@ fn show_message_notification(msg_type: u32, msg: &str) -> String {
         "params": params,
     };
 
-    let notif = data.dump();
-
-    format!("Content-Length: {}\r\n\r\n{}\r\n", notif.len() + 2, notif)
+    data
 }
 
 fn encode_no_definition() -> JsonValue {
@@ -778,7 +776,7 @@ fn send_diag_command(uri: String, version: u64, diag_tx: &mpsc::Sender<Diagnosti
     let _ = diag_tx.send(DiagnosticsCommand::DiagRequest(diag_req));
 }
 
-fn do_diagnostics(uri: String, diag_tx: &mpsc::Sender<DiagnosticsCommand>) -> Option<String> {
+fn do_diagnostics(uri: String, diag_tx: &mpsc::Sender<DiagnosticsCommand>) -> Option<JsonValue> {
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
         log_dbg!(DIAGN, "No text document for {}", uri);
         return None;
@@ -814,7 +812,7 @@ fn send_diag_exit(diag_tx: &mpsc::Sender<DiagnosticsCommand>) {
     let _ = diag_tx.send(DiagnosticsCommand::Exit);
 }
 
-fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
+fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<JsonValue> {
     let uri = &diag_results.uri;
     log_dbg!(
         DIAGN,
@@ -849,15 +847,10 @@ fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
         "params": params,
     };
 
-    let resp = data.dump();
-    Some(format!(
-        "Content-Length: {}\r\n\r\n{}\r\n",
-        resp.len() + 2,
-        resp
-    ))
+    Some(data)
 }
 
-fn encode_message(id: LspRequestId, method: &str, content: JsonValue) -> String {
+fn encode_message(id: LspRequestId, method: &str, content: JsonValue) -> JsonValue {
     let mut data = match method {
         "initialize" => encode_initalize_result(),
         "shutdown" => encode_shutdown(),
@@ -881,24 +874,18 @@ fn encode_message(id: LspRequestId, method: &str, content: JsonValue) -> String 
     data["jsonrpc"] = JSON_RPC_VERSION.into();
     data["id"] = json_id(id);
 
-    let resp = data.dump();
-    let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp);
-
-    msg
+    data
 }
 
-fn encode_parse_error() -> String {
-    let data = object! {
+fn encode_parse_error() -> JsonValue {
+    object! {
         "jsonrpc": JSON_RPC_VERSION,
         "id": JsonValue::Null,
         "error": {
             "code": -32700,
             "message": "Parse error",
         }
-    };
-
-    let body = data.dump();
-    format!("Content-Length: {}\r\n\r\n{}\r\n", body.len() + 2, body)
+    }
 }
 
 fn decode_message(content: JsonValue) -> (LspMessageType, String, JsonValue) {
@@ -1005,8 +992,8 @@ fn recv_message() -> Result<String, RecvMessageError> {
     }
 }
 
-fn send_out_message(output_tx: &mpsc::Sender<OutputCommand>, message: String) {
-    if let Err(err) = output_tx.send(OutputCommand::Message(message)) {
+fn send_out_message(output_tx: &mpsc::Sender<OutputCommand>, message: JsonValue) {
+    if let Err(err) = output_tx.send(OutputCommand::SendToClient(message)) {
         log_err!("Output channel send error {}", err);
     }
 }
@@ -1014,10 +1001,14 @@ fn send_out_message(output_tx: &mpsc::Sender<OutputCommand>, message: String) {
 fn thread_output(output_rx: mpsc::Receiver<OutputCommand>) {
     let mut stdout = io::stdout().lock();
     while let Ok(command) = output_rx.recv() {
-        let msg = match command {
-            OutputCommand::Message(msg) => msg,
+        let body_json = match command {
+            OutputCommand::SendToClient(msg) => msg,
             OutputCommand::Exit => break,
         };
+
+        let body = body_json.dump();
+        let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", body.len() + 2, body);
+
         let result = stdout
             .write_all(msg.as_bytes())
             .and_then(|()| stdout.flush());
@@ -1359,23 +1350,17 @@ mod tests {
 
     #[test]
     fn test_unknown_method_returns_method_not_found_error() {
-        let response = encode_message(
+        let resp = encode_message(
             LspRequestId::IdString("request-1".to_string()),
             "unknown/method",
             JsonValue::Null,
         );
-        let body = response
-            .split_once("\r\n\r\n")
-            .unwrap()
-            .1
-            .trim_end_matches("\r\n");
-        let parsed = json::parse(body).unwrap();
 
-        assert_eq!(parsed["jsonrpc"].as_str(), Some(JSON_RPC_VERSION));
-        assert_eq!(parsed["id"].as_str(), Some("request-1"));
-        assert_eq!(parsed["error"]["code"].as_i32(), Some(-32601));
+        assert_eq!(resp["jsonrpc"].as_str(), Some(JSON_RPC_VERSION));
+        assert_eq!(resp["id"].as_str(), Some("request-1"));
+        assert_eq!(resp["error"]["code"].as_i32(), Some(-32601));
         assert_eq!(
-            parsed["error"]["message"].as_str(),
+            resp["error"]["message"].as_str(),
             Some("Method not found: unknown/method")
         );
     }
