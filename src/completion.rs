@@ -3204,7 +3204,7 @@ fentry:vmlinux:async_schedule_node_domain {
     fn test_hover_for_wildcard_probe() {
         let text = r#"tracepoint:syscalls:sys_enter_open* { }"#;
 
-        let json_content = document_content_setup(text, 0, 5);
+        let json_content = document_content_setup(text, 0, text.len() - 8);
         let result = encode_hover(json_content);
 
         let formatted_hover = result["result"]["contents"].as_str().unwrap();
