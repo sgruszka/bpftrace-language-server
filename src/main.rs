@@ -215,7 +215,11 @@ enum MpscMessage {
     ClientMessage(LspClientMessage),
     Diagnostics(DiagnosticsResutls),
     InputError,
-    ParseError,
+}
+
+enum OutputCommand {
+    Message(String),
+    Exit,
 }
 
 enum RecvMessageError {
@@ -1002,15 +1006,30 @@ fn recv_message() -> Result<String, RecvMessageError> {
     }
 }
 
-fn send_message(s: String) {
-    let res = io::stdout().write_all(s.as_bytes());
-    match res {
-        Ok(_) => log_dbg!(PROTO, "Send all {} bytes", s.len()),
-        Err(e) => log_err!("Failed to write to stdout with error {}", e),
+fn queue_message(output_tx: &mpsc::Sender<OutputCommand>, message: String) {
+    if let Err(err) = output_tx.send(OutputCommand::Message(message)) {
+        log_err!("Output channel send error {}", err);
     }
 }
 
-fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
+fn thread_output(output_rx: mpsc::Receiver<OutputCommand>) {
+    let mut stdout = io::stdout().lock();
+    while let Ok(command) = output_rx.recv() {
+        let msg = match command {
+            OutputCommand::Message(msg) => msg,
+            OutputCommand::Exit => break,
+        };
+        let result = stdout
+            .write_all(msg.as_bytes())
+            .and_then(|()| stdout.flush());
+        match result {
+            Ok(()) => log_dbg!(PROTO, "Send all {} bytes", msg.len()),
+            Err(err) => log_err!("Failed to write to stdout with error {}", err),
+        }
+    }
+}
+
+fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<OutputCommand>) {
     loop {
         match recv_message() {
             Ok(msg) => {
@@ -1019,10 +1038,7 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
                     Ok(content) => content,
                     Err(err) => {
                         log_err!("JSON parse error: {}", err);
-                        if let Err(send_err) = mpsc_tx.send(MpscMessage::ParseError) {
-                            log_err!("MPSC send error {}", send_err);
-                            break;
-                        }
+                        queue_message(&output_tx, encode_parse_error());
                         continue;
                     }
                 };
@@ -1055,10 +1071,7 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>) {
 
             Err(RecvMessageError::InvalidUtf8) => {
                 log_err!("Invalid UTF-8 in complete message body");
-                if let Err(err) = mpsc_tx.send(MpscMessage::ParseError) {
-                    log_err!("MPSC send error {}", err);
-                    break;
-                }
+                queue_message(&output_tx, encode_parse_error());
             }
 
             Err(RecvMessageError::Io(e)) => {
@@ -1130,6 +1143,7 @@ fn thread_diagnostics(
 fn handle_client_msg(
     lsp_client_msg: LspClientMessage,
     diag_tx: &mpsc::Sender<DiagnosticsCommand>,
+    output_tx: &mpsc::Sender<OutputCommand>,
 ) -> bool {
     let LspClientMessage {
         msg_type,
@@ -1144,7 +1158,7 @@ fn handle_client_msg(
             let time_diff = start_time.elapsed();
             log_dbg!(PROTO, "Response time {:?}", time_diff);
             log_vdbg!(PROTO, "Answer:\n{}", msg);
-            send_message(msg);
+            queue_message(output_tx, msg);
 
             // TOOD response with InvalidRequest after shutdown
             // if method == "shutdown" {
@@ -1160,7 +1174,7 @@ fn handle_client_msg(
                 NotificationAction::SendDiagnostics(uri) => {
                     if let Some(s) = do_diagnostics(uri, diag_tx) {
                         log_dbg!(DIAGN, "Send diagnostics: {}", s);
-                        send_message(s);
+                        queue_message(output_tx, s);
                     }
                 }
                 NotificationAction::Exit => {
@@ -1195,7 +1209,12 @@ fn main() {
 
     let (mpsc_tx, mpsc_rx) = mpsc::channel::<MpscMessage>();
     let diag_mpsc_tx = mpsc_tx.clone();
-    thread::spawn(move || thread_input(mpsc_tx));
+
+    let (output_tx, output_rx) = mpsc::channel::<OutputCommand>();
+    let input_output_tx = output_tx.clone();
+
+    let output_handle = thread::spawn(move || thread_output(output_rx));
+    let input_handle = thread::spawn(move || thread_input(mpsc_tx, input_output_tx));
 
     let (diag_tx, diag_rx) = mpsc::channel::<DiagnosticsCommand>();
 
@@ -1233,7 +1252,7 @@ fn main() {
             Ok(mpsc_msg) => {
                 match mpsc_msg {
                     MpscMessage::ClientMessage(client_msg) => {
-                        let do_exit = handle_client_msg(client_msg, &diag_tx);
+                        let do_exit = handle_client_msg(client_msg, &diag_tx, &output_tx);
                         if do_exit {
                             send_diag_exit(&diag_tx);
                             break;
@@ -1242,12 +1261,8 @@ fn main() {
                     MpscMessage::Diagnostics(diag_results) => {
                         if let Some(s) = publish_diagnostics(diag_results) {
                             log_dbg!(DIAGN, "Send diagnostics: {}", s);
-                            send_message(s);
+                            queue_message(&output_tx, s);
                         }
-                    }
-                    MpscMessage::ParseError => {
-                        log_err!("Sending JSON-RPC parse error");
-                        send_message(encode_parse_error());
                     }
                     MpscMessage::InputError => {
                         log_err!("Input error, exiting");
@@ -1267,10 +1282,21 @@ fn main() {
                 while let Some(msg) = warn_msgs.pop() {
                     let s = show_message_notification(2, &msg);
                     log_dbg!(PROTO, "Send show message: {}", s);
-                    send_message(s);
+                    queue_message(&output_tx, s);
                 }
             }
         }
+    }
+
+    if let Err(err) = input_handle.join() {
+        log_err!("Input thread join error: {:?}", err);
+    }
+    if let Err(err) = output_tx.send(OutputCommand::Exit) {
+        log_err!("Output channel send error {}", err);
+    }
+    drop(output_tx);
+    if let Err(err) = output_handle.join() {
+        log_err!("Output thread join error: {:?}", err);
     }
 }
 
