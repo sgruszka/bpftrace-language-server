@@ -1,5 +1,5 @@
 use glob_match::glob_match;
-use json::{self, object};
+use json::{self, object, JsonValue};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, OnceLock};
@@ -54,9 +54,9 @@ enum CompletionItemKind {
     TypeParameter = 25,
 }
 
-impl From<CompletionItemKind> for json::JsonValue {
-    fn from(kind: CompletionItemKind) -> json::JsonValue {
-        json::JsonValue::from(kind as u8)
+impl From<CompletionItemKind> for JsonValue {
+    fn from(kind: CompletionItemKind) -> JsonValue {
+        JsonValue::from(kind as u8)
     }
 }
 
@@ -261,7 +261,7 @@ fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
     res_type.type_prefix == "struct " || res_type.type_prefix == "union "
 }
 
-fn add_items_from_btf_member(btf: Arc<Btf>, member: &BtfVariable, items: &mut json::JsonValue) {
+fn add_items_from_btf_member(btf: Arc<Btf>, member: &BtfVariable, items: &mut JsonValue) {
     if let Some(member_type) = btf_resolve_type(&btf, member.type_id) {
         // Anonymous member with named or inserted struct/union
         if member.name.is_empty() {
@@ -295,11 +295,8 @@ fn add_items_from_btf_member(btf: Arc<Btf>, member: &BtfVariable, items: &mut js
     }
 }
 
-fn items_from_resolved_btf(
-    btf: Arc<Btf>,
-    btf_tuple: &(BtfVariable, BtfResolvedType),
-) -> json::JsonValue {
-    let mut items = json::JsonValue::new_array();
+fn items_from_resolved_btf(btf: Arc<Btf>, btf_tuple: &(BtfVariable, BtfResolvedType)) -> JsonValue {
+    let mut items = JsonValue::new_array();
 
     let (_res_var, res_type) = btf_tuple;
 
@@ -314,8 +311,8 @@ fn items_from_resolved_btf(
     items
 }
 
-fn items_from_probe_args(probe_args_iter: impl Iterator<Item = String>) -> json::JsonValue {
-    let mut items = json::JsonValue::new_array();
+fn items_from_probe_args(probe_args_iter: impl Iterator<Item = String>) -> JsonValue {
+    let mut items = JsonValue::new_array();
 
     for arg in probe_args_iter {
         let tokens: Vec<&str> = arg.split(" ").collect();
@@ -418,11 +415,11 @@ fn probe_properties(probe: &str) -> ProbeProperties {
 fn encode_completion_for_field_expression(
     probes: Probes,
     field_expr: Vec<&str>,
-) -> Option<json::JsonValue> {
+) -> Option<JsonValue> {
     if field_expr.is_empty() {
         return None;
     }
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
 
     let probes_vec = &probes.probes_vec;
     let probe = probes_vec.first()?;
@@ -464,12 +461,12 @@ fn encode_completion_for_field_expression(
 }
 
 // Complete args. i.e. kfunc:xe:__fini_dbm { printf("%s\n", str(args.drm->driver->name)) }
-fn encode_completion_for_args_or_retval(probes: Probes, fields: &str) -> Option<json::JsonValue> {
+fn encode_completion_for_args_or_retval(probes: Probes, fields: &str) -> Option<JsonValue> {
     let fields_vec = parser::chain_str_to_tokens(fields);
     encode_completion_for_field_expression(probes, fields_vec)
 }
 
-fn add_block_keywords(items: &mut json::JsonValue) {
+fn add_block_keywords(items: &mut JsonValue) {
     let keywords = [
         "break", "continue", "else", "for", "if", "let", "offsetof", "return", "sizeof", "unroll",
         "while",
@@ -492,7 +489,7 @@ fn add_block_variables(
     text: &str,
     line_nr: usize,
     char_nr: usize,
-    items: &mut json::JsonValue,
+    items: &mut JsonValue,
     var_type: parser::VariableType,
 ) {
     // TODO do match in parser
@@ -516,7 +513,7 @@ fn add_block_variables(
     }
 }
 
-fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) {
+fn add_source_file_macros(node: &Node, text: &str, items: &mut JsonValue) {
     let macros = parser::find_source_file_macros(node, text);
     log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
@@ -533,7 +530,7 @@ fn add_source_file_macros(node: &Node, text: &str, items: &mut json::JsonValue) 
     }
 }
 
-fn add_retval(probes: &Probes, items: &mut json::JsonValue) {
+fn add_retval(probes: &Probes, items: &mut JsonValue) {
     let (details, docs) =
         get_details_and_docs_by_btf(probes, vec!["retval"], false).unwrap_or_default();
 
@@ -550,7 +547,7 @@ fn add_retval(probes: &Probes, items: &mut json::JsonValue) {
 }
 
 #[allow(clippy::collapsible_else_if)]
-fn add_args(probes: &Probes, items: &mut json::JsonValue) {
+fn add_args(probes: &Probes, items: &mut JsonValue) {
     let mut details = String::new();
     let mut docs = String::new();
 
@@ -583,7 +580,7 @@ fn add_args(probes: &Probes, items: &mut json::JsonValue) {
     let _ = items.push(completion_args);
 }
 
-fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
+fn add_arg_n(probes: &Probes, items: &mut JsonValue) {
     let Some((btf, resolved_func)) = probes.btf_probe_args.as_ref() else {
         return;
     };
@@ -625,7 +622,7 @@ fn add_arg_n(probes: &Probes, items: &mut json::JsonValue) {
 }
 
 // Special args and retval builtin
-fn add_args_and_retval_keywords(probes: &Probes, items: &mut json::JsonValue) {
+fn add_args_and_retval_keywords(probes: &Probes, items: &mut JsonValue) {
     if probes.probes_vec.is_empty() {
         return;
     }
@@ -649,7 +646,7 @@ fn add_completion_items_for_block(
     line_nr: usize,
     char_nr: usize,
     probes_opt: Option<Probes>,
-    items: &mut json::JsonValue,
+    items: &mut JsonValue,
 ) {
     if let Some((var_type, _n)) = parser::is_location_variable(text, node, line_nr, char_nr) {
         add_block_variables(node, text, line_nr, char_nr, items, var_type)
@@ -669,11 +666,11 @@ fn encode_completion_for_action(
     line_nr: usize,
     char_nr: usize,
     probes: Probes,
-) -> Option<json::JsonValue> {
+) -> Option<JsonValue> {
     log_dbg!(COMPL, "Complete for action block");
 
     // TODO preload btf module
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
 
     add_completion_items_for_block(text, node, line_nr, char_nr, Some(probes), &mut items);
 
@@ -692,10 +689,10 @@ fn encode_completion_for_macro(
     node: &Node,
     line_nr: usize,
     char_nr: usize,
-) -> Option<json::JsonValue> {
+) -> Option<JsonValue> {
     log_dbg!(COMPL, "Complete for macro");
 
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
 
     add_completion_items_for_block(text, node, line_nr, char_nr, None, &mut items);
 
@@ -801,7 +798,7 @@ fn encode_completion_for_probe_list(
     prefix: &str,
     line_str: &str,
     short_prefix: Option<&str>,
-) -> Option<json::JsonValue> {
+) -> Option<JsonValue> {
     log_dbg!(
         COMPL,
         "Check completion for prefix '{}' with short name {:?}",
@@ -814,7 +811,7 @@ fn encode_completion_for_probe_list(
         return Some(encode_no_completion());
     };
 
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
 
     let max_count = 10_000;
     let mut count = max_count;
@@ -907,7 +904,7 @@ fn encode_completion_for_probe_list(
     Some(data)
 }
 
-fn encode_completion_for_file_path(path: &str) -> Option<json::JsonValue> {
+fn encode_completion_for_file_path(path: &str) -> Option<JsonValue> {
     let mut head;
     let mut tail = "";
 
@@ -932,7 +929,7 @@ fn encode_completion_for_file_path(path: &str) -> Option<json::JsonValue> {
     log_dbg!(COMPL, "Listing files in '{}' with '{}'", dir, tail);
 
     let entries = fs::read_dir(dir).ok()?;
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
 
     for entry in entries {
         let Ok(path) = entry.map(|e| e.path()) else {
@@ -975,7 +972,7 @@ fn encode_completion_for_file_path(path: &str) -> Option<json::JsonValue> {
     Some(data)
 }
 
-fn encode_completion_for_user_space_functions(line_tokens: Vec<&str>) -> Option<json::JsonValue> {
+fn encode_completion_for_user_space_functions(line_tokens: Vec<&str>) -> Option<JsonValue> {
     assert!(line_tokens.len() > 2);
 
     let num_tokens = if line_tokens.len() > 3 { 3 } else { 2 };
@@ -985,7 +982,7 @@ fn encode_completion_for_user_space_functions(line_tokens: Vec<&str>) -> Option<
     let matched_probes = bpftrace_list_probes(&probe_match, true)?;
     let mut duplicates: HashMap<String, u32> = HashMap::new();
 
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
 
     for probe_line in matched_probes.lines() {
         let probe_tokens: Vec<&str> = probe_line.split(":").collect();
@@ -1038,7 +1035,7 @@ fn encode_completion_for_user_probes(
     prefix: &str,
     line_str: &str,
     short_prefix: Option<&str>,
-) -> Option<json::JsonValue> {
+) -> Option<JsonValue> {
     log_dbg!(
         COMPL,
         "Check completion for prefix '{}' with short name {:?}",
@@ -1063,7 +1060,7 @@ fn encode_completion_for_user_probes(
     None
 }
 
-pub fn add_empty_line_keywords(items: &mut json::JsonValue) {
+pub fn add_empty_line_keywords(items: &mut JsonValue) {
     // TODO "config" is only allowed in preamble
     let keywords = ["config", "import", "macro", "let"];
 
@@ -1079,7 +1076,7 @@ pub fn add_empty_line_keywords(items: &mut json::JsonValue) {
     }
 }
 
-fn add_map_declarations(items: &mut json::JsonValue) {
+fn add_map_declarations(items: &mut JsonValue) {
     let item = object! {
         "label": r#"hash"#,
         "kind" : CompletionItemKind::Function
@@ -1105,7 +1102,7 @@ fn add_map_declarations(items: &mut json::JsonValue) {
     let _ = items.push(item);
 }
 
-fn add_small_case_builtins(items: &mut json::JsonValue) {
+fn add_small_case_builtins(items: &mut JsonValue) {
     let item = object! {
         "label": r#"begin"#,
         "kind" : 8,
@@ -1153,8 +1150,8 @@ end {
     let _ = items.push(item);
 }
 
-fn encode_completion_for_new_line(line_str: &str) -> json::JsonValue {
-    let mut items = json::JsonValue::new_array();
+fn encode_completion_for_new_line(line_str: &str) -> JsonValue {
+    let mut items = JsonValue::new_array();
 
     let line = line_str.trim();
 
@@ -1184,8 +1181,8 @@ fn encode_completion_for_new_line(line_str: &str) -> json::JsonValue {
     data
 }
 
-fn encode_no_completion() -> json::JsonValue {
-    let items = json::JsonValue::new_array();
+fn encode_no_completion() -> JsonValue {
+    let items = JsonValue::new_array();
     let empty_data = object! {
         "result": {
             "isIncomplete": false,
@@ -1199,8 +1196,8 @@ fn encode_no_completion() -> json::JsonValue {
 fn encode_completion_for_probe_provider(
     line_str: &str,
     providers: Vec<(&str, Option<&str>)>,
-    encode_completion: impl Fn(&str, &str, Option<&str>) -> Option<json::JsonValue>,
-) -> Option<json::JsonValue> {
+    encode_completion: impl Fn(&str, &str, Option<&str>) -> Option<JsonValue>,
+) -> Option<JsonValue> {
     if !line_str.trim().is_empty() {
         for prefix in providers.iter() {
             if !line_str.trim().starts_with(prefix.0) {
@@ -1235,7 +1232,7 @@ fn encode_completion_for_probe_provider(
     None
 }
 
-fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
+fn encode_completion_for_line(line_str: &str) -> JsonValue {
     let mut providers = vec![
         ("test", None),
         ("bench", None),
@@ -1282,8 +1279,8 @@ fn encode_completion_for_line(line_str: &str) -> json::JsonValue {
     encode_completion_for_new_line(line_str)
 }
 
-fn encode_completion_for_config_block() -> json::JsonValue {
-    let mut items = json::JsonValue::new_array();
+fn encode_completion_for_config_block() -> JsonValue {
+    let mut items = JsonValue::new_array();
 
     bpftrace_config_variables(&mut items);
 
@@ -1382,7 +1379,7 @@ impl Probes {
 }
 
 #[allow(clippy::collapsible_else_if)]
-pub fn encode_completion(content: json::JsonValue) -> json::JsonValue {
+pub fn encode_completion(content: JsonValue) -> JsonValue {
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
     // For completion look at place before the cursor.
     let char_nr = char_nr.saturating_sub(1);
@@ -1526,7 +1523,7 @@ fn args_to_func_proto(func_name: &str, args: &[String]) -> String {
     proto
 }
 
-pub fn encode_completion_resolve(content: json::JsonValue) -> json::JsonValue {
+pub fn encode_completion_resolve(content: JsonValue) -> JsonValue {
     let mut params = content["params"].clone();
     log_dbg!(
         COMPL,
@@ -2037,10 +2034,7 @@ fn get_details_and_docs_by_cmd(
     Some((details, docs))
 }
 
-fn hover_from_completion_items(
-    items: &json::JsonValue,
-    item_name: &str,
-) -> Option<json::JsonValue> {
+fn hover_from_completion_items(items: &JsonValue, item_name: &str) -> Option<JsonValue> {
     let item = items.members().find(|item| item["label"] == item_name)?;
 
     log_dbg!(HOVER, "Hover for function '{}'", item_name);
@@ -2058,14 +2052,14 @@ fn hover_from_completion_items(
     })
 }
 
-fn encode_hover_for_function(node: &Node, text: &str) -> json::JsonValue {
-    let empty_data = object! { "result": json::JsonValue::Null };
+fn encode_hover_for_function(node: &Node, text: &str) -> JsonValue {
+    let empty_data = object! { "result": JsonValue::Null };
 
     let Ok(func) = node.utf8_text(text.as_bytes()) else {
         return empty_data;
     };
 
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
     bpftrace_stdlib_functions(&mut items, bpftrace_major_minor_version());
 
     let Some(hover) = hover_from_completion_items(&items, func) else {
@@ -2075,14 +2069,14 @@ fn encode_hover_for_function(node: &Node, text: &str) -> json::JsonValue {
     hover
 }
 
-fn encode_hover_for_probe_provider(node: &Node, text: &str) -> json::JsonValue {
-    let empty_data = object! { "result": json::JsonValue::Null };
+fn encode_hover_for_probe_provider(node: &Node, text: &str) -> JsonValue {
+    let empty_data = object! { "result": JsonValue::Null };
 
     let Ok(provider) = node.utf8_text(text.as_bytes()) else {
         return empty_data;
     };
 
-    let mut items = json::JsonValue::new_array();
+    let mut items = JsonValue::new_array();
     bpftrace_probe_providers(&mut items);
 
     let provider_name = provider_doc_name(provider);
@@ -2098,10 +2092,10 @@ fn encode_hover_for_field_expression(
     main_node: &Node,
     text: &str,
     field_expr: Vec<&str>,
-) -> json::JsonValue {
+) -> JsonValue {
     log_dbg!(HOVER, "Hover for field expression {:?}", field_expr);
 
-    let empty_data = object! { "result": json::JsonValue::Null };
+    let empty_data = object! { "result": JsonValue::Null };
 
     let probes_vec = parser::find_probes_for_node(main_node, text);
     if probes_vec.is_empty() {
@@ -2136,11 +2130,11 @@ fn encode_hover_for_field_expression(
     }
 }
 
-pub fn encode_hover(content: json::JsonValue) -> json::JsonValue {
+pub fn encode_hover(content: JsonValue) -> JsonValue {
     log_dbg!(HOVER, "Received hover with data {}", content);
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
 
-    let mut data = object! { "result": json::JsonValue::Null };
+    let mut data = object! { "result": JsonValue::Null };
 
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
         return data;
@@ -2380,7 +2374,7 @@ mod tests {
         assert!(resolved_btf.args.len() == n);
     }
 
-    fn document_content_setup(text: &str, line_nr: usize, char_nr: usize) -> json::JsonValue {
+    fn document_content_setup(text: &str, line_nr: usize, char_nr: usize) -> JsonValue {
         let uri = format!(
             "file:///completion_test{}.bt",
             URI_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -2401,7 +2395,7 @@ mod tests {
         }
     }
 
-    fn check_completion_resutls_negative(result: &json::JsonValue, values: Vec<&str>) {
+    fn check_completion_resutls_negative(result: &JsonValue, values: Vec<&str>) {
         let labels: Vec<_> = result["result"]["items"]
             .members()
             .map(|item| item["label"].to_string())
@@ -2416,7 +2410,7 @@ mod tests {
         }
     }
 
-    fn check_completion_resutls(result: json::JsonValue, values: Vec<&str>) {
+    fn check_completion_resutls(result: JsonValue, values: Vec<&str>) {
         let labels: Vec<_> = result["result"]["items"]
             .members()
             .map(|item| item["label"].to_string())

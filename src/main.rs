@@ -1,7 +1,7 @@
 #![allow(clippy::single_char_add_str)]
 #![allow(clippy::let_and_return)]
 
-use json::{self, object};
+use json::{self, object, JsonValue};
 
 use std::{
     collections::HashMap,
@@ -121,7 +121,7 @@ impl WarningsToClient {
     }
 }
 
-pub fn unpack_text_document_info(content: json::JsonValue) -> (String, usize, usize) {
+pub fn unpack_text_document_info(content: JsonValue) -> (String, usize, usize) {
     let uri = content["params"]["textDocument"]["uri"].to_string();
 
     let position = &content["params"]["position"];
@@ -173,10 +173,10 @@ enum LspRequestId {
     IdString(String),
 }
 
-fn json_id(id: LspRequestId) -> json::JsonValue {
+fn json_id(id: LspRequestId) -> JsonValue {
     match id {
-        LspRequestId::IdString(s) => json::JsonValue::from(s.as_str()),
-        LspRequestId::IdInteger(i) => json::JsonValue::from(i),
+        LspRequestId::IdString(s) => JsonValue::from(s.as_str()),
+        LspRequestId::IdInteger(i) => JsonValue::from(i),
     }
 }
 
@@ -196,14 +196,14 @@ enum NotificationAction {
 struct LspClientMessage {
     msg_type: LspMessageType,
     method: String,
-    content: json::JsonValue,
+    content: JsonValue,
     start_time: Instant,
 }
 
 struct DiagnosticsResutls {
     uri: String,
     version: u64,
-    diagnostics: json::JsonValue,
+    diagnostics: JsonValue,
 }
 
 struct DiagnosticsRequest {
@@ -234,7 +234,7 @@ enum DiagnosticsCommand {
     Exit,
 }
 
-fn handle_notification(method: String, content: json::JsonValue) -> NotificationAction {
+fn handle_notification(method: String, content: JsonValue) -> NotificationAction {
     match &method[..] {
         "textDocument/didOpen" => {
             let text_document = &content["params"]["textDocument"];
@@ -285,7 +285,7 @@ fn handle_notification(method: String, content: json::JsonValue) -> Notification
     NotificationAction::None
 }
 
-fn encode_initalize_result() -> json::JsonValue {
+fn encode_initalize_result() -> JsonValue {
     let capabilities = object! {
         "textDocumentSync": 1,
         "hoverProvider": true,
@@ -313,7 +313,7 @@ fn encode_initalize_result() -> json::JsonValue {
     data
 }
 
-fn encode_shutdown() -> json::JsonValue {
+fn encode_shutdown() -> JsonValue {
     let data = object! {
         "result": null,
     };
@@ -338,11 +338,11 @@ fn show_message_notification(msg_type: u32, msg: &str) -> String {
     format!("Content-Length: {}\r\n\r\n{}\r\n", notif.len() + 2, notif)
 }
 
-fn encode_no_definition() -> json::JsonValue {
-    object! { "result": json::JsonValue::Null }
+fn encode_no_definition() -> JsonValue {
+    object! { "result": JsonValue::Null }
 }
 
-fn encode_definition(content: json::JsonValue) -> json::JsonValue {
+fn encode_definition(content: JsonValue) -> JsonValue {
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
 
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
@@ -424,15 +424,15 @@ fn encode_definition(content: json::JsonValue) -> json::JsonValue {
     }
 }
 
-fn encode_no_references() -> json::JsonValue {
-    object! { "result": json::JsonValue::Null }
+fn encode_no_references() -> JsonValue {
+    object! { "result": JsonValue::Null }
 }
 
 fn encode_references_for_nodes<'t>(
     uri: String,
     ref_nodes: Vec<tree_sitter::Node<'t>>,
-) -> json::JsonValue {
-    let mut location = json::JsonValue::new_array();
+) -> JsonValue {
+    let mut location = JsonValue::new_array();
 
     if ref_nodes.is_empty() {
         return encode_no_references();
@@ -505,7 +505,7 @@ fn get_references_for_macro<'t>(
     ))
 }
 
-fn encode_references(content: json::JsonValue) -> json::JsonValue {
+fn encode_references(content: JsonValue) -> JsonValue {
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
 
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
@@ -527,7 +527,7 @@ fn encode_references(content: json::JsonValue) -> json::JsonValue {
 }
 
 // TODO implement correct codeAction and enable codeActionProvider
-fn encode_code_action(content: json::JsonValue) -> json::JsonValue {
+fn encode_code_action(content: JsonValue) -> JsonValue {
     log_err!("Received codeAction with data {}", content);
     let uri = &content["params"]["textDocument"]["uri"].to_string();
 
@@ -570,10 +570,10 @@ fn encode_code_action(content: json::JsonValue) -> json::JsonValue {
     data
 }
 
-fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> json::JsonValue {
+fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue {
     let error_nodes = parser::find_errors(text, root_node);
 
-    let mut diagnostics = json::JsonValue::new_array();
+    let mut diagnostics = JsonValue::new_array();
     for node in error_nodes {
         let start = node.start_position();
         let end = node.end_position();
@@ -609,7 +609,7 @@ fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> json::Jso
 fn bpftrace_diag_single_line_error(
     mut line_nr: usize,
     tokens: &[&str],
-) -> Result<json::JsonValue, std::num::ParseIntError> {
+) -> Result<JsonValue, std::num::ParseIntError> {
     assert!(tokens.len() > 2);
 
     if line_nr > 1 {
@@ -645,9 +645,7 @@ fn bpftrace_diag_single_line_error(
 
 // Parse errors with lines range like this:
 // stdin:2-4: ERROR: Invalid probe type: kkprobe
-fn bpftrace_diag_multi_line_error(
-    tokens: &[&str],
-) -> Result<json::JsonValue, std::num::ParseIntError> {
+fn bpftrace_diag_multi_line_error(tokens: &[&str]) -> Result<JsonValue, std::num::ParseIntError> {
     assert!(tokens.len() > 1);
 
     let start_and_end: Vec<&str> = tokens[1].split("-").collect();
@@ -687,9 +685,7 @@ fn bpftrace_diag_multi_line_error(
 
 // Parse definitions errors:
 // definitions.h:10:18: error: expected ';' at end of declaration list
-fn bpftrace_diag_definitions_error(
-    tokens: &[&str],
-) -> Result<json::JsonValue, std::num::ParseIntError> {
+fn bpftrace_diag_definitions_error(tokens: &[&str]) -> Result<JsonValue, std::num::ParseIntError> {
     assert!(tokens.len() > 2);
 
     let mut line_nr = tokens[1].parse::<usize>()?;
@@ -720,8 +716,8 @@ fn bpftrace_diag_definitions_error(
     Ok(diag)
 }
 
-fn do_bpftrace_diagnostics(text: &str) -> json::JsonValue {
-    let mut diagnostics = json::JsonValue::new_array();
+fn do_bpftrace_diagnostics(text: &str) -> JsonValue {
+    let mut diagnostics = JsonValue::new_array();
 
     let output = if let Ok(ok_output) = cmd_mod::bpftrace_dry_run_command(text) {
         ok_output
@@ -858,7 +854,7 @@ fn publish_diagnostics(diag_results: DiagnosticsResutls) -> Option<String> {
     ))
 }
 
-fn encode_message(id: LspRequestId, method: &str, content: json::JsonValue) -> String {
+fn encode_message(id: LspRequestId, method: &str, content: JsonValue) -> String {
     let mut data = match method {
         "initialize" => encode_initalize_result(),
         "shutdown" => encode_shutdown(),
@@ -891,7 +887,7 @@ fn encode_message(id: LspRequestId, method: &str, content: json::JsonValue) -> S
 fn encode_parse_error() -> String {
     let data = object! {
         "jsonrpc": JSON_RPC_VERSION,
-        "id": json::JsonValue::Null,
+        "id": JsonValue::Null,
         "error": {
             "code": -32700,
             "message": "Parse error",
@@ -902,7 +898,7 @@ fn encode_parse_error() -> String {
     format!("Content-Length: {}\r\n\r\n{}\r\n", body.len() + 2, body)
 }
 
-fn decode_message(content: json::JsonValue) -> (LspMessageType, String, json::JsonValue) {
+fn decode_message(content: JsonValue) -> (LspMessageType, String, JsonValue) {
     let method = &content["method"];
     //let client_info = &content["params"]["clientInfo"];
     //log_dbg!(PROTO, "client Info {}", client_info);
@@ -1283,7 +1279,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static URI_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-    fn document_content_setup(text: &str, line_nr: usize, char_nr: usize) -> json::JsonValue {
+    fn document_content_setup(text: &str, line_nr: usize, char_nr: usize) -> JsonValue {
         let uri = format!(
             "file:///main_test{}.bt",
             URI_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -1333,7 +1329,7 @@ mod tests {
         let response = encode_message(
             LspRequestId::IdString("request-1".to_string()),
             "unknown/method",
-            json::JsonValue::Null,
+            JsonValue::Null,
         );
         let body = response
             .split_once("\r\n\r\n")
