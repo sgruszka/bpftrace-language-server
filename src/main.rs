@@ -173,6 +173,13 @@ enum LspRequestId {
     IdString(String),
 }
 
+fn json_id(id: LspRequestId) -> json::JsonValue {
+    match id {
+        LspRequestId::IdString(s) => json::JsonValue::from(s.as_str()),
+        LspRequestId::IdInteger(i) => json::JsonValue::from(i),
+    }
+}
+
 #[derive(Debug)]
 enum LspMessageType {
     Request(LspRequestId),
@@ -873,10 +880,7 @@ fn encode_message(id: LspRequestId, method: &str, content: json::JsonValue) -> S
     };
 
     data["jsonrpc"] = JSON_RPC_VERSION.into();
-    data["id"] = match id {
-        LspRequestId::IdString(s) => s.into(),
-        LspRequestId::IdInteger(i) => i.into(),
-    };
+    data["id"] = json_id(id);
 
     let resp = data.dump();
     let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", resp.len() + 2, resp);
