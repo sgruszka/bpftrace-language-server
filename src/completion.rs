@@ -449,10 +449,9 @@ fn encode_completion_for_field_expression(
         }
     }
 
-    // Completion list can change if switch from args to retval or vice versa
     let data = object! {
         "result": {
-            "isIncomplete": true,
+            "isIncomplete": false,
             "items": items,
         }
     };
