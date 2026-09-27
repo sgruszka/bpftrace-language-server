@@ -1245,25 +1245,23 @@ fn main() {
     );
 
     loop {
-        match mpsc_rx.recv() {
-            Ok(mpsc_msg) => {
-                match mpsc_msg {
-                    MpscMessage::ClientMessage(client_msg) => {
-                        let do_exit = handle_client_msg(client_msg, &diag_tx, &output_tx);
-                        if do_exit {
-                            break;
-                        }
-                    }
-                    MpscMessage::InputError => {
-                        log_err!("Input error, exiting");
-                        break;
-                    }
-                };
-            }
+        let lsp_client_msg = match mpsc_rx.recv() {
+            Ok(mpsc_msg) => match mpsc_msg {
+                MpscMessage::ClientMessage(client_msg) => client_msg,
+                MpscMessage::InputError => {
+                    log_err!("Input error, exiting");
+                    break;
+                }
+            },
             Err(err) => {
-                log_err!("Subthread error {}", err);
+                log_err!("MPSC RX error {}", err);
                 break;
             }
+        };
+
+        let do_exit = handle_client_msg(lsp_client_msg, &diag_tx, &output_tx);
+        if do_exit {
+            break;
         }
 
         if CLIENT_INITALIZED.get().is_some() {
