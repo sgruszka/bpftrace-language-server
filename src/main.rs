@@ -1268,28 +1268,34 @@ fn main() {
                 log_vdbg!(PROTO, "Answer:\n{}", msg);
                 send_out_message(&output_tx, msg, start_time);
             }
-            LspMessageType::Response => (),
             LspMessageType::Notification => {
-                let notif_action = handle_notification(method, content);
-                match notif_action {
-                    NotificationAction::SendDiagnostics(uri) => {
-                        if let Some(content) = do_diagnostics(uri, &diag_tx) {
-                            log_dbg!(DIAGN, "Send diagnostics: {}", content);
-                            send_out_message(&output_tx, content, start_time);
-                        }
-                    }
-                    NotificationAction::Init => {
-                        initialized = true;
-                    }
-                    NotificationAction::Exit => {
+                if after_shutdown {
+                    if method == "exit" {
                         break;
                     }
-                    NotificationAction::None => {}
+                } else {
+                    let notif_action = handle_notification(method, content);
+                    match notif_action {
+                        NotificationAction::SendDiagnostics(uri) => {
+                            if let Some(content) = do_diagnostics(uri, &diag_tx) {
+                                log_dbg!(DIAGN, "Send diagnostics: {}", content);
+                                send_out_message(&output_tx, content, start_time);
+                            }
+                        }
+                        NotificationAction::Init => {
+                            initialized = true;
+                        }
+                        NotificationAction::Exit => {
+                            break;
+                        }
+                        NotificationAction::None => {}
+                    }
                 }
             }
+            LspMessageType::Response => (),
         }
 
-        if initialized {
+        if initialized && !after_shutdown {
             if let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop() {
                 while let Some(msg) = warn_msgs.pop() {
                     let content = show_message_notification(2, &msg);
