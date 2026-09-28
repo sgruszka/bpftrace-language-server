@@ -899,6 +899,17 @@ fn encode_parse_error() -> JsonValue {
     }
 }
 
+fn encode_invalid_request(id: LspRequestId) -> JsonValue {
+    object! {
+        "jsonrpc": JSON_RPC_VERSION,
+        "id": json_id(id),
+        "error": {
+            "code": -32600,
+            "message": "Server has shut down",
+        }
+    }
+}
+
 fn decode_message(content: JsonValue) -> (LspMessageType, String, JsonValue) {
     let method = &content["method"];
     //let client_info = &content["params"]["clientInfo"];
@@ -1220,6 +1231,7 @@ fn main() {
     );
 
     let mut initialized = false;
+    let mut after_shutdown = false;
 
     loop {
         let lsp_client_msg = match mpsc_rx.recv() {
@@ -1245,15 +1257,16 @@ fn main() {
 
         match msg_type {
             LspMessageType::Request(id) => {
-                let msg = encode_message(id, &method, content);
+                let msg = if after_shutdown {
+                    encode_invalid_request(id)
+                } else {
+                    if method == "shutdown" {
+                        after_shutdown = true;
+                    }
+                    encode_message(id, &method, content)
+                };
                 log_vdbg!(PROTO, "Answer:\n{}", msg);
                 send_out_message(&output_tx, msg, start_time);
-
-                // TOOD response with InvalidRequest after shutdown
-                // if method == "shutdown" {
-                //     break;
-                // }
-                //
             }
             LspMessageType::Response => (),
             LspMessageType::Notification => {
