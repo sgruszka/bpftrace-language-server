@@ -21,3 +21,8 @@ Cargo.lock
 #.idea/
 
 src/gen/completion.rs
+
+# Local patches and examples
+Patches/
+Examples/
+TODO
