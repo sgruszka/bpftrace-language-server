@@ -67,12 +67,28 @@ fn server_init_and_exit() {
     assert!(output.status.success());
 
     let responses = read_server_output(&output.stdout);
-    assert!(responses
+    assert_eq!(responses.len(), 2, "only requests should receive responses");
+
+    let initialize_response = responses
         .iter()
-        .any(|message| message["id"].as_i32() == Some(1)));
-    assert!(responses
+        .find(|message| message["id"].as_i32() == Some(1))
+        .expect("initialize response");
+    assert_eq!(initialize_response["jsonrpc"].as_str(), Some("2.0"));
+    assert!(initialize_response["error"].is_null());
+    assert!(initialize_response["result"]["capabilities"]["hoverProvider"].as_bool().unwrap());
+    assert!(initialize_response["result"]["capabilities"]["definitionProvider"]
+        .as_bool()
+        .unwrap());
+    assert!(initialize_response["result"]["capabilities"]["completionProvider"]
+        .is_object());
+
+    let shutdown_response = responses
         .iter()
-        .any(|message| message["id"].as_i32() == Some(2)));
+        .find(|message| message["id"].as_i32() == Some(2))
+        .expect("shutdown response");
+    assert_eq!(shutdown_response["jsonrpc"].as_str(), Some("2.0"));
+    assert!(shutdown_response["error"].is_null());
+    assert!(shutdown_response["result"].is_null());
 }
 
 #[test]
