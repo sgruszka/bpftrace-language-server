@@ -11,8 +11,6 @@ use std::ops::Deref;
 use crate::cmd_mod::{bpftrace_has_property, BpftraceProperty};
 use crate::log_mod::{self, BTFRD};
 use crate::{log_dbg, log_err, WarningType, WARNINGS_TO_CLIENT};
-use std::ffi::CStr;
-use std::os::raw::c_char;
 
 #[derive(Debug, BinRead)]
 // #[br(magic = 0xeb9fu16)]
@@ -983,12 +981,7 @@ impl BtfSplit {
                         });
                     }
                 } else {
-                    let start_off = header.hdr_len + header.str_off;
-                    let name_pos = start_off + name_off - start_str_off;
-                    let ptr = data.as_ptr() as *const c_char;
-                    assert!((name_pos as usize) < data.len());
-
-                    unsafe { CStr::from_ptr(ptr.add(name_pos as usize)).to_str().unwrap() }
+                    inner_get_str(&data, &header, name_off - start_str_off).unwrap_or("")
                 };
 
                 Ok(name)
@@ -1073,15 +1066,20 @@ fn inner_raw_type_from_id(btf_split: &BtfSplit, id: u32) -> binrw::BinResult<Btf
     inner_raw_type_from_offset(&btf_split.data, btf_split.offsets[idx])
 }
 
+fn inner_get_str<'a>(data: &'a [u8], header: &BtfHeader, name_off: u32) -> Option<&'a str> {
+    let start_off = (header.hdr_len as usize).checked_add(header.str_off as usize)?;
+    let end_off = start_off.checked_add(header.str_len as usize)?;
+
+    let btf_str_section = data.get(start_off..end_off)?;
+
+    let btf_str = btf_str_section.get(name_off as usize..)?;
+    let null_pos = btf_str.iter().position(|&byte| byte == 0)?;
+
+    std::str::from_utf8(&btf_str[..null_pos]).ok()
+}
+
 fn inner_get_name(btf_split: &BtfSplit, name_off: u32) -> &str {
-    let start_off = btf_split.header.hdr_len + btf_split.header.str_off;
-    let pos = start_off + name_off;
-    assert!((pos as usize) < btf_split.data.len());
-
-    let ptr = btf_split.data.as_ptr() as *const c_char;
-    let name = unsafe { CStr::from_ptr(ptr.add(pos as usize)).to_str().unwrap() };
-
-    name
+    inner_get_str(&btf_split.data, &btf_split.header, name_off).unwrap_or("")
 }
 
 impl BtfSplit {
