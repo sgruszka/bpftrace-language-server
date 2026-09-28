@@ -6,7 +6,7 @@ use json::{self, object, JsonValue};
 use std::{
     collections::HashMap,
     io::{self, Read, Write},
-    sync::{mpsc, Arc, LazyLock, Mutex, OnceLock, RwLock},
+    sync::{mpsc, Arc, LazyLock, Mutex, RwLock},
     thread,
     time::{Duration, Instant},
 };
@@ -199,6 +199,11 @@ struct LspClientMessage {
     start_time: Instant,
 }
 
+struct LspServerMessage {
+    content: JsonValue,
+    start_time: Instant,
+}
+
 struct DiagnosticsResutls {
     uri: String,
     version: u64,
@@ -208,6 +213,7 @@ struct DiagnosticsResutls {
 struct DiagnosticsRequest {
     uri: String,
     version: u64,
+    start_time: Instant,
 }
 
 enum MpscMessage {
@@ -216,7 +222,7 @@ enum MpscMessage {
 }
 
 enum OutputCommand {
-    SendToClient(JsonValue),
+    SendToClient(LspServerMessage),
     Exit,
 }
 
@@ -763,6 +769,8 @@ fn do_bpftrace_diagnostics(text: &str) -> JsonValue {
 }
 
 fn send_diag_command(uri: String, version: u64, diag_tx: &mpsc::Sender<DiagnosticsCommand>) {
+    let start_time = Instant::now();
+
     log_dbg!(
         DIAGN,
         "Send diagnostics command for uri {} version {}",
@@ -770,7 +778,11 @@ fn send_diag_command(uri: String, version: u64, diag_tx: &mpsc::Sender<Diagnosti
         version,
     );
 
-    let diag_req = DiagnosticsRequest { uri, version };
+    let diag_req = DiagnosticsRequest {
+        uri,
+        version,
+        start_time,
+    };
 
     let _ = diag_tx.send(DiagnosticsCommand::DiagRequest(diag_req));
 }
@@ -991,8 +1003,16 @@ fn recv_message() -> Result<String, RecvMessageError> {
     }
 }
 
-fn send_out_message(output_tx: &mpsc::Sender<OutputCommand>, message: JsonValue) {
-    if let Err(err) = output_tx.send(OutputCommand::SendToClient(message)) {
+fn send_out_message(
+    output_tx: &mpsc::Sender<OutputCommand>,
+    content: JsonValue,
+    start_time: Instant,
+) {
+    let msg = LspServerMessage {
+        content,
+        start_time,
+    };
+    if let Err(err) = output_tx.send(OutputCommand::SendToClient(msg)) {
         log_err!("Output channel send error {}", err);
     }
 }
@@ -1000,17 +1020,21 @@ fn send_out_message(output_tx: &mpsc::Sender<OutputCommand>, message: JsonValue)
 fn thread_output(output_rx: mpsc::Receiver<OutputCommand>) {
     let mut stdout = io::stdout().lock();
     while let Ok(command) = output_rx.recv() {
-        let body_json = match command {
+        let lsp_server_message = match command {
             OutputCommand::SendToClient(msg) => msg,
             OutputCommand::Exit => break,
         };
 
-        let body = body_json.dump();
+        let body = lsp_server_message.content.dump();
         let msg = format!("Content-Length: {}\r\n\r\n{}\r\n", body.len() + 2, body);
 
         let result = stdout
             .write_all(msg.as_bytes())
             .and_then(|()| stdout.flush());
+
+        let time_diff = lsp_server_message.start_time.elapsed();
+        log_dbg!(PROTO, "Processing time {:?}", time_diff);
+
         match result {
             Ok(()) => log_dbg!(PROTO, "Send all {} bytes", msg.len()),
             Err(err) => log_err!("Failed to write to stdout with error {}", err),
@@ -1023,11 +1047,12 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<Outp
         match recv_message() {
             Ok(msg) => {
                 let start_time = Instant::now();
+
                 let msg_content = match json::parse(&msg) {
                     Ok(content) => content,
                     Err(err) => {
                         log_err!("JSON parse error: {}", err);
-                        send_out_message(&output_tx, encode_parse_error());
+                        send_out_message(&output_tx, encode_parse_error(), start_time);
                         continue;
                     }
                 };
@@ -1060,7 +1085,7 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<Outp
 
             Err(RecvMessageError::InvalidUtf8) => {
                 log_err!("Invalid UTF-8 in complete message body");
-                send_out_message(&output_tx, encode_parse_error());
+                send_out_message(&output_tx, encode_parse_error(), Instant::now());
             }
 
             Err(RecvMessageError::Io(e)) => {
@@ -1116,7 +1141,7 @@ fn thread_diagnostics(
                     };
                     if let Some(message) = publish_diagnostics(diag_results) {
                         log_dbg!(DIAGN, "Send diagnostics: {}", message);
-                        send_out_message(&output_tx, message);
+                        send_out_message(&output_tx, message, diag_req.start_time);
                     }
                 }
                 DiagnosticsCommand::Exit => {
@@ -1221,10 +1246,8 @@ fn main() {
         match msg_type {
             LspMessageType::Request(id) => {
                 let msg = encode_message(id, &method, content);
-                let time_diff = start_time.elapsed();
-                log_dbg!(PROTO, "Response time {:?}", time_diff);
                 log_vdbg!(PROTO, "Answer:\n{}", msg);
-                send_out_message(&output_tx, msg);
+                send_out_message(&output_tx, msg, start_time);
 
                 // TOOD response with InvalidRequest after shutdown
                 // if method == "shutdown" {
@@ -1237,9 +1260,9 @@ fn main() {
                 let notif_action = handle_notification(method, content);
                 match notif_action {
                     NotificationAction::SendDiagnostics(uri) => {
-                        if let Some(s) = do_diagnostics(uri, &diag_tx) {
-                            log_dbg!(DIAGN, "Send diagnostics: {}", s);
-                            send_out_message(&output_tx, s);
+                        if let Some(content) = do_diagnostics(uri, &diag_tx) {
+                            log_dbg!(DIAGN, "Send diagnostics: {}", content);
+                            send_out_message(&output_tx, content, start_time);
                         }
                     }
                     NotificationAction::Init => {
@@ -1256,9 +1279,10 @@ fn main() {
         if initialized {
             if let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop() {
                 while let Some(msg) = warn_msgs.pop() {
-                    let s = show_message_notification(2, &msg);
-                    log_dbg!(PROTO, "Send show message: {}", s);
-                    send_out_message(&output_tx, s);
+                    let content = show_message_notification(2, &msg);
+                    log_dbg!(PROTO, "Send show message: {}", content);
+                    // TODO: mark time when warning was created
+                    send_out_message(&output_tx, content, Instant::now());
                 }
             }
         }
