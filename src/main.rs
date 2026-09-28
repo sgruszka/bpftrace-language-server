@@ -1133,55 +1133,6 @@ fn thread_diagnostics(
     }
 }
 
-fn handle_client_msg(
-    lsp_client_msg: LspClientMessage,
-    diag_tx: &mpsc::Sender<DiagnosticsCommand>,
-    output_tx: &mpsc::Sender<OutputCommand>,
-) -> bool {
-    let LspClientMessage {
-        msg_type,
-        method,
-        content,
-        start_time,
-    } = lsp_client_msg;
-
-    match msg_type {
-        LspMessageType::Request(id) => {
-            let msg = encode_message(id, &method, content);
-            let time_diff = start_time.elapsed();
-            log_dbg!(PROTO, "Response time {:?}", time_diff);
-            log_vdbg!(PROTO, "Answer:\n{}", msg);
-            send_out_message(output_tx, msg);
-
-            // TOOD response with InvalidRequest after shutdown
-            // if method == "shutdown" {
-            //     break;
-            // }
-            //
-        }
-        LspMessageType::Response => (),
-        LspMessageType::Notification => {
-            let notif_action = handle_notification(method, content);
-            // TODO consider moving this to handle notification
-            match notif_action {
-                NotificationAction::SendDiagnostics(uri) => {
-                    if let Some(s) = do_diagnostics(uri, diag_tx) {
-                        log_dbg!(DIAGN, "Send diagnostics: {}", s);
-                        send_out_message(output_tx, s);
-                    }
-                }
-                NotificationAction::Exit => {
-                    log_dbg!(PROTO, "Exiting");
-                    return true;
-                }
-                NotificationAction::None => {}
-            }
-        }
-    }
-
-    false /* No exit */
-}
-
 xflags::xflags! {
     cmd args {
         optional --log-file path: String
@@ -1259,9 +1210,45 @@ fn main() {
             }
         };
 
-        let do_exit = handle_client_msg(lsp_client_msg, &diag_tx, &output_tx);
-        if do_exit {
-            break;
+        let LspClientMessage {
+            msg_type,
+            method,
+            content,
+            start_time,
+        } = lsp_client_msg;
+
+        match msg_type {
+            LspMessageType::Request(id) => {
+                let msg = encode_message(id, &method, content);
+                let time_diff = start_time.elapsed();
+                log_dbg!(PROTO, "Response time {:?}", time_diff);
+                log_vdbg!(PROTO, "Answer:\n{}", msg);
+                send_out_message(&output_tx, msg);
+
+                // TOOD response with InvalidRequest after shutdown
+                // if method == "shutdown" {
+                //     break;
+                // }
+                //
+            }
+            LspMessageType::Response => (),
+            LspMessageType::Notification => {
+                let notif_action = handle_notification(method, content);
+                // TODO consider moving this to handle notification
+                match notif_action {
+                    NotificationAction::SendDiagnostics(uri) => {
+                        if let Some(s) = do_diagnostics(uri, &diag_tx) {
+                            log_dbg!(DIAGN, "Send diagnostics: {}", s);
+                            send_out_message(&output_tx, s);
+                        }
+                    }
+                    NotificationAction::Exit => {
+                        log_dbg!(PROTO, "Exiting");
+                        break;
+                    }
+                    NotificationAction::None => {}
+                }
+            }
         }
 
         if CLIENT_INITALIZED.get().is_some() {
