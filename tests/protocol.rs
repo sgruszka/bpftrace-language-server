@@ -1,6 +1,8 @@
 use std::{
     io::{BufRead, Cursor, Read, Write},
     process::{Command, Output, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
 
 fn add_server_input(input: &mut Vec<u8>, body: &[u8]) {
@@ -75,12 +77,17 @@ fn server_init_and_exit() {
         .expect("initialize response");
     assert_eq!(initialize_response["jsonrpc"].as_str(), Some("2.0"));
     assert!(initialize_response["error"].is_null());
-    assert!(initialize_response["result"]["capabilities"]["hoverProvider"].as_bool().unwrap());
-    assert!(initialize_response["result"]["capabilities"]["definitionProvider"]
-        .as_bool()
-        .unwrap());
-    assert!(initialize_response["result"]["capabilities"]["completionProvider"]
-        .is_object());
+    assert!(
+        initialize_response["result"]["capabilities"]["hoverProvider"]
+            .as_bool()
+            .unwrap()
+    );
+    assert!(
+        initialize_response["result"]["capabilities"]["definitionProvider"]
+            .as_bool()
+            .unwrap()
+    );
+    assert!(initialize_response["result"]["capabilities"]["completionProvider"].is_object());
 
     let shutdown_response = responses
         .iter()
@@ -89,6 +96,42 @@ fn server_init_and_exit() {
     assert_eq!(shutdown_response["jsonrpc"].as_str(), Some("2.0"));
     assert!(shutdown_response["error"].is_null());
     assert!(shutdown_response["result"].is_null());
+}
+
+#[test]
+fn server_shutdown_exit() {
+    let mut input = Vec::new();
+    add_server_input(
+        &mut input,
+        br#"{"jsonrpc":"2.0","id":1,"method":"shutdown"}"#,
+    );
+    add_server_input(&mut input, br#"{"jsonrpc":"2.0","method":"exit"}"#);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bpftrace-ls"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    // Keep the stdin handle alive: process termination must be caused by the exit notification.
+    child.stdin.as_mut().unwrap().write_all(&input).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            assert!(status.success());
+            break;
+        }
+
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("server did not exit while stdin remained open");
+        }
+
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[test]
