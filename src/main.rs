@@ -1055,50 +1055,13 @@ fn thread_output(output_rx: mpsc::Receiver<OutputCommand>) {
 
 fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<OutputCommand>) {
     loop {
-        match recv_message() {
-            Ok(msg) => {
-                let start_time = Instant::now();
-
-                let msg_content = match json::parse(&msg) {
-                    Ok(content) => content,
-                    Err(err) => {
-                        log_err!("JSON parse error: {}", err);
-                        send_out_message(&output_tx, encode_parse_error(), start_time);
-                        continue;
-                    }
-                };
-
-                let (msg_type, method, content) = decode_message(msg_content);
-
-                let exit: bool = match &msg_type {
-                    LspMessageType::Notification => method == "exit",
-                    _ => false,
-                };
-
-                let lsp_client_msg = LspClientMessage {
-                    msg_type,
-                    method,
-                    content,
-                    start_time,
-                };
-
-                let res = mpsc_tx.send(MpscMessage::ClientMessage(lsp_client_msg));
-                if let Err(err) = res {
-                    log_err!("MPSC send error {}", err);
-                    break;
-                }
-
-                if exit {
-                    log_dbg!(PROTO, "Received exit notification");
-                    break;
-                }
-            }
-
+        let msg = match recv_message() {
+            Ok(ok_msg) => ok_msg,
             Err(RecvMessageError::InvalidUtf8) => {
                 log_err!("Invalid UTF-8 in complete message body");
                 send_out_message(&output_tx, encode_parse_error(), Instant::now());
+                continue;
             }
-
             Err(RecvMessageError::Io(e)) => {
                 log_err!("Read error {}", e);
                 let res = mpsc_tx.send(MpscMessage::InputError);
@@ -1107,6 +1070,42 @@ fn thread_input(mpsc_tx: mpsc::Sender<MpscMessage>, output_tx: mpsc::Sender<Outp
                 }
                 break;
             }
+        };
+
+        let start_time = Instant::now();
+
+        let msg_content = match json::parse(&msg) {
+            Ok(content) => content,
+            Err(err) => {
+                log_err!("JSON parse error: {}", err);
+                send_out_message(&output_tx, encode_parse_error(), start_time);
+                continue;
+            }
+        };
+
+        let (msg_type, method, content) = decode_message(msg_content);
+
+        let do_exit = match &msg_type {
+            LspMessageType::Notification => method == "exit",
+            _ => false,
+        };
+
+        let lsp_client_msg = LspClientMessage {
+            msg_type,
+            method,
+            content,
+            start_time,
+        };
+
+        let res = mpsc_tx.send(MpscMessage::ClientMessage(lsp_client_msg));
+        if let Err(err) = res {
+            log_err!("MPSC send error {}", err);
+            break;
+        }
+
+        if do_exit {
+            log_dbg!(PROTO, "Received exit notification, stopping input thread");
+            break;
         }
     }
 }
