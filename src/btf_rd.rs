@@ -4,9 +4,9 @@ use memmap2::{Mmap, MmapOptions};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::sync::{Arc, LazyLock, Mutex, OnceLock};
-
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use crate::cmd_mod::{bpftrace_has_property, BpftraceProperty};
 use crate::log_mod::{self, BTFRD};
@@ -882,7 +882,7 @@ pub struct BtfSplit {
 pub type Btf = BtfSplit;
 
 impl BtfSplit {
-    fn build(base: Option<Arc<BtfSplit>>, path: &str) -> binrw::BinResult<Self> {
+    fn build(base: Option<Arc<BtfSplit>>, path: &Path) -> binrw::BinResult<Self> {
         let (start_id, start_str_off, data, base_split) = match base {
             None => {
                 let file = File::open(path)?;
@@ -1169,19 +1169,19 @@ impl BtfSplit {
 static VMLINUX_BTF: OnceLock<Option<Arc<Btf>>> = OnceLock::new();
 
 fn btf_setup_vmlinux_btf() -> Option<Arc<Btf>> {
-    let vmlinux_btf = if cfg!(test) && !cfg!(feature = "live_btf_tests") {
-        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf")
-    } else {
-        "/sys/kernel/btf/vmlinux"
-    };
+    let vmlinux_btf = module_path("vmlinux")?;
 
-    match BtfSplit::build(None, vmlinux_btf) {
+    match BtfSplit::build(None, vmlinux_btf.as_path()) {
         Ok(btf) => {
-            log_dbg!(BTFRD, "Loaded vmlinux BTF from {}", vmlinux_btf);
+            log_dbg!(BTFRD, "Loaded vmlinux BTF from {}", vmlinux_btf.display());
             Some(Arc::new(btf))
         }
         Err(e) => {
-            log_err!("Failed to build vmlinux BTF from {vmlinux_btf} with error {e}");
+            log_err!(
+                "Failed to build vmlinux BTF from {} with error {}",
+                vmlinux_btf.display(),
+                e
+            );
             WARNINGS_TO_CLIENT.push(
                 WarningType::NoBtf,
                 "BTF not available. LSP functionality limited, see README.md".to_owned(),
@@ -1194,16 +1194,37 @@ fn btf_setup_vmlinux_btf() -> Option<Arc<Btf>> {
 static MODULE_BTF_MAP: LazyLock<Mutex<HashMap<String, Arc<Btf>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+fn module_path(module: &str) -> Option<PathBuf> {
+    let base_path;
+
+    let path = if cfg!(test) && !cfg!(feature = "live_btf_tests") {
+        base_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/");
+        base_path.to_owned() + module + ".btf"
+    } else {
+        base_path = "/sys/kernel/btf/";
+        base_path.to_owned() + module
+    };
+
+    let canonical_path = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => {
+            log_err!("Failed to canonicalize BTF path");
+            return None;
+        }
+    };
+
+    if !canonical_path.starts_with(base_path) {
+        log_err!("Wrong BTF path {:?}", canonical_path);
+        return None;
+    }
+
+    Some(canonical_path)
+}
+
 pub fn btf_module_get(module: &str) -> Option<Arc<Btf>> {
     log_dbg!(BTFRD, "Looking for btf for module: {}", module);
 
-    let module_btf = if cfg!(test) && !cfg!(feature = "live_btf_tests") {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/");
-        path.to_owned() + module + ".btf"
-    } else {
-        let path = "/sys/kernel/btf/";
-        path.to_owned() + module
-    };
+    let module_btf = module_path(module)?;
 
     let Some(vmlinux_btf_ref) = VMLINUX_BTF.get_or_init(btf_setup_vmlinux_btf) else {
         log_err!("Failed to setup vmlinux BTF");
@@ -1219,16 +1240,21 @@ pub fn btf_module_get(module: &str) -> Option<Arc<Btf>> {
     if let Some(btf) = module_btf_map.get(module) {
         Some(btf.clone())
     } else {
-        match BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), &module_btf) {
+        match BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), module_btf.as_path()) {
             Ok(split) => {
-                log_dbg!(BTFRD, "Loaded BTF from {module_btf}");
+                log_dbg!(BTFRD, "Loaded BTF from {}", module_btf.display());
 
                 let btf = Arc::new(split);
                 module_btf_map.insert(module.to_string(), btf.clone());
                 Some(btf.clone())
             }
             Err(e) => {
-                log_err!("Failed to build module {module} BTF from {module_btf} with error {e}");
+                log_err!(
+                    "Failed to build module {} BTF from {} with error {}",
+                    module,
+                    module_btf.display(),
+                    e
+                );
                 None
             }
         }
@@ -1681,9 +1707,14 @@ pub fn btf_iterate_function_args(
 
 #[cfg(test)]
 mod tests {
-    const VMLINUX_BTF_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
     use super::*;
     use crate::parser::chain_str_to_tokens;
+    const VMLINUX_BTF_PATH: &'static str =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
+
+    fn vmlinux_btf_path() -> &'static Path {
+        &Path::new(VMLINUX_BTF_PATH)
+    }
 
     #[test]
     fn test_load_module() {
@@ -1696,7 +1727,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_btf_number_of_types() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         assert_eq!(split.offsets.len(), 37691);
         assert_eq!(split.functions.len(), 15944);
         assert_eq!(split.structs.len(), 2448);
@@ -1705,7 +1736,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_btf_atomic_t() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let atomic_typedef_raw = split.raw_type_from_id(211).unwrap();
         assert_eq!(atomic_typedef_raw.get_kind(), BTF_KIND_TYPEDEF);
         assert_eq!(split.get_type_name(&atomic_typedef_raw), "atomic_t");
@@ -1716,7 +1747,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_btf_char() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let char = split.raw_type_from_id(9).unwrap();
         assert_eq!(char.get_kind(), BTF_KIND_INT);
         assert_eq!(split.get_type_name(&char), "char");
@@ -1727,7 +1758,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_do_brk_flags() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let func_id = split.functions.get("do_brk_flags").unwrap();
 
         let btf_raw_type = split.raw_type_from_id(*func_id).unwrap();
@@ -1746,7 +1777,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_struct_kernel_param() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let btf_type = split.type_from_id(23).unwrap();
         let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct kernel_param");
@@ -1757,7 +1788,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_pointers() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let btf_type = split.type_from_id(5).unwrap();
         let (prefix, _suffix) = btf_type.string_format(&split);
@@ -1782,7 +1813,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_array() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let btf_type = split.type_from_id(336).unwrap();
         let (prefix, suffix) = btf_type.string_format(&split);
@@ -1799,7 +1830,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_func_proto() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let btf_type = split.type_from_id(28257).unwrap();
         let (prefix, suffix) = btf_type.string_format(&split);
@@ -1809,7 +1840,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_func_parameters() {
-        let split = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let func = split.find_function("vfs_open").unwrap();
         let btf_type = split.type_from_id(func.type_id).unwrap();
 
@@ -1864,7 +1895,7 @@ mod tests {
 
     #[test]
     fn test_resolve_struct_inode_ptr() {
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let inode_ptr = btf_resolve_type(&btf, 6292).unwrap();
         assert_eq!(inode_ptr.type_prefix, "const struct inode *");
@@ -1883,7 +1914,7 @@ mod tests {
 
     #[test]
     fn test_resolve_rcu_special_union() {
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let union = btf_resolve_type(&btf, 430).unwrap();
         assert_eq!(union.type_prefix, "union rcu_special");
@@ -1909,7 +1940,7 @@ mod tests {
 
     #[test]
     fn test_resolve_alloc_worqueue_noprof() {
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let base = btf_resolve_func(&btf, "alloc_workqueue_noprof").unwrap();
 
         let (resolved_var, resolved_type) =
@@ -1938,7 +1969,7 @@ mod tests {
     #[test]
     fn test_iterate_over_mixed_chain() {
         // alloc_pid: ns->rcu.next->func
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let base = btf_resolve_func(&btf, "alloc_pid").unwrap();
 
@@ -1963,7 +1994,7 @@ mod tests {
 
     #[test]
     fn test_resolve_k_itimer_union() {
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let base = btf_resolve_func(&btf, "posixtimer_send_sigqueue").unwrap();
         let (resolved_var, resolved_type) =
@@ -1989,7 +2020,7 @@ mod tests {
     #[test]
     fn test_resolve_vfs_open() {
         // vfs_open: path->dentry->d_inode->i_uid
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
 
         let base = btf_resolve_func(&btf, "vfs_open").unwrap();
         assert!(base.name == "vfs_open");
@@ -2073,7 +2104,7 @@ mod tests {
 
     #[test]
     fn test_resolve_inode_struct() {
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let resolved_type = btf_resolve_struct(&btf, "inode").unwrap();
 
         let actual_type = resolved_type.actual_type.unwrap();
@@ -2089,7 +2120,7 @@ mod tests {
 
     #[test]
     fn test_resolve_btf_iter_link_info_union() {
-        let btf = BtfSplit::build(None, VMLINUX_BTF_PATH).unwrap();
+        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
         let resolved_type = btf_resolve_union(&btf, "bpf_iter_link_info").unwrap();
 
         let actual_type = resolved_type.actual_type.unwrap();
