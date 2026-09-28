@@ -75,8 +75,6 @@ impl DocumentsState {
     }
 }
 
-static CLIENT_INITALIZED: OnceLock<bool> = OnceLock::new();
-
 pub static WARNINGS_TO_CLIENT: WarningsToClient =
     WarningsToClient(LazyLock::new(|| Mutex::new(Warnings::default())));
 
@@ -190,6 +188,7 @@ enum LspMessageType {
 enum NotificationAction {
     None,
     Exit,
+    Init,
     SendDiagnostics(String),
 }
 
@@ -271,10 +270,10 @@ fn handle_notification(method: String, content: JsonValue) -> NotificationAction
         }
         "initialized" => {
             log_dbg!(NOTIF, "Client initalized");
-            let _ = CLIENT_INITALIZED.set(true);
-            return NotificationAction::None;
+            return NotificationAction::Init;
         }
         "exit" => {
+            log_dbg!(NOTIF, "Client exiting");
             return NotificationAction::Exit;
         }
         _ => log_dbg!(
@@ -1195,6 +1194,8 @@ fn main() {
         start.elapsed()
     );
 
+    let mut initialized = false;
+
     loop {
         let lsp_client_msg = match mpsc_rx.recv() {
             Ok(mpsc_msg) => match mpsc_msg {
@@ -1234,7 +1235,6 @@ fn main() {
             LspMessageType::Response => (),
             LspMessageType::Notification => {
                 let notif_action = handle_notification(method, content);
-                // TODO consider moving this to handle notification
                 match notif_action {
                     NotificationAction::SendDiagnostics(uri) => {
                         if let Some(s) = do_diagnostics(uri, &diag_tx) {
@@ -1242,8 +1242,10 @@ fn main() {
                             send_out_message(&output_tx, s);
                         }
                     }
+                    NotificationAction::Init => {
+                        initialized = true;
+                    }
                     NotificationAction::Exit => {
-                        log_dbg!(PROTO, "Exiting");
                         break;
                     }
                     NotificationAction::None => {}
@@ -1251,7 +1253,7 @@ fn main() {
             }
         }
 
-        if CLIENT_INITALIZED.get().is_some() {
+        if initialized {
             if let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop() {
                 while let Some(msg) = warn_msgs.pop() {
                     let s = show_message_notification(2, &msg);
