@@ -92,6 +92,40 @@ fn server_init_and_exit() {
 }
 
 #[test]
+fn server_rejects_requests_after_shutdown() {
+    let mut input = Vec::new();
+    add_server_input(
+        &mut input,
+        br#"{"jsonrpc":"2.0","id":1,"method":"shutdown"}"#,
+    );
+    add_server_input(
+        &mut input,
+        br#"{"jsonrpc":"2.0","id":2,"method":"unknown/method"}"#,
+    );
+    add_server_input(&mut input, br#"{"jsonrpc":"2.0","method":"exit"}"#);
+
+    let output = run_server(&input);
+    assert!(output.status.success());
+
+    let responses = read_server_output(&output.stdout);
+    assert_eq!(responses.len(), 2);
+
+    let shutdown_response = responses
+        .iter()
+        .find(|message| message["id"].as_i32() == Some(1))
+        .expect("shutdown response");
+    assert!(shutdown_response["error"].is_null());
+    assert!(shutdown_response["result"].is_null());
+
+    let response = responses
+        .iter()
+        .find(|message| message["id"].as_i32() == Some(2))
+        .expect("response to request after shutdown");
+    assert_eq!(response["jsonrpc"].as_str(), Some("2.0"));
+    assert_eq!(response["error"]["code"].as_i32(), Some(-32600));
+}
+
+#[test]
 fn server_parse_error_for_invalid_json() {
     let mut input = Vec::new();
     add_server_input(&mut input, b"{invalid json");
