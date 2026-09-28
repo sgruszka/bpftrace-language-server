@@ -440,7 +440,7 @@ impl BtfTypeTrait for BtfTypeArray {
 
 impl BtfTypeTrait for BtfTypeUnion {
     fn kind_specific_size(&self) -> u64 {
-        let vlen = u32_get_field!(self.btf_raw_type.info, 0, 15) as u64;
+        let vlen = self.btf_raw_type.get_vlen() as u64;
         vlen * 12
     }
 
@@ -454,7 +454,7 @@ impl BtfTypeTrait for BtfTypeUnion {
 
 impl BtfTypeTrait for BtfTypeStruct {
     fn kind_specific_size(&self) -> u64 {
-        let vlen = u32_get_field!(self.btf_raw_type.info, 0, 15) as u64;
+        let vlen = self.btf_raw_type.get_vlen() as u64;
         vlen * 12
     }
 
@@ -468,7 +468,7 @@ impl BtfTypeTrait for BtfTypeStruct {
 
 impl BtfTypeTrait for BtfTypeEnum {
     fn kind_specific_size(&self) -> u64 {
-        let vlen = u32_get_field!(self.btf_raw_type.info, 0, 15) as u64;
+        let vlen = self.btf_raw_type.get_vlen() as u64;
         vlen * 8
     }
 
