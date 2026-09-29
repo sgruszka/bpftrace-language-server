@@ -1224,8 +1224,6 @@ fn module_path(module: &str) -> Option<PathBuf> {
 pub fn btf_module_get(module: &str) -> Option<Arc<Btf>> {
     log_dbg!(BTFRD, "Looking for btf for module: {}", module);
 
-    let module_btf = module_path(module)?;
-
     let Some(vmlinux_btf_ref) = VMLINUX_BTF.get_or_init(btf_setup_vmlinux_btf) else {
         log_err!("Failed to setup vmlinux BTF");
         return None;
@@ -1234,6 +1232,7 @@ pub fn btf_module_get(module: &str) -> Option<Arc<Btf>> {
     if module.is_empty() || module == "vmlinux" {
         return Some(vmlinux_btf_ref.clone());
     }
+    let module_btf = module_path(module)?;
 
     let mut module_btf_map = MODULE_BTF_MAP.lock().unwrap();
 
