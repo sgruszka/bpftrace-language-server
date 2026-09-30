@@ -2246,4 +2246,45 @@ mod tests {
         assert_eq!(res_var.name, "tid");
         assert_eq!(res_type.type_prefix, "__u32");
     }
+
+    #[cfg(all(test, feature = "live_system_tests"))]
+    #[test]
+    fn test_resolve_cfg80211_cached_keys_fwd() {
+        let mac80211 = btf_module_get("mac80211").unwrap();
+
+        assert!(mac80211
+            .find_composite("cfg80211_cached_keys", false)
+            .is_some());
+        assert!(mac80211
+            .find_composite("cfg80211_cached_keys", true)
+            .is_none());
+        assert!(mac80211.find_composite("blah blah", false).is_none());
+
+        let vmlinux = mac80211.base_split.as_deref().unwrap();
+
+        let fwd_id = (vmlinux.start_id..vmlinux.start_id + vmlinux.offsets.len() as u32)
+            .find(|id| {
+                let Ok(BtfType::Fwd(fwd)) = vmlinux.type_from_id(*id) else {
+                    return false;
+                };
+                if vmlinux.get_type_name(&fwd.btf_raw_type) != "cfg80211_cached_keys" {
+                    return false;
+                }
+                assert_eq!(fwd.btf_raw_type.get_kind_flag(), 0);
+                true
+            })
+            .unwrap();
+
+        let resolved = btf_resolve_type(&mac80211, fwd_id).unwrap();
+        let actual_type = resolved.actual_type.unwrap();
+        assert_eq!(actual_type.type_name, "struct cfg80211_cached_keys");
+        assert_eq!(actual_type.members.len(), 3);
+        assert_eq!(
+            actual_type
+                .owner
+                .as_deref()
+                .map(|owner| owner.module_name.as_str()),
+            Some("cfg80211")
+        );
+    }
 }
