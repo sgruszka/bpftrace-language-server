@@ -11,6 +11,7 @@ pub fn get_mod_deps(module: &str) -> Vec<String> {
     }
 
     let graph = MODULE_DEPENDENCIES.get_or_init(read_modules_deps);
+
     let mut pending = VecDeque::new();
     let mut visited = HashSet::from([module.clone()]);
     let mut dependencies = Vec::new();
@@ -70,4 +71,17 @@ fn read_modules_deps() -> HashMap<String, Vec<String>> {
     }
 
     graph
+}
+
+#[cfg(all(test, feature = "live_btf_tests"))]
+mod tests {
+    use crate::modules::get_mod_deps;
+
+    #[test]
+    fn mac80211_depends_on_cfg80211() {
+        assert!(std::path::Path::new("/sys/module/mac80211").is_dir());
+        assert!(std::path::Path::new("/sys/module/cfg80211").is_dir());
+
+        assert!(get_mod_deps("mac80211").contains(&"cfg80211".to_owned()));
+    }
 }

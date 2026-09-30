@@ -14,8 +14,8 @@ use std::{
 mod btf_rd;
 mod cmd_mod;
 mod completion;
-pub mod modules;
 pub mod gen;
+pub mod modules;
 pub mod parser;
 
 #[macro_use]
