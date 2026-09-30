@@ -343,7 +343,9 @@ impl BtfTypeTrait for BtfTypeInteger {
         let name = this_split.get_type_name(&self.btf_raw_type).to_owned();
         let bits_size = self.btf_raw_type.get_size().saturating_mul(8);
 
-        let (split, mut off) = this_split.offset_from_id(self.type_id);
+        let Some((split, mut off)) = this_split.offset_from_id(self.type_id) else {
+            return ("".to_owned(), "".to_owned());
+        };
         off += 12;
 
         let raw_int_res: binrw::BinResult<BtfRawInt> = split.read_raw_struct(off);
@@ -406,7 +408,9 @@ impl BtfTypeTrait for BtfTypeArray {
     }
 
     fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
-        let (split, mut off) = this_split.offset_from_id(self.type_id);
+        let Some((split, mut off)) = this_split.offset_from_id(self.type_id) else {
+            return ("".to_owned(), "".to_owned());
+        };
         off += 12;
 
         let raw_array_res: binrw::BinResult<BtfRawArray> = split.read_raw_struct(off);
@@ -592,7 +596,9 @@ impl BtfTypeTrait for BtfTypeFuncProto {
     }
 
     fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
-        let (split, mut off) = this_split.offset_from_id(self.type_id);
+        let Some((split, mut off)) = this_split.offset_from_id(self.type_id) else {
+            return ("".to_owned(), "".to_owned());
+        };
         off += 12;
 
         let mut func_proto = "(".to_owned();
@@ -753,7 +759,9 @@ impl BtfTypeFunc {
     fn parameters(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
         let func_proto_id = self.btf_raw_type.get_type_id();
 
-        let (split, mut off) = this_split.offset_from_id(func_proto_id);
+        let Some((split, mut off)) = this_split.offset_from_id(func_proto_id) else {
+            return Vec::new();
+        };
 
         let raw_func_proto_res: binrw::BinResult<BtfRawType> = split.read_raw_struct(off);
         off += 12;
@@ -798,7 +806,9 @@ fn composite_members(
     type_id: u32,
     btf_raw_type: &BtfRawType,
 ) -> Vec<BtfVariable> {
-    let (split, mut off) = this_split.offset_from_id(type_id);
+    let Some((split, mut off)) = this_split.offset_from_id(type_id) else {
+        return Vec::new();
+    };
     off += 12;
 
     let mut members: Vec<BtfVariable> = Vec::new();
@@ -1142,17 +1152,29 @@ impl BtfSplit {
         Ok(btf_raw_struct)
     }
 
-    fn offset_from_id(&self, id: u32) -> (&BtfSplit, u32) {
-        assert!(id != 0);
+    fn offset_from_id(&self, id: u32) -> Option<(&BtfSplit, u32)> {
+        if id == 0 {
+            log_err!("Invalid BTF type_id 0");
+            return None;
+        }
 
         if id >= self.start_id {
             let idx = (id - self.start_id) as usize;
-            (self, self.offsets[idx])
+            if let Some(&offset) = self.offsets.get(idx) {
+                return Some((self, offset));
+            }
+
+            log_err!(
+                "Invalid BTF type_id {id} (valid range {} - {})",
+                self.start_id,
+                self.start_id + self.offsets.len() as u32,
+            );
+            None
         } else if let Some(base_split) = &self.base_split {
-            let idx = (id - base_split.start_id) as usize;
-            (base_split, base_split.offsets[idx])
+            base_split.offset_from_id(id)
         } else {
-            (self, 0) // TODO
+            log_err!("BTF type_id {id} has no base split");
+            None
         }
     }
 
@@ -1399,7 +1421,9 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
             BtfType::TypeTag(tt) => tt.btf_raw_type.get_type_id(),
             // TODO: Func / Func Proto // TypeTag ...
             BtfType::Array(_) => {
-                let (split, mut off) = btf.offset_from_id(id);
+                let Some((split, mut off)) = btf.offset_from_id(id) else {
+                    return None;
+                };
                 off += 12;
 
                 let raw_array_res: binrw::BinResult<BtfRawArray> = split.read_raw_struct(off);
