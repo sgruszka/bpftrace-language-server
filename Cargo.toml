@@ -7,6 +7,7 @@ edition = "2021"
 parser_diagnostics = []
 live_system_tests = []
 debug_command = []
+btf_fwd_resolve = []
 
 [dependencies]
 json = "0.12.4"

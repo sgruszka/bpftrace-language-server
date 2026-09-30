@@ -1464,9 +1464,7 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
             BtfType::TypeTag(tt) => tt.btf_raw_type.get_type_id(),
             // TODO: Func / Func Proto // TypeTag ...
             BtfType::Array(_) => {
-                let Some((split, mut off)) = btf.offset_from_id(id) else {
-                    return None;
-                };
+                let (split, mut off) = btf.offset_from_id(id)?;
                 off += 12;
 
                 let raw_array_res: binrw::BinResult<BtfRawArray> = split.read_raw_struct(off);
@@ -1488,21 +1486,15 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
                 break;
             }
             BtfType::Fwd(fwd) => {
-                let name = btf.get_type_name(&fwd.btf_raw_type);
+                if cfg!(feature = "btf_fwd_resolve") {
+                    let name = btf.get_type_name(&fwd.btf_raw_type);
+                    let is_union = fwd.btf_raw_type.get_kind_flag() == 1;
 
-                let is_union = match fwd.btf_raw_type.get_kind_flag() {
-                    0 => false, // struct
-                    1 => true,
-                    x => {
-                        log_err!("Wrong FWD kind flag {x}");
-                        return None;
+                    if let Some((comp_owner, comp_id)) = btf.find_composite(name, is_union) {
+                        id = comp_id;
+                        actual_owner = comp_owner;
+                        is_composite = true;
                     }
-                };
-
-                if let Some((comp_owner, comp_id)) = btf.find_composite(name, is_union) {
-                    id = comp_id;
-                    actual_owner = comp_owner;
-                    is_composite = true;
                 }
 
                 break;
@@ -2247,7 +2239,7 @@ mod tests {
         assert_eq!(res_type.type_prefix, "__u32");
     }
 
-    #[cfg(all(test, feature = "live_system_tests"))]
+    #[cfg(all(test, feature = "live_system_tests", feature = "btf_fwd_resolve"))]
     #[test]
     fn test_resolve_cfg80211_cached_keys_fwd() {
         let mac80211 = btf_module_get("mac80211").unwrap();
