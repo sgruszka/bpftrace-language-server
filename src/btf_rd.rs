@@ -341,7 +341,7 @@ impl BtfTypeTrait for BtfTypeInteger {
 
     fn string_format(&self, this_split: &BtfSplit) -> (String, String) {
         let name = this_split.get_type_name(&self.btf_raw_type).to_owned();
-        let size = self.btf_raw_type.get_size();
+        let bits_size = self.btf_raw_type.get_size().saturating_mul(8);
 
         let (split, mut off) = this_split.offset_from_id(self.type_id);
         off += 12;
@@ -356,7 +356,7 @@ impl BtfTypeTrait for BtfTypeInteger {
         };
 
         let bits = raw_int.encoding & 0xffu32;
-        let suffix = if bits > 0 && bits < size {
+        let suffix = if bits > 0 && bits < bits_size {
             format!(":{bits}")
         } else {
             "".to_owned()
