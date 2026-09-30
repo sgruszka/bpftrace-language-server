@@ -753,6 +753,7 @@ pub struct BtfVariable {
     pub name: String,
     pub type_id: u32,
     pub bits: Option<u32>,
+    owner: Option<Arc<Btf>>,
 }
 
 impl BtfTypeFunc {
@@ -794,6 +795,7 @@ impl BtfTypeFunc {
                 name,
                 type_id,
                 bits: None,
+                owner: None,
             });
         }
 
@@ -841,6 +843,7 @@ fn composite_members(
             name,
             type_id: raw_member.type_id,
             bits,
+            owner: None,
         });
     }
 
@@ -892,6 +895,7 @@ pub struct BtfSplit {
     base_split: Option<Arc<BtfSplit>>,
     offsets: Vec<u32>,
     data: BtfData,
+    module_name: String,
     functions: HashMap<String, u32>,
     structs: HashMap<String, u32>,
     unions: HashMap<String, u32>,
@@ -900,10 +904,22 @@ pub struct BtfSplit {
 pub type Btf = BtfSplit;
 
 impl BtfSplit {
-    fn build(base: Option<Arc<BtfSplit>>, path: &Path) -> binrw::BinResult<Self> {
+    fn build(base: Option<Arc<BtfSplit>>, module: &str) -> binrw::BinResult<Self> {
+        let path = module_path(module).ok_or_else(|| binrw::Error::AssertFail {
+            pos: 0,
+            message: format!("Failed to locate BTF for module {module}"),
+        })?;
+        Self::build_from_path(base, module, &path)
+    }
+
+    fn build_from_path(
+        base: Option<Arc<BtfSplit>>,
+        module: &str,
+        path: &Path,
+    ) -> binrw::BinResult<Self> {
         let (start_id, start_str_off, data, base_split) = match base {
             None => {
-                let file = File::open(path)?;
+                let file = File::open(&path)?;
 
                 let data =
                     // copy_read_only do PROT_READ, MAP_PRIVATE mmap
@@ -1042,6 +1058,7 @@ impl BtfSplit {
             base_split,
             offsets,
             data,
+            module_name: module.to_owned(),
             functions,
             structs,
             unions,
@@ -1140,6 +1157,42 @@ impl BtfSplit {
         inner_get_name(self, name_off - self.start_str_off)
     }
 
+    fn find_composite_in_chain(&self, name: &str, is_union: bool) -> Option<u32> {
+        let composites = if is_union {
+            &self.unions
+        } else {
+            &self.structs
+        };
+
+        composites.get(name).copied().or_else(|| {
+            self.base_split
+                .as_deref()?
+                .find_composite_in_chain(name, is_union)
+        })
+    }
+
+    fn find_composite(&self, name: &str, is_union: bool) -> Option<(Option<Arc<Btf>>, u32)> {
+        if let Some(type_id) = self.find_composite_in_chain(name, is_union) {
+            return Some((None, type_id));
+        }
+
+        for dependency in crate::modules::get_mod_deps(&self.module_name) {
+            let Some(dep_btf) = btf_module_get(&dependency) else {
+                continue;
+            };
+            let composites = if is_union {
+                &dep_btf.unions
+            } else {
+                &dep_btf.structs
+            };
+            if let Some(type_id) = composites.get(name).copied() {
+                return Some((Some(dep_btf), type_id));
+            }
+        }
+
+        None
+    }
+
     fn read_raw_struct<T>(&self, off: u32) -> binrw::BinResult<T>
     where
         T: BinRead,
@@ -1199,19 +1252,13 @@ impl BtfSplit {
 static VMLINUX_BTF: OnceLock<Option<Arc<Btf>>> = OnceLock::new();
 
 fn btf_setup_vmlinux_btf() -> Option<Arc<Btf>> {
-    let vmlinux_btf = module_path("vmlinux")?;
-
-    match BtfSplit::build(None, vmlinux_btf.as_path()) {
+    match BtfSplit::build(None, "vmlinux") {
         Ok(btf) => {
-            log_dbg!(BTFRD, "Loaded vmlinux BTF from {}", vmlinux_btf.display());
+            log_dbg!(BTFRD, "Loaded vmlinux BTF");
             Some(Arc::new(btf))
         }
         Err(e) => {
-            log_err!(
-                "Failed to build vmlinux BTF from {} with error {}",
-                vmlinux_btf.display(),
-                e
-            );
+            log_err!("Failed to build vmlinux BTF with error {}", e);
             WARNINGS_TO_CLIENT.push(
                 WarningType::NoBtf,
                 "BTF not available. LSP functionality limited, see README.md".to_owned(),
@@ -1262,28 +1309,21 @@ pub fn btf_module_get(module: &str) -> Option<Arc<Btf>> {
     if module.is_empty() || module == "vmlinux" {
         return Some(vmlinux_btf_ref.clone());
     }
-    let module_btf = module_path(module)?;
-
     let mut module_btf_map = MODULE_BTF_MAP.lock().unwrap();
 
     if let Some(btf) = module_btf_map.get(module) {
         Some(btf.clone())
     } else {
-        match BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), module_btf.as_path()) {
+        match BtfSplit::build(Some(Arc::clone(vmlinux_btf_ref)), module) {
             Ok(split) => {
-                log_dbg!(BTFRD, "Loaded BTF from {}", module_btf.display());
+                log_dbg!(BTFRD, "Loaded BTF for module {module}");
 
                 let btf = Arc::new(split);
                 module_btf_map.insert(module.to_string(), btf.clone());
                 Some(btf.clone())
             }
             Err(e) => {
-                log_err!(
-                    "Failed to build module {} BTF from {} with error {}",
-                    module,
-                    module_btf.display(),
-                    e
-                );
+                log_err!("Failed to build BTF for module {} with error {}", module, e);
                 None
             }
         }
@@ -1386,10 +1426,16 @@ pub struct BtfComposite {
     type_id: u32,
     pub type_name: String,
     pub members: Vec<BtfVariable>,
+    owner: Option<Arc<Btf>>,
+}
+
+pub fn btf_resolve_variable(btf: &Btf, variable: &BtfVariable) -> Option<BtfResolvedType> {
+    btf_resolve_type(variable.owner.as_deref().unwrap_or(btf), variable.type_id)
 }
 
 pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
     let mut is_composite = false;
+    let mut actual_owner = None;
 
     let btf_type = match btf.type_from_id(type_id) {
         Ok(t) => t,
@@ -1398,9 +1444,6 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
             return None;
         }
     };
-
-    // TODO: for BtfTypeFwd we do not have actual type_id (struct or union),
-    // we will need to resovle by name
 
     let mut id = type_id;
     loop {
@@ -1444,13 +1487,34 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
                 is_composite = true;
                 break;
             }
+            BtfType::Fwd(fwd) => {
+                let name = btf.get_type_name(&fwd.btf_raw_type);
+
+                let is_union = match fwd.btf_raw_type.get_kind_flag() {
+                    0 => false, // struct
+                    1 => true,
+                    x => {
+                        log_err!("Wrong FWD kind flag {x}");
+                        return None;
+                    }
+                };
+
+                if let Some((comp_owner, comp_id)) = btf.find_composite(name, is_union) {
+                    id = comp_id;
+                    actual_owner = comp_owner;
+                    is_composite = true;
+                }
+
+                break;
+            }
             _ => break,
         };
         id = sub_id;
     }
 
     let actual_type = if is_composite {
-        let comp_type = match btf.type_from_id(id) {
+        let comp_btf = actual_owner.as_deref().unwrap_or(btf);
+        let comp_type = match comp_btf.type_from_id(id) {
             Ok(t) => t,
             Err(e) => {
                 log_err!("Failed to get type for id {} with error {}", id, e);
@@ -1458,19 +1522,26 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
             }
         };
 
-        let (prefix, suffix) = comp_type.string_format(btf);
+        let (prefix, suffix) = comp_type.string_format(comp_btf);
         assert_eq!(suffix, "");
 
         let members = match comp_type {
-            BtfType::Struct(s) => s.members(btf),
-            BtfType::Union(u) => u.members(btf),
+            BtfType::Struct(s) => s.members(comp_btf),
+            BtfType::Union(u) => u.members(comp_btf),
             _ => panic!(),
         };
+        let mut members = members;
+        if let Some(owner) = &actual_owner {
+            for member in &mut members {
+                member.owner = Some(owner.clone());
+            }
+        }
 
         Some(BtfComposite {
             type_id: id,
             type_name: prefix,
             members,
+            owner: actual_owner.clone(),
         })
     } else {
         None
@@ -1506,8 +1577,9 @@ pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
         var.type_id
     );
 
-    let btf_type = btf.type_from_id(var.type_id).ok()?;
-    let (type_prefix, type_suffix) = btf_type.string_format(btf);
+    let owner = var.owner.as_deref().unwrap_or(btf);
+    let btf_type = owner.type_from_id(var.type_id).ok()?;
+    let (type_prefix, type_suffix) = btf_type.string_format(owner);
 
     // TODO: correct push spaces for different types
     let type_name = type_prefix.clone() + &type_suffix;
@@ -1521,23 +1593,20 @@ pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
     })
 }
 
-fn is_pointer_type(btf: &Btf, type_id: u32) -> bool {
-    let Ok(btf_type) = btf.type_from_id(type_id) else {
-        return false;
-    };
-
-    // TODO limit to struct or union pointers ?
-    matches!(btf_type, BtfType::Ptr(_))
+fn is_pointer_variable(btf: &Btf, variable: &BtfVariable) -> bool {
+    let owner = variable.owner.as_deref().unwrap_or(btf);
+    matches!(owner.type_from_id(variable.type_id), Ok(BtfType::Ptr(_)))
 }
 
 fn find_member(btf: &Btf, composite: &BtfComposite, member_name: &str) -> Option<BtfVariable> {
+    let owner = composite.owner.as_deref().unwrap_or(btf);
     for m in composite.members.iter() {
         if m.name == *member_name {
             return Some(m.clone());
         }
 
         if m.name.is_empty() {
-            let Some(anonymous_type) = btf_resolve_type(btf, m.type_id) else {
+            let Some(anonymous_type) = btf_resolve_variable(owner, m) else {
                 continue;
             };
 
@@ -1545,7 +1614,7 @@ fn find_member(btf: &Btf, composite: &BtfComposite, member_name: &str) -> Option
                 continue;
             };
 
-            if let Some(member) = find_member(btf, &actual_type, member_name) {
+            if let Some(member) = find_member(owner, &actual_type, member_name) {
                 return Some(member.clone());
             }
         }
@@ -1567,7 +1636,7 @@ fn iterate_over_names_chain(
     // Handle struct/union members: use -> for pointrs and . for direct access
     let mut cur_var = first_var.clone();
     while let Some(op) = names_iter.next() {
-        let is_pointer = is_pointer_type(btf, cur_var.type_id);
+        let is_pointer = is_pointer_variable(btf, &cur_var);
 
         if *op == "->" {
             if !is_pointer {
@@ -1590,7 +1659,7 @@ fn iterate_over_names_chain(
             return None;
         };
 
-        let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+        let cur_type = btf_resolve_variable(btf, &cur_var)?;
         let composite = cur_type.actual_type?;
         let member = find_member(btf, &composite, member_name)?;
 
@@ -1641,6 +1710,7 @@ pub fn btf_iterate_members(
             // We don't have pointer type_id, use struct/union type_id
             type_id: comp.type_id,
             bits: None,
+            owner: comp.owner.clone(),
         }
     } else {
         let second_name = name_chain[0];
@@ -1648,7 +1718,7 @@ pub fn btf_iterate_members(
         iterate_over_names_chain(btf, first_param, &name_chain)?
     };
 
-    let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+    let cur_type = btf_resolve_variable(btf, &cur_var)?;
 
     Some((cur_var, cur_type))
 }
@@ -1689,12 +1759,18 @@ pub fn btf_iterate_function_args(
     }
 
     if is_retval {
-        let cur_type = btf_resolve_type(btf, func.ret_type_id)?;
+        let ret_var = BtfVariable {
+            type_id: func.ret_type_id,
+            name: "retval".to_owned(),
+            bits: None,
+            owner: None,
+        };
+        let cur_type = btf_resolve_variable(btf, &ret_var)?;
         if let Some(first_name) = name_chain.first() {
             let actual_type = cur_type.actual_type?;
             if let Some(first_param) = find_member(btf, &actual_type, first_name) {
                 let cur_var = iterate_over_names_chain(btf, &first_param, &name_chain)?;
-                let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+                let cur_type = btf_resolve_variable(btf, &cur_var)?;
                 return Some((cur_var, cur_type));
             }
         } else {
@@ -1702,13 +1778,14 @@ pub fn btf_iterate_function_args(
                 type_id: func.ret_type_id,
                 name: "retval".to_owned(),
                 bits: None,
+                owner: None,
             };
             return Some((cur_var, cur_type));
         }
     } else if let Some(first_name) = name_chain.first() {
         if let Some(first_param) = func.args.iter().find(|p| p.name == *first_name) {
             let cur_var = iterate_over_names_chain(btf, first_param, &name_chain)?;
-            let cur_type = btf_resolve_type(btf, cur_var.type_id)?;
+            let cur_type = btf_resolve_variable(btf, &cur_var)?;
             return Some((cur_var, cur_type));
         }
     } else {
@@ -1717,11 +1794,13 @@ pub fn btf_iterate_function_args(
             type_id: func.type_id,
             name: func.name.clone(),
             bits: None,
+            owner: None,
         };
         let func_args = BtfComposite {
             type_id: func.proto_id,
             type_name: func.full_name.clone(),
             members: func.args.clone(),
+            owner: None,
         };
         let cur_type = BtfResolvedType {
             type_id: func.type_id,
@@ -1740,13 +1819,11 @@ pub fn btf_iterate_function_args(
 mod tests {
     use super::*;
     use crate::parser::chain_str_to_tokens;
-    const VMLINUX_BTF_PATH: &'static str =
-        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
+    const VMLINUX_BTF_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/vmlinux.btf");
 
-    fn vmlinux_btf_path() -> &'static Path {
-        &Path::new(VMLINUX_BTF_PATH)
+    fn build_vmlinux_btf() -> BtfSplit {
+        BtfSplit::build_from_path(None, "vmlinux", Path::new(VMLINUX_BTF_PATH)).unwrap()
     }
-
     #[test]
     fn test_load_module() {
         let btf1 = btf_module_get("vmlinux");
@@ -1758,7 +1835,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_btf_number_of_types() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
         assert_eq!(split.offsets.len(), 37691);
         assert_eq!(split.functions.len(), 15944);
         assert_eq!(split.structs.len(), 2448);
@@ -1767,7 +1844,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_btf_atomic_t() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
         let atomic_typedef_raw = split.raw_type_from_id(211).unwrap();
         assert_eq!(atomic_typedef_raw.get_kind(), BTF_KIND_TYPEDEF);
         assert_eq!(split.get_type_name(&atomic_typedef_raw), "atomic_t");
@@ -1778,7 +1855,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_btf_char() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
         let char = split.raw_type_from_id(9).unwrap();
         assert_eq!(char.get_kind(), BTF_KIND_INT);
         assert_eq!(split.get_type_name(&char), "char");
@@ -1789,7 +1866,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_do_brk_flags() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
         let func_id = split.functions.get("do_brk_flags").unwrap();
 
         let btf_raw_type = split.raw_type_from_id(*func_id).unwrap();
@@ -1808,7 +1885,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_struct_kernel_param() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
         let btf_type = split.type_from_id(23).unwrap();
         let (prefix, _suffix) = btf_type.string_format(&split);
         assert_eq!(prefix, "struct kernel_param");
@@ -1819,7 +1896,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_pointers() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
 
         let btf_type = split.type_from_id(5).unwrap();
         let (prefix, _suffix) = btf_type.string_format(&split);
@@ -1844,7 +1921,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_array() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
 
         let btf_type = split.type_from_id(336).unwrap();
         let (prefix, suffix) = btf_type.string_format(&split);
@@ -1861,7 +1938,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_func_proto() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
 
         let btf_type = split.type_from_id(28257).unwrap();
         let (prefix, suffix) = btf_type.string_format(&split);
@@ -1871,7 +1948,7 @@ mod tests {
 
     #[test]
     fn test_vmlinux_func_parameters() {
-        let split = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let split = build_vmlinux_btf();
         let func = split.find_function("vfs_open").unwrap();
         let btf_type = split.type_from_id(func.type_id).unwrap();
 
@@ -1926,7 +2003,7 @@ mod tests {
 
     #[test]
     fn test_resolve_struct_inode_ptr() {
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
 
         let inode_ptr = btf_resolve_type(&btf, 6292).unwrap();
         assert_eq!(inode_ptr.type_prefix, "const struct inode *");
@@ -1945,7 +2022,7 @@ mod tests {
 
     #[test]
     fn test_resolve_rcu_special_union() {
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
 
         let union = btf_resolve_type(&btf, 430).unwrap();
         assert_eq!(union.type_prefix, "union rcu_special");
@@ -1971,7 +2048,7 @@ mod tests {
 
     #[test]
     fn test_resolve_alloc_worqueue_noprof() {
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
         let base = btf_resolve_func(&btf, "alloc_workqueue_noprof").unwrap();
 
         let (resolved_var, resolved_type) =
@@ -2000,7 +2077,7 @@ mod tests {
     #[test]
     fn test_iterate_over_mixed_chain() {
         // alloc_pid: ns->rcu.next->func
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
 
         let base = btf_resolve_func(&btf, "alloc_pid").unwrap();
 
@@ -2025,7 +2102,7 @@ mod tests {
 
     #[test]
     fn test_resolve_k_itimer_union() {
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
 
         let base = btf_resolve_func(&btf, "posixtimer_send_sigqueue").unwrap();
         let (resolved_var, resolved_type) =
@@ -2044,14 +2121,14 @@ mod tests {
 
         assert_eq!(cpu_member.name, "cpu");
 
-        let cpu_timer_type = btf_resolve_type(&btf, cpu_member.type_id).unwrap();
+        let cpu_timer_type = btf_resolve_variable(&btf, &cpu_member).unwrap();
         assert_eq!(cpu_timer_type.type_prefix, "struct cpu_timer");
     }
 
     #[test]
     fn test_resolve_vfs_open() {
         // vfs_open: path->dentry->d_inode->i_uid
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
 
         let base = btf_resolve_func(&btf, "vfs_open").unwrap();
         assert!(base.name == "vfs_open");
@@ -2123,6 +2200,7 @@ mod tests {
         assert_eq!(resolved_var.name, "d_flags");
         assert_eq!(resolved_type.type_prefix, "unsigned int");
     }
+
     pub fn btf_iterate_members_str(
         btf: &Btf,
         first_field: &str,
@@ -2135,7 +2213,7 @@ mod tests {
 
     #[test]
     fn test_resolve_inode_struct() {
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
         let resolved_type = btf_resolve_struct(&btf, "inode").unwrap();
 
         let actual_type = resolved_type.actual_type.unwrap();
@@ -2151,7 +2229,7 @@ mod tests {
 
     #[test]
     fn test_resolve_btf_iter_link_info_union() {
-        let btf = BtfSplit::build(None, vmlinux_btf_path()).unwrap();
+        let btf = build_vmlinux_btf();
         let resolved_type = btf_resolve_union(&btf, "bpf_iter_link_info").unwrap();
 
         let actual_type = resolved_type.actual_type.unwrap();

@@ -8,7 +8,7 @@ use tree_sitter::Node;
 
 use crate::btf_rd::{
     btf_iterate_function_args, btf_iterate_members, btf_module_get, btf_resolve_func,
-    btf_resolve_struct, btf_resolve_type, btf_resolve_union,
+    btf_resolve_struct, btf_resolve_union, btf_resolve_variable,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 
@@ -262,7 +262,7 @@ fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
 }
 
 fn add_items_from_btf_member(btf: Arc<Btf>, member: &BtfVariable, items: &mut JsonValue) {
-    if let Some(member_type) = btf_resolve_type(&btf, member.type_id) {
+    if let Some(member_type) = btf_resolve_variable(&btf, member) {
         // Anonymous member with named or inserted struct/union
         if member.name.is_empty() {
             if let Some(actual_type) = member_type.actual_type {
@@ -587,7 +587,7 @@ fn add_arg_n(probes: &Probes, items: &mut JsonValue) {
     // TODO: add documentation
 
     for (i, var) in resolved_func.args.iter().enumerate() {
-        let detail = if let Some(res_type) = btf_resolve_type(btf, var.type_id) {
+        let detail = if let Some(res_type) = btf_resolve_variable(btf, var) {
             let arg_i_type = btf_item_to_str(&res_type, None);
             let cast = format!("(({})arg{})", arg_i_type, i);
 
@@ -1746,7 +1746,7 @@ fn members_to_lines(
 ) -> usize {
     let mut max_type_width = 0;
     for member in actual_type.members.iter() {
-        let Some(member_type) = btf_resolve_type(btf, member.type_id) else {
+        let Some(member_type) = btf_resolve_variable(btf, member) else {
             log_err!("Failed to resolve BTF type {}", member.type_id);
             continue;
         };
@@ -2365,7 +2365,7 @@ mod tests {
             assert!(resolved_btf.args.len() > i - 1);
 
             let btf_var = &resolved_btf.args[i - 1];
-            let btf_type = btf_resolve_type(&btf, btf_var.type_id).unwrap();
+            let btf_type = btf_resolve_variable(&btf, btf_var).unwrap();
             let a = arg.trim().replace("* ", "*");
             assert_eq!(a, btf_item_to_str(&btf_type, Some(btf_var)));
             n += 1;
