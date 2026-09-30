@@ -793,13 +793,17 @@ impl BtfTypeFunc {
     }
 }
 
-fn composite_members(this_split: &BtfSplit, type_id: u32, vlen: u32) -> Vec<BtfVariable> {
+fn composite_members(
+    this_split: &BtfSplit,
+    type_id: u32,
+    btf_raw_type: &BtfRawType,
+) -> Vec<BtfVariable> {
     let (split, mut off) = this_split.offset_from_id(type_id);
     off += 12;
 
     let mut members: Vec<BtfVariable> = Vec::new();
 
-    for _ in 0..vlen {
+    for _ in 0..btf_raw_type.get_vlen() {
         let raw_member_res: binrw::BinResult<BtfRawMember> = split.read_raw_struct(off);
         off += 12;
         let raw_member = match raw_member_res {
@@ -812,7 +816,11 @@ fn composite_members(this_split: &BtfSplit, type_id: u32, vlen: u32) -> Vec<BtfV
 
         let name = this_split.get_name(raw_member.name_off).to_owned();
 
-        let bitfield_size = raw_member.offset >> 24;
+        let mut bitfield_size = 0;
+        if btf_raw_type.get_kind_flag() == 1 {
+            bitfield_size = raw_member.offset >> 24;
+        }
+
         let bits = if bitfield_size > 0 {
             Some(bitfield_size)
         } else {
@@ -831,13 +839,13 @@ fn composite_members(this_split: &BtfSplit, type_id: u32, vlen: u32) -> Vec<BtfV
 
 impl BtfTypeStruct {
     fn members(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
-        composite_members(this_split, self.type_id, self.btf_raw_type.get_vlen())
+        composite_members(this_split, self.type_id, &self.btf_raw_type)
     }
 }
 
 impl BtfTypeUnion {
     fn members(&self, this_split: &BtfSplit) -> Vec<BtfVariable> {
-        composite_members(this_split, self.type_id, self.btf_raw_type.get_vlen())
+        composite_members(this_split, self.type_id, &self.btf_raw_type)
     }
 }
 
