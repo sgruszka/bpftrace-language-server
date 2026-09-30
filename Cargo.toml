@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 parser_diagnostics = []
-live_btf_tests = []
+live_system_tests = []
 debug_command = []
 
 [dependencies]

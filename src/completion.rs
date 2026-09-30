@@ -2245,6 +2245,7 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
 }
 
 #[allow(clippy::len_zero)]
+#[allow(dead_code, unused_imports)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2424,6 +2425,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_find_probe_args() {
         let mut probes_vec = vec![
@@ -2431,10 +2433,8 @@ mod tests {
             "kfunc:vmlinux:vfs_open",
         ];
 
-        if cfg!(feature = "live_btf_tests") {
-            probes_vec.push("kfunc:vmlinux:acpi_unregister_gsi");
-            probes_vec.push("kfunc:vmlinux:acpi_register_gsi");
-        }
+        probes_vec.push("kfunc:vmlinux:acpi_unregister_gsi");
+        probes_vec.push("kfunc:vmlinux:acpi_register_gsi");
 
         preload_probes_args(&probes_vec);
         for p in probes_vec {
@@ -2478,6 +2478,7 @@ mod tests {
         check_completion_resutls(result, prefixes);
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_probes_completion_for_vmlinux() {
         assert_eq!(init_bpftrace(None), Ok(()));
@@ -2491,6 +2492,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_probes_completion_for_modules() {
         assert_eq!(init_bpftrace(None), Ok(()));
@@ -2547,6 +2549,7 @@ mod tests {
         check_completion_resutls(result, functions);
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_completion_for_uprobe_files() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -2561,6 +2564,7 @@ mod tests {
         check_completion_resutls(result, functions);
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_completion_for_uprobe_functions() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -2580,6 +2584,7 @@ mod tests {
         check_completion_resutls(result, functions);
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_completion_for_uprobe_args() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -2662,6 +2667,7 @@ mod tests {
         check_completion_resutls(result, fields);
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_args_completion_for_wildcard_tracepoint() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -2817,7 +2823,7 @@ k:posix_acl_from_xattr {
         check_completion_resutls(result, fields);
     }
 
-    #[cfg(feature = "live_btf_tests")]
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_cma_tracepoint_page_completion() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -2846,7 +2852,7 @@ tracepoint:cma:cma_release {
         check_completion_resutls(result.clone(), fields);
     }
 
-    #[cfg(feature = "live_btf_tests")]
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[ignore] // Works on bpftrace version >= 0.25
     #[test]
     fn test_rawtracepoint_args_completion() {
@@ -2868,7 +2874,7 @@ tracepoint:cma:cma_release {
         check_completion_resutls(result, fields);
     }
 
-    #[cfg(feature = "live_btf_tests")]
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[ignore] // Works on bpftrace version >= 0.25
     #[test]
     fn test_rawtracepoint_struct_competion() {
@@ -2901,6 +2907,7 @@ rawtracepoint:vmlinux:xhci_queue_trb {
         check_completion_resutls(result.clone(), fields);
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_missing_right_bracket_action() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -2914,6 +2921,7 @@ rawtracepoint:vmlinux:xhci_queue_trb {
         check_completion_resutls(result, fields);
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_missing_left_bracket_action() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -3010,6 +3018,7 @@ fentry:vmlinux:find_ge_pid {
         assert!(hover.contains("} args;"));
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_hover_for_uprobe_args() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -3119,6 +3128,7 @@ fentry:vmlinux:find_ge_pid {
         assert!(hover.contains("unsigned int level;"));
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_hover_for_tracepoint_args() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -3145,6 +3155,7 @@ tracepoint:dma:dma_alloc {
         assert!(hover.contains("} args;"));
     }
 
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_hover_multiple_tracepoint_args() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -3224,7 +3235,7 @@ fentry:vmlinux:async_schedule_node_domain {
         assert!(hover.contains("sys_enter_open_by_handle_at"));
     }
 
-    #[cfg(feature = "live_btf_tests")]
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[test]
     fn test_hover_for_tracepoint_struct() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
@@ -3251,7 +3262,7 @@ tracepoint:xhci-hcd:xhci_dbc_alloc_request {
         assert!(hover.contains("unsigned int direction:1;"));
     }
 
-    #[cfg(feature = "live_btf_tests")]
+    #[cfg(all(test, feature = "live_system_tests"))]
     #[ignore] // Works only on bpftrace >= 0.25
     #[test]
     fn test_hover_for_rawtracepoint() {

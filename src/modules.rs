@@ -73,7 +73,7 @@ fn read_modules_deps() -> HashMap<String, Vec<String>> {
     graph
 }
 
-#[cfg(all(test, feature = "live_btf_tests"))]
+#[cfg(all(test, feature = "live_system_tests"))]
 mod tests {
     use crate::modules::get_mod_deps;
 

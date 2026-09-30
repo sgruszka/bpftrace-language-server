@@ -1197,7 +1197,7 @@ static MODULE_BTF_MAP: LazyLock<Mutex<HashMap<String, Arc<Btf>>>> =
 fn module_path(module: &str) -> Option<PathBuf> {
     let base_path;
 
-    let path = if cfg!(test) && !cfg!(feature = "live_btf_tests") {
+    let path = if cfg!(test) && !cfg!(feature = "live_system_tests") {
         base_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/");
         base_path.to_owned() + module + ".btf"
     } else {
@@ -1867,7 +1867,7 @@ mod tests {
         }
     }
 
-    #[cfg(not(feature = "live_btf_tests"))]
+    #[cfg(all(test, not(feature = "live_system_tests")))]
     #[test]
     fn test_resolve_alloc_mnt_ns() {
         let btf = btf_module_get("vmlinux").unwrap();
