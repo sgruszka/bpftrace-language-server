@@ -1,7 +1,8 @@
 use crate::cmd_mod;
+use crate::cmd_mod::bpftrace_major_minor_version;
 use crate::log_mod::{self, FRMAT};
 use crate::DOCUMENTS_STATE;
-use crate::{log_dbg, log_err, log_vdbg};
+use crate::{log_dbg, log_err, log_vdbg, WarningType, WARNINGS_TO_CLIENT};
 
 use json::{self, object, JsonValue};
 
@@ -10,7 +11,6 @@ fn encode_no_formatting() -> JsonValue {
 }
 
 fn format(text: &str) -> Option<String> {
-    // TODO: check version of bpftrace that supports --fmt
     let Ok(output) = cmd_mod::bpftrace_command(&["--fmt", "-e", text]) else {
         log_err!(
             "Failed to run: {} --fmt -e '{}'",
@@ -38,6 +38,17 @@ fn format(text: &str) -> Option<String> {
 
 pub fn encode_formatting(content: JsonValue) -> JsonValue {
     log_dbg!(FRMAT, "Received formatting with data {}", content);
+
+    let (major, minor) = bpftrace_major_minor_version();
+    if (major, minor) < (0, 25) {
+        WARNINGS_TO_CLIENT.push(
+            WarningType::NoFmt,
+            format!(
+                "bpftrace formatting (--fmt) requires version 0.25 or later, detected v{major}.{minor}."
+            ),
+        );
+        return encode_no_formatting();
+    }
 
     let Some(uri) = content["params"]["textDocument"]["uri"].as_str() else {
         return encode_no_formatting();
