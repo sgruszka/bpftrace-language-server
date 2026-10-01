@@ -9,6 +9,33 @@ fn encode_no_formatting() -> JsonValue {
     object! { "result": JsonValue::Null }
 }
 
+fn format(text: &str) -> Option<String> {
+    // TODO: check version of bpftrace that supports --fmt
+    let Ok(output) = cmd_mod::bpftrace_command(&["--fmt", "-e", text]) else {
+        log_err!(
+            "Failed to run: {} --fmt -e '{}'",
+            cmd_mod::get_used_command(),
+            text
+        );
+        return None;
+    };
+
+    if !output.status.success() {
+        log_err!(
+            "bpftrace --fmt command failed: {:?}",
+            String::from_utf8(output.stderr)
+        );
+        return None;
+    }
+
+    let Ok(formatted_text) = String::from_utf8(output.stdout) else {
+        log_err!("Failed to convert stdout to string");
+        return None;
+    };
+
+    Some(formatted_text)
+}
+
 pub fn encode_formatting(content: JsonValue) -> JsonValue {
     log_dbg!(FRMAT, "Received formatting with data {}", content);
 
@@ -26,19 +53,7 @@ pub fn encode_formatting(content: JsonValue) -> JsonValue {
         return encode_no_formatting();
     };
 
-    // TODO: check version of bpftrace that supports --fmt
-    let Ok(output) = cmd_mod::bpftrace_command(&["--fmt", "-e", &text_doc.text]) else {
-        log_err!("Failed to run bpftrace --fmt command");
-        return encode_no_formatting();
-    };
-
-    if !output.status.success() {
-        log_err!("bpftrace --fmt command failed: {:?}", output.stderr);
-        return encode_no_formatting();
-    }
-
-    let Ok(formatted_text) = String::from_utf8(output.stdout) else {
-        log_err!("Failed to convert stdout to string");
+    let Some(formatted_text) = format(&text_doc.text) else {
         return encode_no_formatting();
     };
 
@@ -62,4 +77,56 @@ pub fn encode_formatting(content: JsonValue) -> JsonValue {
     };
 
     object! { "result": [text_edit] }
+}
+
+#[allow(dead_code, unused_imports)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cmd_mod::init_bpftrace;
+
+    #[cfg(all(test, feature = "live_system_tests"))]
+    #[ignore] // Works on bpftrace version >= 0.25
+    #[test]
+    fn format_begin_action_block() {
+        assert_eq!(init_bpftrace(None), Ok(()));
+
+        let text = r#"
+    BEGIN{@count=0;     printf("hello  world" 
+ );  }            "#;
+        let formatted_text = r#"
+BEGIN
+{
+  @count = 0;
+  printf("hello  world");
+}
+"#;
+        assert_eq!(format(text).unwrap(), formatted_text);
+    }
+
+    #[cfg(all(test, feature = "live_system_tests"))]
+    #[ignore] // Works on bpftrace version >= 0.25
+    #[test]
+    fn format_predicate_and_comments() {
+        assert_eq!(init_bpftrace(None), Ok(()));
+
+        let input = r#"kprobe:vfs_read /pid == 1/{ // keep  spaces
+ @calls[comm]=count(); }"#;
+        let expected = r#"kprobe:vfs_read
+/pid == 1/
+{
+  // keep  spaces
+  @calls[comm] = count();
+}
+"#;
+        assert_eq!(format(input).as_deref(), Some(expected));
+    }
+
+    #[cfg(all(test, feature = "live_system_tests"))]
+    #[ignore] // Works on bpftrace version >= 0.25
+    #[test]
+    fn format_invalid_syntax() {
+        assert_eq!(init_bpftrace(None), Ok(()));
+        assert_eq!(format("BEGIN { @x = ; }"), None);
+    }
 }

@@ -228,7 +228,7 @@ fn bpftrace_properties_from_version() -> Result<Bpftrace, io::Error> {
     Ok(bpftrace_properties(version))
 }
 
-fn get_used_command() -> String {
+pub fn get_used_command() -> String {
     let cmd = if let Some(custom_cmd) = CUSTOM_COMMAND.get() {
         custom_cmd
     } else {
