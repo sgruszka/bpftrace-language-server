@@ -598,29 +598,32 @@ fn encode_formatting(content: JsonValue) -> JsonValue {
         return encode_no_formatting();
     };
 
-    log_dbg!(FRMAT, "INPUT {}", text_doc.text);
-
     // TODO: check version of bpftrace that supports --fmt
     let Ok(output) = cmd_mod::bpftrace_command(&["--fmt", "-e", &text_doc.text]) else {
-        log_err!("Failed to get output from bpftrace command");
+        log_err!("Failed to run bpftrace --fmt command");
         return encode_no_formatting();
     };
+
+    if !output.status.success() {
+        log_err!("bpftrace --fmt command failed: {:?}", output.stderr);
+        return encode_no_formatting();
+    }
 
     let Ok(formatted_text) = String::from_utf8(output.stdout) else {
         log_err!("Failed to convert stdout to string");
         return encode_no_formatting();
     };
 
-    log_dbg!(FRMAT, "FORMATED OUTPUT:\n{}", formatted_text);
+    log_dbg!(FRMAT, "Original text:\n{}", text_doc.text);
+    log_dbg!(FRMAT, "Formatted text:\n{}", formatted_text);
+    // TODO: provide diff ?
 
-    // LSP positions use UTF-16 code units by default. Exclude the CR in CRLF
-    // line endings from the final line's character count.
+    let end_pos = tree.root_node().end_position();
+    // TODO utf-16 ?
     // let line = text_doc.text.bytes().filter(|&byte| byte == b'\n').count();
     // let last_line = text_doc.text.rsplit('\n').next().unwrap_or_default();
     // let last_line = last_line.strip_suffix('\r').unwrap_or(last_line);
     // let character = last_line.encode_utf16().count();
-
-    let end_pos = tree.root_node().end_position();
 
     let text_edit = object! {
         "range": {
