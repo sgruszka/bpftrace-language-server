@@ -21,7 +21,7 @@ pub mod parser;
 #[macro_use]
 pub mod log_mod;
 
-use log_mod::{DEFIN, DIAGN, NOTIF, PROTO, REFER};
+use log_mod::{DEFIN, DIAGN, FRMAT, NOTIF, PROTO, REFER};
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
@@ -305,6 +305,7 @@ fn encode_initalize_result() -> JsonValue {
             "triggerCharacters": [":", ".", ">", "$", "@", "/"],
             "resolveProvider": true,
         },
+        "documentFormattingProvider": true,
     };
 
     let server_info = object! {
@@ -576,6 +577,61 @@ fn encode_code_action(content: JsonValue) -> JsonValue {
 
     data
 }
+fn encode_no_formatting() -> JsonValue {
+    object! { "result": JsonValue::Null }
+}
+
+fn encode_formatting(content: JsonValue) -> JsonValue {
+    log_dbg!(FRMAT, "Received formatting with data {}", content);
+
+    let Some(uri) = content["params"]["textDocument"]["uri"].as_str() else {
+        return encode_no_formatting();
+    };
+    // TODO: format according to options
+    // let options = &content["params"]["options"];
+
+    let Some(text_doc) = DOCUMENTS_STATE.get(uri) else {
+        return encode_no_formatting();
+    };
+
+    let Some(tree) = text_doc.syntax_tree.as_ref() else {
+        return encode_no_formatting();
+    };
+
+    log_dbg!(FRMAT, "INPUT {}", text_doc.text);
+
+    // TODO: check version of bpftrace that supports --fmt
+    let Ok(output) = cmd_mod::bpftrace_command(&["--fmt", "-e", &text_doc.text]) else {
+        log_err!("Failed to get output from bpftrace command");
+        return encode_no_formatting();
+    };
+
+    let Ok(formatted_text) = String::from_utf8(output.stdout) else {
+        log_err!("Failed to convert stdout to string");
+        return encode_no_formatting();
+    };
+
+    log_dbg!(FRMAT, "FORMATED OUTPUT:\n{}", formatted_text);
+
+    // LSP positions use UTF-16 code units by default. Exclude the CR in CRLF
+    // line endings from the final line's character count.
+    // let line = text_doc.text.bytes().filter(|&byte| byte == b'\n').count();
+    // let last_line = text_doc.text.rsplit('\n').next().unwrap_or_default();
+    // let last_line = last_line.strip_suffix('\r').unwrap_or(last_line);
+    // let character = last_line.encode_utf16().count();
+
+    let end_pos = tree.root_node().end_position();
+
+    let text_edit = object! {
+        "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": end_pos.row  , "character": end_pos.column },
+        },
+        "newText": formatted_text,
+    };
+
+    object! { "result": [text_edit] }
+}
 
 fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue {
     let error_nodes = parser::find_errors(text, root_node);
@@ -594,7 +650,7 @@ fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue
         let mut diag = object! {
             "range": {
                 "start": { "line": line_nr, "character": char_nr },
-                 "end": { "line": end_line_nr, "character": end_char_nr },
+                "end": { "line": end_line_nr, "character": end_char_nr },
             },
             "severity": 1,
             "source": "parser",
@@ -871,6 +927,7 @@ fn encode_message(id: LspRequestId, method: &str, content: JsonValue) -> JsonVal
         "textDocument/references" => encode_references(content),
         "textDocument/codeAction" => encode_code_action(content),
         "textDocument/completion" => completion::encode_completion(content),
+        "textDocument/formatting" => encode_formatting(content),
         "completionItem/resolve" => completion::encode_completion_resolve(content),
         unhandled_method => {
             log_dbg!(PROTO, "No handler for method: {}", unhandled_method);

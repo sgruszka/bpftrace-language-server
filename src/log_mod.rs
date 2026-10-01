@@ -15,6 +15,7 @@ pub const PARSE: u32 = 1 << 6;
 pub const DEFIN: u32 = 1 << 7;
 pub const REFER: u32 = 1 << 8;
 pub const CMAND: u32 = 1 << 9;
+pub const FRMAT: u32 = 1 << 10;
 
 #[macro_export]
 macro_rules! log_err {
@@ -114,6 +115,7 @@ pub fn create_logger(filename_opt: Option<String>) -> Result<(), std::io::Error>
                         "DEFIN" => mask |= DEFIN,
                         "REFER" => mask |= REFER,
                         "CMAND" => mask |= CMAND,
+                        "FRMAT" => mask |= FRMAT,
                         _ => {} // ignore unknown components
                     }
                 }
