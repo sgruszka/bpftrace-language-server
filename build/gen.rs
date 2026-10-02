@@ -47,7 +47,12 @@ fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     text.push_str(&obj);
 }
 
-fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, first_variant: Option<String>) {
+fn stdlib_add_json_obj(
+    text: &mut String,
+    doc_item: &DocItem,
+    first_variant: Option<String>,
+    ver: &str,
+) {
     let label = &doc_item.label;
 
     if doc_item.variants.is_empty() {
@@ -66,11 +71,11 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, first_variant: Opt
     };
 
     let mut kind = 3;
-    let mut detail = format!("stdlib function `{}`", label);
+    let mut detail = format!("bpftrace v{} stdlib function `{}`", ver, label);
     if let Some(variant) = first_variant {
         if !variant.ends_with(")") {
             kind = 6;
-            detail = format!("builtin variable `{}`", label);
+            detail = format!("bpftrace v{} builtin variable `{}`", ver, label);
         }
     }
 
@@ -193,18 +198,18 @@ fn gen_completion_stdlib(stdlib_md: &str, ver: &str) -> String {
     let mut after_label = false;
     let mut first_variant = None;
 
-    let ver = ver.replace(".", "_");
+    let fn_ver = ver.replace(".", "_");
 
     let mut text = format!(
         r#"
-fn bpftrace_stdlib_{ver}(items: &mut json::JsonValue) {{
+fn bpftrace_stdlib_{fn_ver}(items: &mut json::JsonValue) {{
 "#
     );
 
     for line in stdlib_md.lines() {
         if line.trim().starts_with("### ") {
             if collected_item {
-                stdlib_add_json_obj(&mut text, &doc_item, first_variant);
+                stdlib_add_json_obj(&mut text, &doc_item, first_variant, ver);
             }
 
             doc_item = DocItem::default();
