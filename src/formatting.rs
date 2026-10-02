@@ -140,4 +140,20 @@ BEGIN
         assert_eq!(init_bpftrace(None), Ok(()));
         assert_eq!(format("BEGIN { @x = ; }"), None);
     }
+
+    #[test]
+    fn format_utf16_end_column() {
+        let text = r#"BEGIN { printf("🐝b🐝p🐝f🐝t🐝r🐝a🐝c🐝e🐝"); }"#;
+
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_bpftrace::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(text, None).unwrap();
+        let root = tree.root_node();
+        assert!(!root.has_error());
+
+        let end_pos = to_utf16_position(text, root.end_position());
+        assert_eq!(end_pos.column, text.encode_utf16().count());
+    }
 }
