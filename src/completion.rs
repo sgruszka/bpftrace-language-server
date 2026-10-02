@@ -21,7 +21,7 @@ use crate::gen::completion::{
 };
 use crate::log_mod::{self, COMPL, HOVER};
 use crate::parser::{self, SyntaxLocation};
-use crate::{get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
+use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_err, log_vdbg, WarningType, WARNINGS_TO_CLIENT};
 
 #[allow(unused)]
@@ -1380,12 +1380,14 @@ impl Probes {
 #[allow(clippy::collapsible_else_if)]
 pub fn encode_completion(content: JsonValue) -> JsonValue {
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
-    // For completion look at place before the cursor.
-    let char_nr = char_nr.saturating_sub(1);
 
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
         return encode_no_completion();
     };
+
+    // For completion look at place before the cursor.
+    let char_nr = char_nr.saturating_sub(1);
+    let char_nr = from_utf16_position(&text_doc.text, line_nr, char_nr);
 
     let (text, loc, node, line_str) =
         get_document_state!(text_doc, line_nr, char_nr, encode_no_completion(), COMPL);
@@ -2138,6 +2140,8 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
     let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
         return data;
     };
+
+    let char_nr = from_utf16_position(&text_doc.text, line_nr, char_nr);
 
     let (text, loc, node, _line_str) = get_document_state!(text_doc, line_nr, char_nr, data, HOVER);
 

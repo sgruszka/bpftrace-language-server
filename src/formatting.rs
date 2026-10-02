@@ -1,8 +1,8 @@
 use crate::cmd_mod;
 use crate::cmd_mod::bpftrace_major_minor_version;
 use crate::log_mod::{self, FRMAT};
-use crate::DOCUMENTS_STATE;
 use crate::{log_dbg, log_err, log_vdbg, WarningType, WARNINGS_TO_CLIENT};
+use crate::{to_utf16_position, DOCUMENTS_STATE};
 
 use json::{self, object, JsonValue};
 
@@ -72,12 +72,8 @@ pub fn encode_formatting(content: JsonValue) -> JsonValue {
     log_vdbg!(FRMAT, "Formatted text:\n{}", formatted_text);
     // TODO: provide diff ?
 
-    let end_pos = tree.root_node().end_position();
-    // TODO utf-16 ?
-    // let line = text_doc.text.bytes().filter(|&byte| byte == b'\n').count();
-    // let last_line = text_doc.text.rsplit('\n').next().unwrap_or_default();
-    // let last_line = last_line.strip_suffix('\r').unwrap_or(last_line);
-    // let character = last_line.encode_utf16().count();
+    let end_pos_ts = tree.root_node().end_position();
+    let end_pos = to_utf16_position(&text_doc.text, end_pos_ts);
 
     let text_edit = object! {
         "range": {

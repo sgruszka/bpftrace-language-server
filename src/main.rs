@@ -133,6 +133,40 @@ pub fn unpack_text_document_info(content: JsonValue) -> (String, usize, usize) {
     (uri, line_nr, char_nr)
 }
 
+pub fn from_utf16_position(text: &str, line_nr: usize, char_nr: usize) -> usize {
+    let raw_line = text.split('\n').nth(line_nr).unwrap_or_default();
+    let line_str = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+
+    let mut utf16_column = 0;
+    let mut byte_column = 0;
+
+    for (byte_index, ch) in line_str.char_indices() {
+        if char_nr < utf16_column + ch.len_utf16() {
+            break;
+        }
+        utf16_column += ch.len_utf16();
+        byte_column = byte_index + ch.len_utf8();
+        if char_nr == utf16_column {
+            break;
+        }
+    }
+
+    byte_column
+}
+
+pub fn to_utf16_position(text: &str, pos: tree_sitter::Point) -> tree_sitter::Point {
+    let raw_line = text.split('\n').nth(pos.row).unwrap_or_default();
+    let line_str = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+
+    let mut byte_column = pos.column.min(line_str.len());
+    while !line_str.is_char_boundary(byte_column) {
+        byte_column -= 1;
+    }
+
+    let utf16_column = line_str[..byte_column].encode_utf16().count();
+    tree_sitter::Point::new(pos.row, utf16_column)
+}
+
 #[macro_export]
 macro_rules! get_document_state {
     ($text_doc:ident, $line_nr:ident, $char_nr:ident, $none:expr, $log:ident) => {{
@@ -158,7 +192,10 @@ macro_rules! get_document_state {
             $line_nr,
             line_str,
             $char_nr,
-            line_str.chars().nth($char_nr).unwrap_or_default()
+            line_str
+                .get($char_nr..)
+                .and_then(|suffix| suffix.chars().next())
+                .unwrap_or_default()
         );
 
         let (loc, node) = parser::find_syntax_location(text, tree, $line_nr, $char_nr);
@@ -359,6 +396,8 @@ fn encode_definition(content: JsonValue) -> JsonValue {
         return encode_no_definition();
     };
 
+    let char_nr = from_utf16_position(&text_doc.text, line_nr, char_nr);
+
     let (text, _loc, main_node, _line_str) =
         get_document_state!(text_doc, line_nr, char_nr, encode_no_definition(), DEFIN);
 
@@ -406,8 +445,8 @@ fn encode_definition(content: JsonValue) -> JsonValue {
     }
 
     if let Some(def) = def_node {
-        let start = def.start_position();
-        let end = def.end_position();
+        let start = to_utf16_position(text, def.start_position());
+        let end = to_utf16_position(text, def.end_position());
         log_dbg!(
             DEFIN,
             "Found {} defintion at ({},{}) - ({},{})",
@@ -440,6 +479,7 @@ fn encode_no_references() -> JsonValue {
 
 fn encode_references_for_nodes<'t>(
     uri: String,
+    text: &str,
     ref_nodes: Vec<tree_sitter::Node<'t>>,
 ) -> JsonValue {
     let mut location = JsonValue::new_array();
@@ -449,8 +489,8 @@ fn encode_references_for_nodes<'t>(
     }
 
     for node in ref_nodes {
-        let start = node.start_position();
-        let end = node.end_position();
+        let start = to_utf16_position(text, node.start_position());
+        let end = to_utf16_position(text, node.end_position());
 
         let loc = object! {
             "uri": uri.clone(),
@@ -522,15 +562,17 @@ fn encode_references(content: JsonValue) -> JsonValue {
         return encode_no_references();
     };
 
+    let char_nr = from_utf16_position(&text_doc.text, line_nr, char_nr);
+
     let (text, loc, main_node, _line_str) =
         get_document_state!(text_doc, line_nr, char_nr, encode_no_references(), REFER);
 
     if let Some(ref_nodes) = get_references_for_map_variable(text, &main_node, line_nr, char_nr) {
-        encode_references_for_nodes(uri, ref_nodes)
+        encode_references_for_nodes(uri, text, ref_nodes)
     } else if let Some(ref_nodes) =
         get_references_for_macro(text, loc, &main_node, line_nr, char_nr)
     {
-        encode_references_for_nodes(uri, ref_nodes)
+        encode_references_for_nodes(uri, text, ref_nodes)
     } else {
         encode_no_references()
     }
@@ -585,8 +627,8 @@ fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue
 
     let mut diagnostics = JsonValue::new_array();
     for node in error_nodes {
-        let start = node.start_position();
-        let end = node.end_position();
+        let start = to_utf16_position(text, node.start_position());
+        let end = to_utf16_position(text, node.end_position());
 
         let line_nr = start.row;
         let char_nr = start.column;
@@ -617,6 +659,7 @@ fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue
 // Parse single line errors:
 // stdin:6:60-69: ERROR: str() expects an integer or a pointer type as first argument (struct _tracepoint_syscalls_sys_exit_bpf provided)
 fn bpftrace_diag_single_line_error(
+    text: &str,
     mut line_nr: usize,
     tokens: &[&str],
 ) -> Result<JsonValue, std::num::ParseIntError> {
@@ -629,6 +672,8 @@ fn bpftrace_diag_single_line_error(
     let chars: Vec<&str> = tokens[2].split("-").collect();
     let start_char_nr: usize = chars[0].parse()?;
     let end_char_nr: usize = chars[1].parse()?;
+    let start = to_utf16_position(text, tree_sitter::Point::new(line_nr, start_char_nr));
+    let end = to_utf16_position(text, tree_sitter::Point::new(line_nr, end_char_nr));
 
     let to_severity = |e: &str| -> u32 {
         match e.trim() {
@@ -644,7 +689,7 @@ fn bpftrace_diag_single_line_error(
     };
 
     let diag = object! {
-        "range": { "start": { "line": line_nr, "character": start_char_nr}, "end": {"line": line_nr, "character": end_char_nr, }, },
+        "range": { "start": { "line": start.row, "character": start.column}, "end": {"line": end.row, "character": end.column, }, },
         "severity": to_severity(tokens[3]),
         // "source": "bpftrace -d",
         "message": format!("{}:{}", tokens[3], tail),
@@ -753,7 +798,7 @@ fn do_bpftrace_diagnostics(text: &str) -> JsonValue {
 
         let diag_res = if tokens[0] == "stdin" {
             let stdin_diag_err = if let Ok(line_nr) = tokens[1].parse::<usize>() {
-                bpftrace_diag_single_line_error(line_nr, &tokens)
+                bpftrace_diag_single_line_error(text, line_nr, &tokens)
             } else {
                 bpftrace_diag_multi_line_error(&tokens)
             };
