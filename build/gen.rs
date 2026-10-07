@@ -71,11 +71,11 @@ fn stdlib_add_json_obj(
     };
 
     let mut kind = 3;
-    let mut detail = format!("bpftrace v{} stdlib function `{}`", ver, label);
+    let mut detail = format!("{} - bpftrace v{} stdlib function", label, ver);
     if let Some(variant) = first_variant {
         if !variant.ends_with(")") {
             kind = 6;
-            detail = format!("bpftrace v{} builtin variable `{}`", ver, label);
+            detail = format!("{} - bpftrace v{} builtin variable", label, ver);
         }
     }
 
