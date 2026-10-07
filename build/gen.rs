@@ -4,17 +4,23 @@ use std::fs;
 struct DocItem {
     label: String,
     first_line: String,
-    variants: String,
+    variants: Vec<String>,
     short_name: String,
     full_info: String,
 }
 
 fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     let label = &doc_item.label;
+
+    let mut tmp_str = String::new();
     let detail = if doc_item.variants.is_empty() {
         &doc_item.label
     } else {
-        &doc_item.variants
+        for variant in &doc_item.variants {
+            tmp_str.push_str(variant);
+            tmp_str.push('\n');
+        }
+        &tmp_str
     };
 
     let mut docs = if doc_item.short_name.is_empty() {
@@ -47,19 +53,14 @@ fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     text.push_str(&obj);
 }
 
-fn stdlib_add_json_obj(
-    text: &mut String,
-    doc_item: &DocItem,
-    first_variant: Option<String>,
-    ver: &str,
-) {
+fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, ver: &str) {
     let label = &doc_item.label;
 
-    if doc_item.variants.is_empty() {
-        &doc_item.label
-    } else {
-        &doc_item.variants
-    };
+    // if doc_item.variants.is_empty() {
+    //     &doc_item.label
+    // } else {
+    //     &doc_item.variants
+    // };
 
     let mut docs = if doc_item.short_name.is_empty() {
         doc_item.first_line.to_string()
@@ -72,10 +73,18 @@ fn stdlib_add_json_obj(
 
     let mut kind = 3;
     let mut detail = format!("{} - bpftrace v{} stdlib function", label, ver);
-    if let Some(variant) = first_variant {
-        if !variant.ends_with(")") {
+
+    if doc_item.variants.len() == 1 {
+        if !doc_item.variants[0].ends_with(")") {
             kind = 6;
             detail = format!("{} - bpftrace v{} builtin variable", label, ver);
+        }
+    } else {
+        for variant in &doc_item.variants {
+            if !variant.ends_with(")") {
+                detail = format!("{} - bpftrace v{} builtin function/variable", label, ver);
+                break;
+            }
         }
     }
 
@@ -160,8 +169,7 @@ pub fn bpftrace_probe_providers(items: &mut json::JsonValue) {
 
         if after_variants {
             if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
-                doc_item.variants.push_str(&line[3..line.len() - 1]);
-                doc_item.variants.push('\n');
+                doc_item.variants.push(line[3..line.len() - 1].to_string());
             } else if !line.trim().is_empty() {
                 after_variants = false;
             }
@@ -196,7 +204,8 @@ fn gen_completion_stdlib(stdlib_md: &str, ver: &str) -> String {
     let mut doc_item = DocItem::default();
     let mut collected_item = false;
     let mut after_label = false;
-    let mut first_variant = None;
+    let mut after_summary = false;
+    let mut after_variants = false;
 
     let fn_ver = ver.replace(".", "_");
 
@@ -209,7 +218,7 @@ fn bpftrace_stdlib_{fn_ver}(items: &mut json::JsonValue) {{
     for line in stdlib_md.lines() {
         if line.trim().starts_with("### ") {
             if collected_item {
-                stdlib_add_json_obj(&mut text, &doc_item, first_variant, ver);
+                stdlib_add_json_obj(&mut text, &doc_item, ver);
             }
 
             doc_item = DocItem::default();
@@ -217,14 +226,32 @@ fn bpftrace_stdlib_{fn_ver}(items: &mut json::JsonValue) {{
             collected_item = true;
 
             after_label = true;
-            first_variant = None;
+            after_summary = false;
+            after_variants = false;
             continue;
         }
 
         if after_label {
-            if first_variant.is_none() {
+            if line.trim().is_empty() {
+                after_summary = true;
+                after_label = false;
+            } else {
+                doc_item.full_info.push_str(line);
+                doc_item.full_info.push('\n');
+            }
+        }
+
+        if after_summary {
+            if line.trim().is_empty() {
+                doc_item.full_info.push('\n');
+                continue;
+            }
+
+            if !after_variants {
                 if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
-                    first_variant = Some(line[3..line.len() - 1].to_string());
+                    doc_item.variants.push(line[3..line.len() - 1].to_string());
+                } else {
+                    after_variants = true;
                 }
             }
             doc_item.full_info.push_str(line);
