@@ -271,53 +271,6 @@ Note: `begin` and `end` probes are of type `special`.
 For example: `kprobe`, `special`, `tracepoint`
 
 
-### rand
-- `uint32 rand()`
-- `uint32 rand`
-
-Get a pseudo random number
-
-This utilizes the BPF helper `get_prandom_u32`
-
-
-### reg
-- `uint64 reg(const string name)`
-
-**Supported probes**
-
-* kprobe
-* uprobe
-
-Get the contents of the register identified by `name`.
-Valid names depend on the CPU architecture.
-
-
-### signal
-- `void signal(const string sig)`
-- `void signal(uint32 signum)`
-
-**unsafe**
-
-This utilizes the BPF helper `bpf_send_signal`.
-
-Probe types: k(ret)probe, u(ret)probe, USDT, profile
-
-Send a signal to the process being traced (any thread).
-Use `signal_thread` to send to the thread being traced.
-The signal can either be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill -l`.
-
-```
-kprobe:__x64_sys_execve
-/comm == "bash"/ {
-  signal(5);
-}
-```
-```
-$ ls
-Trace/breakpoint trap (core dumped)
-```
-
-
 ### signal_name
 - `string signal_name(int sig)`
 
@@ -344,62 +297,6 @@ Probe types: k(ret)probe, u(ret)probe, USDT, profile
 Send a signal to the thread being traced.
 Use `signal` to send to the process being traced (any thread).
 The signal can either be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill -l`.
-
-
-### sizeof
-- `uint64 sizeof(TYPE)`
-- `uint64 sizeof(EXPRESSION)`
-
-**compile time**
-
-Returns size of the argument in bytes.
-Similar to C/C++ `sizeof` operator.
-Note that the expression does not get evaluated.
-
-
-### skboutput
-- `uint32 skboutput(const string path, struct sk_buff *skb, uint64 length, const uint64 offset)`
-
-**Kernel** 5.5
-
-This utilizes the BPF helper `bpf_skb_output`
-
-Write sk_buff `skb` 's data section to a PCAP file in the `path`, starting from `offset` to `offset` + `length`.
-
-The PCAP file is encapsulated in RAW IP, so no ethernet header is included.
-The `data` section in the struct `skb` may contain ethernet header in some kernel contexts, you may set `offset` to 14 bytes to exclude ethernet header.
-
-Each packet’s timestamp is determined by adding `nsecs` and boot time, the accuracy varies on different kernels, see `nsecs`.
-
-This function returns 0 on success, or a negative error in case of failure.
-
-Environment variable `BPFTRACE_PERF_RB_PAGES` should be increased in order to capture large packets, or else these packets will be dropped.
-
-Usage
-
-```
-# cat dump.bt
-fentry:napi_gro_receive {
-  $ret = skboutput("receive.pcap", args.skb, args.skb.len, 0);
-}
-
-fentry:dev_queue_xmit {
-  // setting offset to 14, to exclude ethernet header
-  $ret = skboutput("output.pcap", args.skb, args.skb.len, 14);
-  printf("skboutput returns %d\n", $ret);
-}
-
-# export BPFTRACE_PERF_RB_PAGES=1024
-# bpftrace dump.bt
-...
-
-# tcpdump -n -r ./receive.pcap  | head -3
-reading from file ./receive.pcap, link-type RAW (Raw IP)
-dropped privs to tcpdump
-10:23:44.674087 IP 22.128.74.231.63175 > 192.168.0.23.22: Flags [.], ack 3513221061, win 14009, options [nop,nop,TS val 721277750 ecr 3115333619], length 0
-10:23:45.823194 IP 100.101.2.146.53 > 192.168.0.23.46619: 17273 0/1/0 (130)
-10:23:45.823229 IP 100.101.2.146.53 > 192.168.0.23.46158: 45799 1/0/0 A 100.100.45.106 (60)
-```
 
 
 ### socket_cookie
@@ -443,18 +340,6 @@ Prints:
 Assert something is true or fail the build.
 
 
-### str
-- `string str(char * data [, uint32 length)`
-
-This utilizes the BPF helpers `probe_read_str, probe_read_{kernel,user}_str`
-
-`str` reads a NULL terminated (`\0`) string from `data`.
-The maximum string length is limited by the `BPFTRACE_MAX_STRLEN` env variable, unless `length` is specified and shorter than the maximum.
-In case the string is longer than the specified length only `length - 1` bytes are copied and a NULL byte is appended at the end.
-
-bpftrace will automatically use the `kernel` or `user` variant of `probe_read_{kernel,user}_str` based on the address space of `data`, see [Address-spaces](./language.md#address-spaces) for more information.
-
-
 ### strcap
 - `int64 strcap(string exp)`
 - `int64 strcap(int8 exp[])`
@@ -467,67 +352,12 @@ strings and arrays, this is the underlying object capacity. This is used to
 bound searches and lookups without needing to scan the string itself.
 
 
-### strcontains
-- `bool strcontains(string haystack, string needle)`
-
-Compares whether the string haystack contains the string needle.
-
-If needle is contained then true is returned, else false is returned.
-
-
-### strerror
-- `string strerror(int error)`
-
-Convert errno code to string.
-
-```
-#include <errno.h>
-begin {
-  print(strerror(EPERM));
-}
-```
-
-
-### strftime
-- `timestamp strftime(const string fmt, int64 timestamp_ns)`
-
-**async**
-
-Format the nanoseconds since boot timestamp `timestamp_ns` according to the format specified by `fmt`.
-The time conversion and formatting happens in user space, therefore  the `timestamp` value returned can only be used for printing using the `%s` format specifier.
-
-bpftrace uses the `strftime(3)` function for formatting time and supports the same format specifiers.
-
-```
-interval:s:1 {
-  printf("%s\n", strftime("%H:%M:%S", nsecs));
-}
-```
-
-bpftrace also supports the following format string extensions:
-
-| Specifier | Description |
-| --- | --- |
-| `%f` | Microsecond as a decimal number, zero-padded on the left |
-
-
 ### strlen
 - `uint64 strlen(string exp)`
 - `uint64 strlen(int8 exp[])`
 - `uint64 strlen(int8 *exp)`
 
 Returns the length of a string-like object.
-
-
-### strncmp
-- `int64 strncmp(char * s1, char * s2, int64 n)`
-
-`strncmp` compares up to `n` characters string `s1` and string `s2`.
-If they’re equal `0` is returned, else a non-zero value is returned.
-
-bpftrace doesn’t read past the length of the shortest string.
-
-The use of the `==` and `!=` operators is recommended over calling `strncmp` directly.
 
 
 ### strstr
