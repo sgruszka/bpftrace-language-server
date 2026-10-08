@@ -155,6 +155,28 @@ Name of the current thread or the process with the specified PID
 
 This utilizes the BPF helper `get_current_comm`
 
+### config [0.27..]
+- `Record config()`
+- `Record config`
+
+Returns a `Record` containing the current `bpftrace` configuration settings. [List of config variables](./language.md#config-variables)
+
+```
+printf("max_strlen: %d, stack_mode: %s\n", config.max_strlen, config.stack_mode);
+}
+```
+
+**Availability**
+Since bpftrace v0.27
+
+### container_of [0.27..]
+- `Container* container_of(Member* ptr, Type type, Identifier member)`
+
+Returns a pointer to an object of the passed `type` given a pointer to the `member` of that object.
+
+**Availability**
+Since bpftrace v0.27
+
 ### cpid [..0.23]
 - `uint32 cpid`
 
@@ -204,6 +226,13 @@ Pointer to `struct task_struct` of the current task
 
 This utilizes the BPF helper `get_current_task`
 
+### default_str_length [0.25..]
+
+Returns the default unbounded length.
+
+**Availability**
+Since bpftrace v0.25
+
 ### delete [..]
 - `bool delete(map m, mapkey k)`
 - deprecated `bool delete(mapkey k)`
@@ -249,11 +278,64 @@ kprobe:dummy {
 }
 ```
 
+### dw_ustack [0.26..]
+- `ustack_t dw_ustack([StackMode mode, ][int limit])`
+
+DWARF-based user-space stack unwinding. Unlike [ustack](#ustack), which
+relies on frame pointers, `dw_ustack` uses DWARF `.eh_frame` debug
+information to unwind the stack. This makes it possible to collect complete
+user-space stack traces from programs compiled without frame pointers.
+
+The signature and output format are the same as `ustack`.
+
+Bpftrace needs to read the DWARF information for the target processes at startup.
+For this, one or more pids have to be specified. This can either be done via
+`-p`, `-c` (implicitly) or `--dwarf-pid`. If `dw_ustack` cannot find unwind
+information for a process, a runtime warning is emitted.
+
+`dw_ustack` is currently only available on x86_64.
+
+**Unstable feature**
+
+`dw_ustack` is an unstable feature. By default a warning is printed when it
+is used. Set the config flag to suppress the warning or to make it an error:
+
+```
+config = { unstable_dw_ustack=enable }
+```
+
+For usage examples see [ustack](#ustack).
+
+**Availability**
+Since bpftrace v0.26
+
 ### elapsed [..]
 - `uint64 elapsed()`
 - `uint64 elapsed`
 
 ktime_get_ns - ktime_get_boot_ns
+
+### END [..]
+
+### errorf [0.24..]
+- `void errorf(const string fmt, args...)`
+
+**async**
+
+`errorf()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location.
+
+```
+BEGIN { errorf("Something bad with args: %d, %s", 10, "arg2"); }
+```
+
+Prints:
+
+```
+EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
+```
+
+**Availability**
+Since bpftrace v0.24
 
 ### exit [..]
 - `void exit([int code])`
@@ -278,6 +360,39 @@ BEGIN {
 }
 ```
 
+### fail [0.25..]
+- `void fail(const string fmt, args...)`
+
+`fail()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location but, as opposed to [`errorf`](#errorf), is treated like a static assert and halts compilation if it is visited. All args have to be literals since they are evaluated at compile time.
+
+```
+BEGIN { if ($1 < 2) { fail("Expected the first positional param to be greater than 1. Got %d", $1); } }
+```
+
+**Availability**
+Since bpftrace v0.25
+
+### find [0.25..]
+- `boolean find(map m, mapkey k, mapvalue result)`
+
+Return `true` if the key exists in this map and sets the passed scratch variable (result) to the value of that map key.
+Otherwise return `false` and don't mutate result.
+Use this instead of `has_key` and a map access to avoid an additional map lookup.
+Error if called with a map that has no keys (aka scalar map).
+
+```
+kprobe:dummy {
+  @map[2] = (1, "hello");
+  let $val;
+  if (find(@map, 2, $val)) {
+    print($val); // prints (1, "hello")
+  }
+}
+```
+
+**Availability**
+Since bpftrace v0.25
+
 ### func [..0.23]
 - `string func`
 
@@ -297,6 +412,59 @@ Name of the current function being traced (kprobes,uprobes,fentry)
 
 Name of the current function being traced (kprobes,uprobes,fentry)
 
+### getopt [0.24..0.24]
+- `bool getopt(string arg_name)`
+- `string getopt(string arg_name, string default_value)`
+- `int getopt(string arg_name, int default_value)`
+- `bool getopt(string arg_name, bool default_value)`
+
+Get the named command line argument/option e.g.
+```
+# bpftrace -e 'BEGIN { print(getopt("hello", 1)); }' -- --hello=5
+
+```
+
+`getopt` defines the type of the argument by the default value’s type.
+If no default type is provided, the option is treated like a boolean arg e.g. `getopt("hello")` would evaluate to `false` if `--hello` is not specified on the command line or `true` if `--hello` is passed or set to one of the following values: `true`, `1`.
+Additionally, boolean args accept the following false values: `0`, `false` e.g. `--hello=false`.
+If the arg is not set on the command line, the default value is used.
+
+```
+# bpftrace -e 'BEGIN { print((getopt("aa", 10), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
+
+```
+
+**Availability**
+Since bpftrace v0.24
+
+### getopt [0.25..]
+- `bool getopt(string arg_name)`
+- `bool getopt(string arg_name, bool default_value, [string description])`
+- `int getopt(string arg_name, int default_value, [string description])`
+- `string getopt(string arg_name, string default_value, [string description])`
+
+Get the named command line argument/option e.g.
+```
+# bpftrace -e 'BEGIN { print(getopt("hello", 1, "Description of hello")); }' -- --hello=5
+
+```
+
+`getopt` defines the type of the argument by the default value’s type.
+If no default type is provided, the option is treated like a boolean arg e.g. `getopt("hello")` would evaluate to `false` if `--hello` is not specified on the command line or `true` if `--hello` is passed or set to one of the following values: `true`, `1`.
+Additionally, boolean args accept the following false values: `0`, `false` e.g. `--hello=false`.
+If the arg is not set on the command line, the default value is used.
+`getopt` calls may optionally specify a string with the argument description (except for a boolean arg without a default value).
+
+You can use `--help` to see all named arguments/options.
+
+```
+# bpftrace -e 'BEGIN { print((getopt("aa", 10, "Description of aa"), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
+
+```
+
+**Availability**
+Since bpftrace v0.24
+
 ### gid [..0.23]
 - `uint64 gid`
 
@@ -311,6 +479,15 @@ This utilizes the BPF helper `get_current_uid_gid`
 Group ID of the current thread, as seen from the init namespace
 
 This utilizes the BPF helper `get_current_uid_gid`
+
+### has_cpid [0.25..]
+- `bool has_cpid()`
+- `bool has_cpid`
+
+Returns true iff cpid is available.
+
+**Availability**
+Since bpftrace v0.25
 
 ### has_key [..0.24]
 - `boolean has_key(map m, mapkey k)`
@@ -358,6 +535,75 @@ kprobe:dummy {
 }
 ```
 
+### is_array [0.25..]
+- `bool is_array(any expression)`
+
+Determine whether the given expression is an array.
+
+**Availability**
+Since bpftrace v0.25
+
+### is_err [0.26..]
+- `bool is_err(void * ptr)`
+
+Returns true if the pointer is an ERR_PTR, i.e. it encodes a kernel error code.
+
+In the Linux kernel, some functions return error codes encoded as pointers
+using the `ERR_PTR` macro. These are pointer values in the range
+`(unsigned long)(-4095)` to `(unsigned long)(-1)`.
+
+This is equivalent to the kernel's `IS_ERR()` macro.
+
+```
+fexit:do_filp_open {
+  if (is_err(retval)) {
+    printf("error: %ld\n", (int64)retval);
+  }
+}
+```
+
+**Availability**
+Since bpftrace v0.26
+
+### is_integer [0.25..]
+- `bool is_integer(any expression)`
+
+Determine whether the given expression is an integer.
+
+**Availability**
+Since bpftrace v0.25
+
+### is_literal [0.25..]
+- `bool is_literal(Expression expr)`
+
+Returns true if the passed expression is a literal, e.g. 1, true, "hello"
+
+**Availability**
+Since bpftrace v0.25
+
+### is_ptr [0.25..]
+- `bool is_ptr(any expression)`
+
+Determine whether the given expression is a pointer.
+
+**Availability**
+Since bpftrace v0.25
+
+### is_str [0.25..]
+- `bool is_str(any expression)`
+
+Determine whether the given expression is a string.
+
+**Availability**
+Since bpftrace v0.25
+
+### is_unsigned_integer [0.25..]
+- `bool is_unsigned_integer(any expression)`
+
+Determine whether the given expression is an unsigned integer.
+
+**Availability**
+Since bpftrace v0.25
 
 ### jiffies [..0.23]
 - `uint64 jiffies`
@@ -409,6 +655,26 @@ interval:s:1 {
 ```
 
 You can find all kernel symbols at `/proc/kallsyms`.
+
+### kfunc_allowed [0.25..]
+- `boolean kfunc_allowed(const string kfunc)`
+
+Determine if a kfunc is supported for particular probe types.
+
+Argument kfunc must be string literal.
+
+**Availability**
+Since bpftrace v0.25
+
+### kfunc_exist [0.25..]
+- `boolean kfunc_exist(const string kfunc)`
+
+Determine if a kfunc exists using BTF.
+
+Argument kfunc must be string literal.
+
+**Availability**
+Since bpftrace v0.25
 
 ### kptr [..]
 - `T * kptr(T * ptr)`
@@ -616,6 +882,30 @@ kprobe:do_nanosleep
  */
 ```
 
+### leader_comm [0.26..]
+- `string leader_comm()`
+- `string leader_comm`
+- `string leader_comm(struct task_struct * task)`
+
+Get the thread name of the thread group leader for the passed task or the current task if called without arguments.
+This is an alias for `task.group_leader.comm`, which is different than `task.real_parent.comm`, which you can get from calling `pcomm()`.
+See `pcomm()` for more details.
+
+**Availability**
+Since bpftrace v0.26
+
+### leader_tid [0.26..]
+- `string leader_tid()`
+- `string leader_tid`
+- `string leader_tid(struct task_struct * task)`
+
+Get the thread id of the thread group leader for the passed task or the current task if called without arguments.
+This is an alias for `task.group_leader.pid`, which is different than `task.real_parent.pid`, which you can get from calling `ppid()`.
+See `ppid()` for more details.
+
+**Availability**
+Since bpftrace v0.26
+
 ### len [..]
 - `int64 len(map m)`
 - `int64 len(ustack stack)`
@@ -643,6 +933,26 @@ kprobe:arp_create {
  * SRC 18:C0:4D:08:2E:BB, DST 74:83:C2:7F:8C:FF
  */
 ```
+
+### memcmp [0.25..]
+- `int memcmp(left, right, uint64 count)`
+
+Compares the first 'count' bytes of two expressions.
+0 is returned if they are the same.
+negative value if the first differing byte in left is less
+than the corresponding byte in right.
+
+**Availability**
+Since bpftrace v0.25
+
+### ncpus [0.24..]
+- `uint64 ncpus()`
+- `uint64 ncpus`
+
+Number of CPUs
+
+**Availability**
+Since bpftrace v0.24
 
 ### nsecs [..0.26]
 - `timestamp nsecs([TimestampMode mode])`
@@ -708,7 +1018,6 @@ interval:s:1 {
 `ntop` will infer the address type (IPv4 or IPv6) based on the `addr` type and size.
 If an integer or `char[4]` is given, ntop assumes IPv4, if a `char[16]` is given, ntop assumes IPv6.
 You can also pass the address type (e.g. AF_INET) explicitly as the first parameter.
-
 
 ### numaid [..0.23]
 - `uint32 numaid`
@@ -805,6 +1114,27 @@ If `size` is smaller than the resolved path, the resulting string will be trunca
 
 This function can only be used by functions that are allowed to, these functions are contained in the `btf_allowlist_d_path` set in the kernel.
 
+### pcomm [0.25..0.25]
+- `string pcomm()`
+- `string pcomm`
+- `string pcomm(struct task_struct * task)`
+
+Get the name of the process for the passed task or the current task if called without arguments. This is an alias for (task->group_leader->comm).
+
+**Availability**
+Since bpftrace v0.25
+
+### pcomm [0.26..]
+- `string pcomm()`
+- `string pcomm`
+- `string pcomm(struct task_struct * task)`
+
+Get the name of the parent process for the passed task or the current task if called without arguments.
+This is an alias for `task.real_parent.comm`, which is different than `task.group_leader.comm`, which you can get from calling `leader_comm()`.
+
+**Availability**
+Since bpftrace v0.26
+
 ### percpu_kaddr [..0.24]
 - `uint64 *percpu_kaddr(const string name)`
 - `uint64 *percpu_kaddr(const string name, int cpu)`
@@ -883,6 +1213,35 @@ Defaults to `curr_ns`.
 
 * `pid(curr_ns)` - The process ID as seen from the PID namespace of bpftrace.
 * `pid(init)` - The process ID as seen from the initial PID namespace.
+
+### ppid [0.24..0.24]
+- `uint32 ppid(struct task_struct * task)`
+
+Get the pid of the parent process
+
+**Availability**
+Since bpftrace v0.24
+
+### ppid [0.25..0.25]
+- `uint32 ppid()`
+- `uint32 ppid`
+- `uint32 ppid(struct task_struct * task)`
+
+Get the pid of the parent process for the passed task or the current task if called without arguments.
+
+**Availability**
+Since bpftrace v0.24
+
+### ppid [0.26..]
+- `uint32 ppid()`
+- `uint32 ppid`
+- `uint32 ppid(struct task_struct * task)`
+
+Get the pid of the parent process for the passed task or the current task if called without arguments.
+This is an alias for `task.real_parent.pid`, which is different than `task.group_leader.pid`, which you can get from calling `leader_tid()`.
+
+**Availability**
+Since bpftrace v0.24
 
 ### print [..0.24]
 - `void print(T val)`
@@ -1112,6 +1471,18 @@ Name of the fully expanded probe
 
 For example: `kprobe:do_nanosleep`
 
+### probetype [0.25..]
+- `string probetype()`
+- `string probetype`
+
+Name of the probe type.
+Note: `begin` and `end` probes are of type `special`.
+
+For example: `kprobe`, `special`, `tracepoint`
+
+**Availability**
+Since bpftrace v0.25
+
 ### pton [..0.26]
 - `char addr[4] pton(const string *addr_v4)`
 - `char addr[16] pton(const string *addr_v6)`
@@ -1136,7 +1507,6 @@ When casting the result of `pton()` to an integer (e.g. `(uint32)pton("127.0.0.1
 **Little-endian systems**: The bytes are reversed when interpreted as an integer. For example, `(uint32)pton("127.0.0.1")` yields `0x100007f` (bytes: `[0x7f, 0x00, 0x00, 0x01]` interpreted as little-endian).
 **Big-endian systems**: The bytes maintain their network byte order. For example, `(uint32)pton("127.0.0.1")` yields `0x7f000001` (bytes: `[0x7f, 0x00, 0x00, 0x01]` interpreted as big-endian).
 This behavior is consistent with how the underlying `inet_pton()` function works.
-
 
 ### rand [..0.23]
 - `uint32 rand`
@@ -1214,6 +1584,38 @@ kprobe:__x64_sys_execve
 $ ls
 Trace/breakpoint trap (core dumped)
 ```
+
+### signal_name [0.26..]
+- `string signal_name(int sig)`
+
+Convert signal code to string.
+
+```
+#include <signal.h>
+begin {
+  print(signal_name(SIGINT));
+}
+```
+
+**Availability**
+Since bpftrace v0.26
+
+### signal_thread [0.25..]
+- `void signal_thread(const string sig)`
+- `void signal_thread(uint32 signum)`
+
+**unsafe**
+
+This utilizes the BPF helper `bpf_send_signal_thread`.
+
+Probe types: k(ret)probe, u(ret)probe, USDT, profile
+
+Send a signal to the thread being traced.
+Use `signal` to send to the process being traced (any thread).
+The signal can either be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill -l`.
+
+**Availability**
+Since bpftrace v0.25
 
 ### sizeof [..]
 - `uint64 sizeof(TYPE)`
@@ -1313,6 +1715,88 @@ dropped privs to tcpdump
 10:23:45.823229 IP 100.101.2.146.53 > 192.168.0.23.46158: 45799 1/0/0 A 100.100.45.106 (60)
 ```
 
+### socket_cookie [0.24..0.24]
+- `uint64 socket_cookie(struct sock *sk)`
+
+This utilizes the BPF helper `bpf_get_socket_cookie`
+
+Retrieve the cookie (generated by the kernel) of the socket.
+If no cookie has been set yet, generate a new cookie. Once generated, the socket cookie remains stable for the life of the socket.
+
+This function returns a `uint64` unique number on success, or 0 if **sk** is NULL.
+
+```
+fentry:tcp_rcv_established
+{
+  $cookie = socket_cookie(args->sk);
+  @psize[$cookie] = hist(args->skb->len);
+}
+```
+
+Prints:
+
+```
+@psize[65551]:
+[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+
+@psize[504]:
+[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[64, 128)              1 |@@@@@@@@@@@@@                                       |
+[128, 256)             0 |                                                    |
+[256, 512)             1 |@@@@@@@@@@@@@                                       |
+[512, 1K)              0 |                                                    |
+[1K, 2K)               0 |                                                    |
+[2K, 4K)               1 |@@@@@@@@@@@@@                                       |
+```
+
+**Availability**
+Since bpftrace v0.24
+
+### socket_cookie [0.25..]
+- `uint64 socket_cookie(struct sock *sk)`
+
+This utilizes the BPF helper `bpf_get_socket_cookie`
+
+Retrieve the cookie (generated by the kernel) of the socket.
+If no cookie has been set yet, generate a new cookie. Once generated, the socket cookie remains stable for the life of the socket.
+
+This function returns a `uint64` unique number on success, or 0 if **sk** is NULL.
+
+```
+fentry:tcp_rcv_established
+{
+  $cookie = socket_cookie(args.sk);
+  @psize[$cookie] = hist(args.skb.len);
+}
+```
+
+Prints:
+
+```
+@psize[65551]:
+[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+
+@psize[504]:
+[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[64, 128)              1 |@@@@@@@@@@@@@                                       |
+[128, 256)             0 |                                                    |
+[256, 512)             1 |@@@@@@@@@@@@@                                       |
+[512, 1K)              0 |                                                    |
+[1K, 2K)               0 |                                                    |
+[2K, 4K)               1 |@@@@@@@@@@@@@                                       |
+```
+
+**Availability**
+Since bpftrace v0.24
+
+### static_assert [0.25..]
+- `void static_assert(bool condition, string msg)`
+
+Assert something is true or fail the build.
+
+**Availability**
+Since bpftrace v0.25
+
 ### str [..0.24]
 - `string str(char * data [, uint32 length)`
 
@@ -1334,6 +1818,29 @@ The maximum string length is limited by the `BPFTRACE_MAX_STRLEN` env variable, 
 In case the string is longer than the specified length only `length - 1` bytes are copied and a NULL byte is appended at the end.
 
 bpftrace will automatically use the `kernel` or `user` variant of `probe_read_{kernel,user}_str` based on the address space of `data`, see [Address-spaces](./language.md#address-spaces) for more information.
+
+### str_concat [0.27..]
+- `string str_concat(string s1, string s2)`
+
+Concatenate two strings into a new string.
+Returns the new string.
+
+**Availability**
+Since bpftrace v0.27
+
+### strcap [0.25..]
+- `int64 strcap(string exp)`
+- `int64 strcap(int8 exp[])`
+- `int64 strcap(int8 *exp)`
+
+Returns the "capacity" of a string-like object.
+
+In most cases this is the same as the length, but for bpftrace-native
+strings and arrays, this is the underlying object capacity. This is used to
+bound searches and lookups without needing to scan the string itself.
+
+**Availability**
+Since bpftrace v0.25
 
 ### strcontains [..0.24]
 - `int64 strcontains(const char *haystack, const char *needle)`
@@ -1420,6 +1927,16 @@ bpftrace also supports the following format string extensions:
 | --- | --- |
 | `%f` | Microsecond as a decimal number, zero-padded on the left |
 
+### strlen [0.25..]
+- `uint64 strlen(string exp)`
+- `uint64 strlen(int8 exp[])`
+- `uint64 strlen(int8 *exp)`
+
+Returns the length of a string-like object.
+
+**Availability**
+Since bpftrace v0.25
+
 ### strncmp [..]
 - `int64 strncmp(char * s1, char * s2, int64 n)`
 
@@ -1430,6 +1947,28 @@ bpftrace doesn’t read past the length of the shortest string.
 
 The use of the `==` and `!=` operators is recommended over calling `strncmp` directly.
 
+### strstr [0.25..]
+- `int64 strstr(string haystack, string needle)`
+
+Returns the index of the first occurrence of the string needle in the string haystack. If needle is not in haystack then -1 is returned.
+
+**Availability**
+Since bpftrace v0.25
+
+### syscall_name [0.25..]
+- `string syscall_name(int nr_syscall)`
+
+Convert syscall number to string.
+
+```
+#include <syscall.h>
+begin {
+  print(syscall_name(__NR_read)); // outputs "read"
+}
+```
+
+**Availability**
+Since bpftrace v0.25
 
 ### system [..]
 - `void system(string namefmt [, ...args])`
@@ -1516,6 +2055,21 @@ Unlike `strftime()` `time()` doesn’t send a timestamp from the probe, instead 
 
 bpftrace uses the `strftime(3)` function for formatting time and supports the same format specifiers.
 
+### typeof [0.27..]
+- `TYPE typeof(TYPE)`
+- `TYPE typeof(EXPRESSION)`
+
+This is a special builtin that can only be used in the following contexts:
+- variable declarations e.g. `let $a: typeof($b);`
+- cast expressions e.g. `$a = (typeof($b))2;`
+- macro expansion calls to pass a type parameter e.g. `my_macro(typeof(uint64 *));`
+- type accepting builtins: `sizeof`, `offsetof`, `typeinfo`
+
+This builtin evaluates to the static type of either the parsed TYPE or the raw EXPRESSION parameter.
+
+**Availability**
+Since bpftrace v0.27
+
 ### uaddr [..0.24]
 - `T * uaddr(const string sym)`
 
@@ -1600,6 +2154,17 @@ The pointer type is left unchanged.
 Returns 1 if the current process is in user mode, 0 otherwise
 
 Currently only available on x86_64.
+
+### username [0.24..]
+- `string username()`
+- `string username`
+
+Get the current username
+
+Often this is just "root"
+
+**Availability**
+Since bpftrace v0.24
 
 ### ustack [..0.24]
 - `ustack_t ustack([StackMode mode, ][int limit])`
@@ -1855,13 +2420,60 @@ uprobe:/bin/bash:readline
  */
 ```
 
+### warnf [0.25..]
+- `void warnf(const string fmt, args...)`
+
+**async**
+
+`warnf()` formats and prints data (similar to [`printf`](#printf)) as an warning message with the source location. This respects the "--no-warnings" flag and will be silent if that is used.
+
+```
+BEGIN { warnf("Something kinda bad with args: %d, %s", 10, "arg2"); }
+```
+
+Prints:
+
+```
+EXPECT stdin:1:9-62: WARNING: Something kinda bad with args: 10, arg2
+```
+
+**Availability**
+Since bpftrace v0.25
+
+### write_user [0.26..]
+- `bool write_user(T * dst, T * src, uint32 len)`
+
+**unsafe**
+
+Writes `len` bytes from BPF program memory at `src` to user-space address
+`dst` using the BPF helper `bpf_probe_write_user`.
+
+Returns true on success, or false on failure.
+
+**Warning**: This can crash or corrupt the target process if used incorrectly.
+Only use on user-space memory addresses belonging to the current task.
+The kernel will print a warning to dmesg when this helper is used.
+
+```
+tracepoint:syscalls:sys_enter_openat
+/comm == "myapp"/ {
+  $new_path = "/tmp/redirected\0";
+  if (write_user(args.filename, $new_path, 16)) {
+    printf("redirected open for pid %d\n", pid);
+  }
+}
+```
+
+**Availability**
+Since bpftrace v0.26
 
 ### zero [..]
 - `void zero(map m)`
 
 **async**
-
 Set all values (for all keys) in the map to zero.
+
+## MAP VALUE FUNCTIONS
 
 ### avg [..]
 
@@ -2384,622 +2996,3 @@ hh:mm:ss.ms  |___________________________________________________|
              v___________________________________________________v
              -5                                                  5
 ```
-
-
-### config [0.27..]
-- `Record config()`
-- `Record config`
-
-Returns a `Record` containing the current `bpftrace` configuration settings. [List of config variables](./language.md#config-variables)
-
-```
-printf("max_strlen: %d, stack_mode: %s\n", config.max_strlen, config.stack_mode);
-}
-```
-
-**Availability**
-Since bpftrace v0.27
-
-### container_of [0.27..]
-- `Container* container_of(Member* ptr, Type type, Identifier member)`
-
-Returns a pointer to an object of the passed `type` given a pointer to the `member` of that object.
-
-**Availability**
-Since bpftrace v0.27
-
-### default_str_length [0.25..]
-
-Returns the default unbounded length.
-
-**Availability**
-Since bpftrace v0.25
-
-### dw_ustack [0.26..]
-- `ustack_t dw_ustack([StackMode mode, ][int limit])`
-
-DWARF-based user-space stack unwinding. Unlike [ustack](#ustack), which
-relies on frame pointers, `dw_ustack` uses DWARF `.eh_frame` debug
-information to unwind the stack. This makes it possible to collect complete
-user-space stack traces from programs compiled without frame pointers.
-
-The signature and output format are the same as `ustack`.
-
-Bpftrace needs to read the DWARF information for the target processes at startup.
-For this, one or more pids have to be specified. This can either be done via
-`-p`, `-c` (implicitly) or `--dwarf-pid`. If `dw_ustack` cannot find unwind
-information for a process, a runtime warning is emitted.
-
-`dw_ustack` is currently only available on x86_64.
-
-**Unstable feature**
-
-`dw_ustack` is an unstable feature. By default a warning is printed when it
-is used. Set the config flag to suppress the warning or to make it an error:
-
-```
-config = { unstable_dw_ustack=enable }
-```
-
-For usage examples see [ustack](#ustack).
-
-**Availability**
-Since bpftrace v0.26
-
-### errorf [0.24..]
-- `void errorf(const string fmt, args...)`
-
-**async**
-
-`errorf()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location.
-
-```
-BEGIN { errorf("Something bad with args: %d, %s", 10, "arg2"); }
-```
-
-Prints:
-
-```
-EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
-```
-
-**Availability**
-Since bpftrace v0.24
-
-### fail [0.25..]
-- `void fail(const string fmt, args...)`
-
-`fail()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location but, as opposed to [`errorf`](#errorf), is treated like a static assert and halts compilation if it is visited. All args have to be literals since they are evaluated at compile time.
-
-```
-BEGIN { if ($1 < 2) { fail("Expected the first positional param to be greater than 1. Got %d", $1); } }
-```
-
-**Availability**
-Since bpftrace v0.25
-
-### find [0.25..]
-- `boolean find(map m, mapkey k, mapvalue result)`
-
-Return `true` if the key exists in this map and sets the passed scratch variable (result) to the value of that map key.
-Otherwise return `false` and don't mutate result.
-Use this instead of `has_key` and a map access to avoid an additional map lookup.
-Error if called with a map that has no keys (aka scalar map).
-
-```
-kprobe:dummy {
-  @map[2] = (1, "hello");
-  let $val;
-  if (find(@map, 2, $val)) {
-    print($val); // prints (1, "hello")
-  }
-}
-```
-
-**Availability**
-Since bpftrace v0.25
-
-### getopt [0.24..0.24]
-- `bool getopt(string arg_name)`
-- `string getopt(string arg_name, string default_value)`
-- `int getopt(string arg_name, int default_value)`
-- `bool getopt(string arg_name, bool default_value)`
-
-Get the named command line argument/option e.g.
-```
-# bpftrace -e 'BEGIN { print(getopt("hello", 1)); }' -- --hello=5
-
-```
-
-`getopt` defines the type of the argument by the default value’s type.
-If no default type is provided, the option is treated like a boolean arg e.g. `getopt("hello")` would evaluate to `false` if `--hello` is not specified on the command line or `true` if `--hello` is passed or set to one of the following values: `true`, `1`.
-Additionally, boolean args accept the following false values: `0`, `false` e.g. `--hello=false`.
-If the arg is not set on the command line, the default value is used.
-
-```
-# bpftrace -e 'BEGIN { print((getopt("aa", 10), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
-
-```
-
-**Availability**
-Since bpftrace v0.24
-
-### getopt [0.25..]
-- `bool getopt(string arg_name)`
-- `bool getopt(string arg_name, bool default_value, [string description])`
-- `int getopt(string arg_name, int default_value, [string description])`
-- `string getopt(string arg_name, string default_value, [string description])`
-
-Get the named command line argument/option e.g.
-```
-# bpftrace -e 'BEGIN { print(getopt("hello", 1, "Description of hello")); }' -- --hello=5
-
-```
-
-`getopt` defines the type of the argument by the default value’s type.
-If no default type is provided, the option is treated like a boolean arg e.g. `getopt("hello")` would evaluate to `false` if `--hello` is not specified on the command line or `true` if `--hello` is passed or set to one of the following values: `true`, `1`.
-Additionally, boolean args accept the following false values: `0`, `false` e.g. `--hello=false`.
-If the arg is not set on the command line, the default value is used.
-`getopt` calls may optionally specify a string with the argument description (except for a boolean arg without a default value).
-
-You can use `--help` to see all named arguments/options.
-
-```
-# bpftrace -e 'BEGIN { print((getopt("aa", 10, "Description of aa"), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
-
-```
-
-**Availability**
-Since bpftrace v0.24
-
-### has_cpid [0.25..]
-- `bool has_cpid()`
-- `bool has_cpid`
-
-Returns true iff cpid is available.
-
-**Availability**
-Since bpftrace v0.25
-
-### is_array [0.25..]
-- `bool is_array(any expression)`
-
-Determine whether the given expression is an array.
-
-**Availability**
-Since bpftrace v0.25
-
-### is_err [0.26..]
-- `bool is_err(void * ptr)`
-
-Returns true if the pointer is an ERR_PTR, i.e. it encodes a kernel error code.
-
-In the Linux kernel, some functions return error codes encoded as pointers
-using the `ERR_PTR` macro. These are pointer values in the range
-`(unsigned long)(-4095)` to `(unsigned long)(-1)`.
-
-This is equivalent to the kernel's `IS_ERR()` macro.
-
-```
-fexit:do_filp_open {
-  if (is_err(retval)) {
-    printf("error: %ld\n", (int64)retval);
-  }
-}
-```
-
-**Availability**
-Since bpftrace v0.26
-
-### is_integer [0.25..]
-- `bool is_integer(any expression)`
-
-Determine whether the given expression is an integer.
-
-**Availability**
-Since bpftrace v0.25
-
-### is_literal [0.25..]
-- `bool is_literal(Expression expr)`
-
-Returns true if the passed expression is a literal, e.g. 1, true, "hello"
-
-**Availability**
-Since bpftrace v0.25
-
-### is_ptr [0.25..]
-- `bool is_ptr(any expression)`
-
-Determine whether the given expression is a pointer.
-
-**Availability**
-Since bpftrace v0.25
-
-### is_str [0.25..]
-- `bool is_str(any expression)`
-
-Determine whether the given expression is a string.
-
-**Availability**
-Since bpftrace v0.25
-
-### is_unsigned_integer [0.25..]
-- `bool is_unsigned_integer(any expression)`
-
-Determine whether the given expression is an unsigned integer.
-
-**Availability**
-Since bpftrace v0.25
-
-### kfunc_allowed [0.25..]
-- `boolean kfunc_allowed(const string kfunc)`
-
-Determine if a kfunc is supported for particular probe types.
-
-Argument kfunc must be string literal.
-
-**Availability**
-Since bpftrace v0.25
-
-### kfunc_exist [0.25..]
-- `boolean kfunc_exist(const string kfunc)`
-
-Determine if a kfunc exists using BTF.
-
-Argument kfunc must be string literal.
-
-**Availability**
-Since bpftrace v0.25
-
-### leader_comm [0.26..]
-- `string leader_comm()`
-- `string leader_comm`
-- `string leader_comm(struct task_struct * task)`
-
-Get the thread name of the thread group leader for the passed task or the current task if called without arguments.
-This is an alias for `task.group_leader.comm`, which is different than `task.real_parent.comm`, which you can get from calling `pcomm()`.
-See `pcomm()` for more details.
-
-**Availability**
-Since bpftrace v0.26
-
-### leader_tid [0.26..]
-- `string leader_tid()`
-- `string leader_tid`
-- `string leader_tid(struct task_struct * task)`
-
-Get the thread id of the thread group leader for the passed task or the current task if called without arguments.
-This is an alias for `task.group_leader.pid`, which is different than `task.real_parent.pid`, which you can get from calling `ppid()`.
-See `ppid()` for more details.
-
-**Availability**
-Since bpftrace v0.26
-
-### ncpus [0.24..]
-- `uint64 ncpus()`
-- `uint64 ncpus`
-
-Number of CPUs
-
-**Availability**
-Since bpftrace v0.24
-
-### ppid [0.24..0.24]
-- `uint32 ppid(struct task_struct * task)`
-
-Get the pid of the parent process
-
-**Availability**
-Since bpftrace v0.24
-
-### ppid [0.25..0.25]
-- `uint32 ppid()`
-- `uint32 ppid`
-- `uint32 ppid(struct task_struct * task)`
-
-Get the pid of the parent process for the passed task or the current task if called without arguments.
-
-**Availability**
-Since bpftrace v0.24
-
-### ppid [0.26..]
-- `uint32 ppid()`
-- `uint32 ppid`
-- `uint32 ppid(struct task_struct * task)`
-
-Get the pid of the parent process for the passed task or the current task if called without arguments.
-This is an alias for `task.real_parent.pid`, which is different than `task.group_leader.pid`, which you can get from calling `leader_tid()`.
-
-**Availability**
-Since bpftrace v0.24
-
-### socket_cookie [0.24..0.24]
-- `uint64 socket_cookie(struct sock *sk)`
-
-This utilizes the BPF helper `bpf_get_socket_cookie`
-
-Retrieve the cookie (generated by the kernel) of the socket.
-If no cookie has been set yet, generate a new cookie. Once generated, the socket cookie remains stable for the life of the socket.
-
-This function returns a `uint64` unique number on success, or 0 if **sk** is NULL.
-
-```
-fentry:tcp_rcv_established
-{
-  $cookie = socket_cookie(args->sk);
-  @psize[$cookie] = hist(args->skb->len);
-}
-```
-
-Prints:
-
-```
-@psize[65551]:
-[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-
-@psize[504]:
-[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[64, 128)              1 |@@@@@@@@@@@@@                                       |
-[128, 256)             0 |                                                    |
-[256, 512)             1 |@@@@@@@@@@@@@                                       |
-[512, 1K)              0 |                                                    |
-[1K, 2K)               0 |                                                    |
-[2K, 4K)               1 |@@@@@@@@@@@@@                                       |
-```
-
-**Availability**
-Since bpftrace v0.24
-
-### socket_cookie [0.25..]
-- `uint64 socket_cookie(struct sock *sk)`
-
-This utilizes the BPF helper `bpf_get_socket_cookie`
-
-Retrieve the cookie (generated by the kernel) of the socket.
-If no cookie has been set yet, generate a new cookie. Once generated, the socket cookie remains stable for the life of the socket.
-
-This function returns a `uint64` unique number on success, or 0 if **sk** is NULL.
-
-```
-fentry:tcp_rcv_established
-{
-  $cookie = socket_cookie(args.sk);
-  @psize[$cookie] = hist(args.skb.len);
-}
-```
-
-Prints:
-
-```
-@psize[65551]:
-[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-
-@psize[504]:
-[32, 64)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[64, 128)              1 |@@@@@@@@@@@@@                                       |
-[128, 256)             0 |                                                    |
-[256, 512)             1 |@@@@@@@@@@@@@                                       |
-[512, 1K)              0 |                                                    |
-[1K, 2K)               0 |                                                    |
-[2K, 4K)               1 |@@@@@@@@@@@@@                                       |
-```
-
-**Availability**
-Since bpftrace v0.24
-
-### username [0.24..]
-- `string username()`
-- `string username`
-
-Get the current username
-
-Often this is just "root"
-
-**Availability**
-Since bpftrace v0.24
-
-
-### memcmp [0.25..]
-- `int memcmp(left, right, uint64 count)`
-
-Compares the first 'count' bytes of two expressions.
-0 is returned if they are the same.
-negative value if the first differing byte in left is less
-than the corresponding byte in right.
-
-**Availability**
-Since bpftrace v0.25
-
-### pcomm [0.25..0.25]
-- `string pcomm()`
-- `string pcomm`
-- `string pcomm(struct task_struct * task)`
-
-Get the name of the process for the passed task or the current task if called without arguments. This is an alias for (task->group_leader->comm).
-
-**Availability**
-Since bpftrace v0.25
-
-### pcomm [0.26..]
-- `string pcomm()`
-- `string pcomm`
-- `string pcomm(struct task_struct * task)`
-
-Get the name of the parent process for the passed task or the current task if called without arguments.
-This is an alias for `task.real_parent.comm`, which is different than `task.group_leader.comm`, which you can get from calling `leader_comm()`.
-
-**Availability**
-Since bpftrace v0.26
-
-### probetype [0.25..]
-- `string probetype()`
-- `string probetype`
-
-Name of the probe type.
-Note: `begin` and `end` probes are of type `special`.
-
-For example: `kprobe`, `special`, `tracepoint`
-
-**Availability**
-Since bpftrace v0.25
-
-### signal_name [0.26..]
-- `string signal_name(int sig)`
-
-Convert signal code to string.
-
-```
-#include <signal.h>
-begin {
-  print(signal_name(SIGINT));
-}
-```
-
-**Availability**
-Since bpftrace v0.26
-
-### signal_thread [0.25..]
-- `void signal_thread(const string sig)`
-- `void signal_thread(uint32 signum)`
-
-**unsafe**
-
-This utilizes the BPF helper `bpf_send_signal_thread`.
-
-Probe types: k(ret)probe, u(ret)probe, USDT, profile
-
-Send a signal to the thread being traced.
-Use `signal` to send to the process being traced (any thread).
-The signal can either be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill -l`.
-
-**Availability**
-Since bpftrace v0.25
-
-### static_assert [0.25..]
-- `void static_assert(bool condition, string msg)`
-
-Assert something is true or fail the build.
-
-**Availability**
-Since bpftrace v0.25
-
-### str_concat [0.27..]
-- `string str_concat(string s1, string s2)`
-
-Concatenate two strings into a new string.
-Returns the new string.
-
-**Availability**
-Since bpftrace v0.27
-
-### strcap [0.25..]
-- `int64 strcap(string exp)`
-- `int64 strcap(int8 exp[])`
-- `int64 strcap(int8 *exp)`
-
-Returns the "capacity" of a string-like object.
-
-In most cases this is the same as the length, but for bpftrace-native
-strings and arrays, this is the underlying object capacity. This is used to
-bound searches and lookups without needing to scan the string itself.
-
-**Availability**
-Since bpftrace v0.25
-
-### strlen [0.25..]
-- `uint64 strlen(string exp)`
-- `uint64 strlen(int8 exp[])`
-- `uint64 strlen(int8 *exp)`
-
-Returns the length of a string-like object.
-
-**Availability**
-Since bpftrace v0.25
-
-### strstr [0.25..]
-- `int64 strstr(string haystack, string needle)`
-
-Returns the index of the first occurrence of the string needle in the string haystack. If needle is not in haystack then -1 is returned.
-
-**Availability**
-Since bpftrace v0.25
-
-### syscall_name [0.25..]
-- `string syscall_name(int nr_syscall)`
-
-Convert syscall number to string.
-
-```
-#include <syscall.h>
-begin {
-  print(syscall_name(__NR_read)); // outputs "read"
-}
-```
-
-**Availability**
-Since bpftrace v0.25
-
-### typeof [0.27..]
-- `TYPE typeof(TYPE)`
-- `TYPE typeof(EXPRESSION)`
-
-This is a special builtin that can only be used in the following contexts:
-- variable declarations e.g. `let $a: typeof($b);`
-- cast expressions e.g. `$a = (typeof($b))2;`
-- macro expansion calls to pass a type parameter e.g. `my_macro(typeof(uint64 *));`
-- type accepting builtins: `sizeof`, `offsetof`, `typeinfo`
-
-This builtin evaluates to the static type of either the parsed TYPE or the raw EXPRESSION parameter.
-
-**Availability**
-Since bpftrace v0.27
-
-### warnf [0.25..]
-- `void warnf(const string fmt, args...)`
-
-**async**
-
-`warnf()` formats and prints data (similar to [`printf`](#printf)) as an warning message with the source location. This respects the "--no-warnings" flag and will be silent if that is used.
-
-```
-BEGIN { warnf("Something kinda bad with args: %d, %s", 10, "arg2"); }
-```
-
-Prints:
-
-```
-EXPECT stdin:1:9-62: WARNING: Something kinda bad with args: 10, arg2
-```
-
-**Availability**
-Since bpftrace v0.25
-
-### write_user [0.26..]
-- `bool write_user(T * dst, T * src, uint32 len)`
-
-**unsafe**
-
-Writes `len` bytes from BPF program memory at `src` to user-space address
-`dst` using the BPF helper `bpf_probe_write_user`.
-
-Returns true on success, or false on failure.
-
-**Warning**: This can crash or corrupt the target process if used incorrectly.
-Only use on user-space memory addresses belonging to the current task.
-The kernel will print a warning to dmesg when this helper is used.
-
-```
-tracepoint:syscalls:sys_enter_openat
-/comm == "myapp"/ {
-  $new_path = "/tmp/redirected\0";
-  if (write_user(args.filename, $new_path, 16)) {
-    printf("redirected open for pid %d\n", pid);
-  }
-}
-```
-
-**Availability**
-Since bpftrace v0.26
-
-
-### END [..]
