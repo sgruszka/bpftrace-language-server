@@ -139,8 +139,6 @@ interval:s:10 {
 }
 ```
 
-
-
 ### comm [..0.23]
 - `string comm`
 
@@ -2399,14 +2397,23 @@ printf("max_strlen: %d, stack_mode: %s\n", config.max_strlen, config.stack_mode)
 }
 ```
 
+**Availability**
+Since bpftrace v0.27
+
 ### container_of [0.27..]
 - `Container* container_of(Member* ptr, Type type, Identifier member)`
 
 Returns a pointer to an object of the passed `type` given a pointer to the `member` of that object.
 
+**Availability**
+Since bpftrace v0.27
+
 ### default_str_length [0.25..]
 
 Returns the default unbounded length.
+
+**Availability**
+Since bpftrace v0.25
 
 ### dw_ustack [0.26..]
 - `ustack_t dw_ustack([StackMode mode, ][int limit])`
@@ -2436,6 +2443,9 @@ config = { unstable_dw_ustack=enable }
 
 For usage examples see [ustack](#ustack).
 
+**Availability**
+Since bpftrace v0.26
+
 ### errorf [0.24..]
 - `void errorf(const string fmt, args...)`
 
@@ -2453,6 +2463,9 @@ Prints:
 EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
 ```
 
+**Availability**
+Since bpftrace v0.24
+
 ### fail [0.25..]
 - `void fail(const string fmt, args...)`
 
@@ -2461,6 +2474,9 @@ EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
 ```
 BEGIN { if ($1 < 2) { fail("Expected the first positional param to be greater than 1. Got %d", $1); } }
 ```
+
+**Availability**
+Since bpftrace v0.25
 
 ### find [0.25..]
 - `boolean find(map m, mapkey k, mapvalue result)`
@@ -2479,6 +2495,9 @@ kprobe:dummy {
   }
 }
 ```
+
+**Availability**
+Since bpftrace v0.25
 
 ### getopt [0.24..0.24]
 - `bool getopt(string arg_name)`
@@ -2501,6 +2520,9 @@ If the arg is not set on the command line, the default value is used.
 # bpftrace -e 'BEGIN { print((getopt("aa", 10), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
 
 ```
+
+**Availability**
+Since bpftrace v0.24
 
 ### getopt [0.25..]
 - `bool getopt(string arg_name)`
@@ -2527,17 +2549,25 @@ You can use `--help` to see all named arguments/options.
 
 ```
 
+**Availability**
+Since bpftrace v0.24
+
 ### has_cpid [0.25..]
 - `bool has_cpid()`
 - `bool has_cpid`
 
 Returns true iff cpid is available.
 
+**Availability**
+Since bpftrace v0.25
+
 ### is_array [0.25..]
 - `bool is_array(any expression)`
 
 Determine whether the given expression is an array.
 
+**Availability**
+Since bpftrace v0.25
 
 ### is_err [0.26..]
 - `bool is_err(void * ptr)`
@@ -2645,7 +2675,6 @@ See `ppid()` for more details.
 **Availability**
 Since bpftrace v0.26
 
-
 ### ncpus [0.24..]
 - `uint64 ncpus()`
 - `uint64 ncpus`
@@ -2671,7 +2700,7 @@ Since bpftrace v0.24
 Get the pid of the parent process for the passed task or the current task if called without arguments.
 
 **Availability**
-Since bpftrace v0.25
+Since bpftrace v0.24
 
 ### ppid [0.26..]
 - `uint32 ppid()`
@@ -2682,7 +2711,7 @@ Get the pid of the parent process for the passed task or the current task if cal
 This is an alias for `task.real_parent.pid`, which is different than `task.group_leader.pid`, which you can get from calling `leader_tid()`.
 
 **Availability**
-Since bpftrace v0.26
+Since bpftrace v0.24
 
 ### socket_cookie [0.24..0.24]
 - `uint64 socket_cookie(struct sock *sk)`
@@ -2756,7 +2785,7 @@ Prints:
 ```
 
 **Availability**
-Since bpftrace v0.25
+Since bpftrace v0.24
 
 ### username [0.24..]
 - `string username()`
