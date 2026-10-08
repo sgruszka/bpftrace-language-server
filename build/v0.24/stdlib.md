@@ -19,47 +19,6 @@ Basically all functions or macros that don't have arguments or have default argu
 
 ## Helpers
 
-### errorf
-- `void errorf(const string fmt, args...)`
-
-**async**
-
-`errorf()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location.
-
-```
-BEGIN { errorf("Something bad with args: %d, %s", 10, "arg2"); }
-```
-
-Prints:
-
-```
-EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
-```
-
-
-### getopt
-- `bool getopt(string arg_name)`
-- `string getopt(string arg_name, string default_value)`
-- `int getopt(string arg_name, int default_value)`
-- `bool getopt(string arg_name, bool default_value)`
-
-Get the named command line argument/option e.g.
-```
-# bpftrace -e 'BEGIN { print(getopt("hello", 1)); }' -- --hello=5
-
-```
-
-`getopt` defines the type of the argument by the default value’s type.
-If no default type is provided, the option is treated like a boolean arg e.g. `getopt("hello")` would evaluate to `false` if `--hello` is not specified on the command line or `true` if `--hello` is passed or set to one of the following values: `true`, `1`.
-Additionally, boolean args accept the following false values: `0`, `false` e.g. `--hello=false`.
-If the arg is not set on the command line, the default value is used.
-
-```
-# bpftrace -e 'BEGIN { print((getopt("aa", 10), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
-
-```
-
-
 ### ncpus
 - `uint64 ncpus()`
 - `uint64 ncpus`
