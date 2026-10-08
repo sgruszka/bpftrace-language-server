@@ -208,51 +208,6 @@ Determine whether the given expression is a string.
 Determine whether the given expression is an unsigned integer.
 
 
-### jiffies
-- `uint64 jiffies()`
-- `uint64 jiffies`
-
-Jiffies of the kernel
-
-On 32-bit systems, using this builtin might be slower
-
-This utilizes the BPF helper `get_jiffies_64`
-
-
-### join
-- `void join(char *arr[], [char * sep = ' '])`
-
-**async**
-
-`join` joins a char * `arr` with `sep` as separator into one string.
-This string will be printed to stdout directly, it cannot be used as string value.
-
-The concatenation of the array members is done in BPF and the printing happens in userspace.
-
-```
-tracepoint:syscalls:sys_enter_execve {
-  join(args.argv);
-}
-```
-
-
-### kaddr
-- `uint64 kaddr(const string name)`
-
-**compile time**
-
-Get the address of the kernel symbol `name`.
-
-```
-interval:s:1 {
-  $avenrun = kaddr("avenrun");
-  $load1 = *$avenrun;
-}
-```
-
-You can find all kernel symbols at `/proc/kallsyms`.
-
-
 ### kfunc_allowed
 - `boolean kfunc_allowed(const string kfunc)`
 
@@ -267,97 +222,6 @@ Argument kfunc must be string literal.
 Determine if a kfunc exists using BTF.
 
 Argument kfunc must be string literal.
-
-
-### kptr
-- `T * kptr(T * ptr)`
-
-Marks `ptr` as a kernel address space pointer.
-See the address-spaces section for more information on address-spaces.
-The pointer type is left unchanged.
-
-
-### kstack
-- `kstack_t kstack([StackMode mode, ][int limit])`
-
-There are several [formatting/StackMode options](./language.md#stack_mode).
-
-```
-kprobe:ip_output { @[kstack()] = count(); }
-
-/*
- * Sample output:
- * @[
- *  ip_output+1
- *  tcp_transmit_skb+1308
- *  tcp_write_xmit+482
- *  tcp_release_cb+225
- *  release_sock+64
- *  tcp_sendmsg+49
- *  sock_sendmsg+48
- *  sock_write_iter+135
- *   __vfs_write+247
- *  vfs_write+179
- *  sys_write+82
- *   entry_SYSCALL_64_fastpath+30
- * ]: 1708
- */
-```
-
-Sampling only three frames from the stack (limit = 3):
-
-```
-kprobe:ip_output { @[kstack(3)] = count(); }
-
-/*
- * Sample output:
- * @[
- *  ip_output+1
- *  tcp_transmit_skb+1308
- *  tcp_write_xmit+482
- * ]: 1708
- */
-```
-
-Note: If a limit is used and `show_debug_info` is enabled then the number of symbolized frames might exceed that limit in the output as `limit` refers to instruction pointers, which can translate to multiple inlined symbols.
-
-Example using `perf` StackMode:
-
-```
-kprobe:ip_output { @[kstack(perf, 3)] = count(); }
-
-/*
- * Sample output:
- * @[
- *  ffffffffb4019501 do_mmap+1
- *  ffffffffb401700a sys_mmap_pgoff+266
- *  ffffffffb3e334eb sys_mmap+27
- * ]: 1708
- */
-```
-
-
-### ksym
-- `ksym_t ksym(uint64 addr)`
-
-**async**
-
-Retrieve the name of the function that contains address `addr`.
-The address to name mapping happens in user-space.
-
-The `ksym_t` type can be printed with the `%s` format specifier.
-
-```
-kprobe:do_nanosleep
-{
-  printf("%s\n", ksym(reg("ip")));
-}
-
-/*
- * Sample output:
- * do_nanosleep
- */
-```
 
 
 ### leader_comm
@@ -380,36 +244,6 @@ This is an alias for `task.group_leader.pid`, which is different than `task.real
 See `ppid()` for more details.
 
 
-### len
-- `int64 len(map m)`
-- `int64 len(ustack stack)`
-- `int64 len(kstack stack)`
-
-For maps, return the number of elements in the map.
-
-For kstack/ustack, return the depth (measured in # of frames) of the call stack.
-
-
-### macaddr
-- `macaddr_t macaddr(char [6] mac)`
-
-Create a buffer that holds a macaddress as read from `mac`
-This buffer can be printed in the canonical string format using the `%s` format specifier.
-
-```
-kprobe:arp_create {
-  $stack_arg0 = *(uint8*)(reg("sp") + 8);
-  $stack_arg1 = *(uint8*)(reg("sp") + 16);
-  printf("SRC %s, DST %s\n", macaddr($stack_arg0), macaddr($stack_arg1));
-}
-
-/*
- * Sample output:
- * SRC 18:C0:4D:08:2E:BB, DST 74:83:C2:7F:8C:FF
- */
-```
-
-
 ### memcmp
 - `int memcmp(left, right, uint64 count)`
 
@@ -425,46 +259,6 @@ than the corresponding byte in right.
 - `uint64 ncpus`
 
 Number of CPUs
-
-
-### nsecs
-- `timestamp nsecs([TimestampMode mode])`
-- `timestamp nsecs`
-- `nsecs(monotonic) - nanosecond timestamp since boot, exclusive of time the system spent suspended (CLOCK_MONOTONIC)`
-- `nsecs(boot) - nanoseconds since boot, inclusive of time the system spent suspended (CLOCK_BOOTTIME)`
-- `nsecs(tai) - TAI timestamp in nanoseconds (CLOCK_TAI)`
-- `nsecs(sw_tai) - approximation of TAI timestamp in nanoseconds, is obtained through the "triple vdso sandwich" method. For older kernels without direct TAI timestamp access in BPF.`
-
-Returns a timestamp in nanoseconds, as given by the requested kernel clock.
-Defaults to `boot` if no clock is explicitly requested.
-
-
-```
-interval:s:1 {
-  $sw_tai1 = nsecs(sw_tai);
-  $tai = nsecs(tai);
-  $sw_tai2 = nsecs(sw_tai);
-  printf("sw_tai precision: %lldns\n", ($sw_tai1 + $sw_tai2)/2 - $tai);
-}
-
-/*
- * Sample output:
- * sw_tai precision: -98ns
- * sw_tai precision: -99ns
- * ...
- */
-```
-
-
-### ntop
-- `inet ntop([int64 af, ] int addr)`
-- `inet ntop([int64 af, ] char addr[4])`
-- `inet ntop([int64 af, ] char addr[16])`
-
-`ntop` returns the string representation of an IPv4 or IPv6 address.
-`ntop` will infer the address type (IPv4 or IPv6) based on the `addr` type and size.
-If an integer or `char[4]` is given, ntop assumes IPv4, if a `char[16]` is given, ntop assumes IPv6.
-You can also pass the address type (e.g. AF_INET) explicitly as the first parameter.
 
 
 ### numaid
