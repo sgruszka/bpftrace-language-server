@@ -13,7 +13,7 @@ Checks that this value is string-like.
 **Availability**
 Since bpftrace v0.25
 
-### bswap [0.23..]
+### bswap [0.15..]
 - `uint8 bswap(uint8 n)`
 - `uint16 bswap(uint16 n)`
 - `uint32 bswap(uint32 n)`
@@ -22,7 +22,10 @@ Since bpftrace v0.25
 `bswap` reverses the order of the bytes in integer `n`. In case of 8 bit integers, `n` is returned without being modified.
 The return type is an unsigned integer of the same width as `n`.
 
-### buf [0.23..]
+**Availability**
+Since bpftrace v0.15.0
+
+### buf [0.11..]
 - `buffer buf(void * data, [int64 length])`
 
 `buf` reads `length` amount of bytes from address `data`.
@@ -45,3 +48,6 @@ interval:s:1 {
 \x00\x03\x00\x00\x00\x00\x00\x00
 \xc2\x02\x00\x00\x00\x00\x00\x00
 ```
+
+**Availability**
+Since bpftrace v0.11.0
