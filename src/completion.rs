@@ -18,6 +18,7 @@ use crate::cmd_mod::{
 };
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_functions,
+    bpftrace_stdlib_items,
 };
 use crate::log_mod::{self, COMPL, HOVER};
 use crate::parser::{self, SyntaxLocation};
@@ -654,6 +655,7 @@ fn add_completion_items_for_block(
             add_args_and_retval_keywords(&probes, items);
         }
         bpftrace_stdlib_functions(items, bpftrace_major_minor_version());
+        bpftrace_stdlib_items(items, bpftrace_major_minor_version());
         add_block_keywords(items);
         add_source_file_macros(node, text, items);
     }
@@ -2062,6 +2064,7 @@ fn encode_hover_for_function(node: &Node, text: &str) -> JsonValue {
 
     let mut items = JsonValue::new_array();
     bpftrace_stdlib_functions(&mut items, bpftrace_major_minor_version());
+    bpftrace_stdlib_items(&mut items, bpftrace_major_minor_version());
 
     let Some(hover) = hover_from_completion_items(&items, func) else {
         return empty_data;

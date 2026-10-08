@@ -68,7 +68,7 @@ pub fn bpftrace_has_property(prop: BpftraceProperty) -> bool {
 
 pub fn bpftrace_major_minor_version() -> (u16, u16) {
     let Some(bpftrace) = BPFTRACE.get() else {
-        return (0, 0); // TODO: sane defaults
+        return (0, 27); // TODO: sane defaults
     };
 
     (bpftrace.version.major, bpftrace.version.minor)

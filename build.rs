@@ -30,5 +30,9 @@ use json::object;
     }
     text.push_str(&gen_completion_stdlib_dispatch(&versions));
 
+    println!("cargo:rerun-if-changed=build/stdlib.md");
+    let stdlib_md = fs::read_to_string("build/stdlib.md").expect("Read failed");
+    text.push_str(&gen_completion_stdlib_all(&stdlib_md));
+
     fs::write("src/gen/completion.rs", text).expect("Write failed");
 }

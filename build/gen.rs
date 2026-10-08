@@ -7,9 +7,10 @@ struct DocItem {
     variants: Vec<String>,
     short_name: String,
     full_info: String,
+    version: Version,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 struct Version {
     min_ver: Option<(u32, u32)>,
     max_ver: Option<(u32, u32)>,
@@ -135,18 +136,24 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, ver: &str) {
         )
     };
 
+    let ver_str = if ver.is_empty() {
+        ""
+    } else {
+        &format!(" v{}", ver)
+    };
+
     let mut kind = 3;
-    let mut detail = format!("{} - bpftrace v{} stdlib function", label, ver);
+    let mut detail = format!("{} - bpftrace{} stdlib function", label, ver_str);
 
     if doc_item.variants.len() == 1 {
         if !doc_item.variants[0].ends_with(")") {
             kind = 6;
-            detail = format!("{} - bpftrace v{} builtin variable", label, ver);
+            detail = format!("{} - bpftrace{} builtin variable", label, ver_str);
         }
     } else {
         for variant in &doc_item.variants {
             if !variant.ends_with(")") {
-                detail = format!("{} - bpftrace v{} builtin function/variable", label, ver);
+                detail = format!("{} - bpftrace{} builtin function/variable", label, ver_str);
                 break;
             }
         }
@@ -154,6 +161,25 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, ver: &str) {
 
     docs.push_str("\n\n");
     docs.push_str(&doc_item.full_info);
+
+    let mut cond_min_end = "";
+    let mut cond_max_end = "";
+
+    if let Some(min_ver) = doc_item.version.min_ver {
+        text.push_str(&format!(
+            "if this_version >= ({},{}) {{",
+            min_ver.0, min_ver.1
+        ));
+        cond_min_end = "}"
+    }
+
+    if let Some(max_ver) = doc_item.version.max_ver {
+        text.push_str(&format!(
+            "if this_version <= ({},{}) {{",
+            max_ver.0, max_ver.1
+        ));
+        cond_max_end = "}"
+    }
 
     let obj = format!(
         r##"
@@ -171,6 +197,8 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, ver: &str) {
     );
 
     text.push_str(&obj);
+    text.push_str(cond_max_end);
+    text.push_str(cond_min_end);
 }
 
 fn gen_completion_probes(language_md: &str) -> String {
@@ -373,6 +401,80 @@ pub fn bpftrace_stdlib_functions(items: &mut json::JsonValue, (major, minor): (u
         }}"#
     );
     text.push_str(&last_entry);
+
+    text
+}
+
+fn parse_header(s: &str) -> Option<(&str, &str)> {
+    let s = s.strip_prefix("### ")?;
+    s.split_once(|c: char| c.is_whitespace())
+}
+
+fn gen_completion_stdlib_all(stdlib_md: &str) -> String {
+    let mut doc_item = DocItem::default();
+    let mut collected_item = false;
+    let mut after_label = false;
+    let mut after_summary = false;
+    let mut after_variants = false;
+
+    let mut text = r#"
+pub fn bpftrace_stdlib_items(items: &mut json::JsonValue, this_version: (u16, u16) ) {
+"#
+    .to_string();
+
+    for line in stdlib_md.lines() {
+        if line.trim().starts_with("### ") {
+            if collected_item {
+                stdlib_add_json_obj(&mut text, &doc_item, "");
+            }
+
+            doc_item = DocItem::default();
+
+            let (label, range) = parse_header(line.trim()).unwrap();
+            doc_item.label = label.to_string();
+            doc_item.version = parse_version(range).unwrap();
+
+            collected_item = true;
+
+            after_label = true;
+            after_summary = false;
+            after_variants = false;
+            continue;
+        }
+
+        if after_label {
+            if line.trim().is_empty() {
+                after_summary = true;
+                after_label = false;
+            } else {
+                doc_item.full_info.push_str(line);
+                doc_item.full_info.push('\n');
+            }
+        }
+
+        if after_summary {
+            if line.trim().is_empty() {
+                doc_item.full_info.push('\n');
+                continue;
+            }
+
+            if !after_variants {
+                if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
+                    doc_item.variants.push(line[3..line.len() - 1].to_string());
+                } else {
+                    after_variants = true;
+                }
+            }
+            doc_item.full_info.push_str(line);
+            doc_item.full_info.push('\n');
+        }
+    }
+
+    if collected_item {
+        stdlib_add_json_obj(&mut text, &doc_item, "");
+    }
+
+    text.push_str("}");
 
     text
 }
