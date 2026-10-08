@@ -19,52 +19,6 @@ Basically all functions or macros that don't have arguments or have default argu
 
 ## Helpers
 
-### is_integer
-- `bool is_integer(any expression)`
-
-Determine whether the given expression is an integer.
-
-
-### is_literal
-- `bool is_literal(Expression expr)`
-
-Returns true if the passed expression is a literal, e.g. 1, true, "hello"
-
-
-### is_ptr
-- `bool is_ptr(any expression)`
-
-Determine whether the given expression is a pointer.
-
-
-### is_str
-- `bool is_str(any expression)`
-
-Determine whether the given expression is a string.
-
-
-### is_unsigned_integer
-- `bool is_unsigned_integer(any expression)`
-
-Determine whether the given expression is an unsigned integer.
-
-
-### kfunc_allowed
-- `boolean kfunc_allowed(const string kfunc)`
-
-Determine if a kfunc is supported for particular probe types.
-
-Argument kfunc must be string literal.
-
-
-### kfunc_exist
-- `boolean kfunc_exist(const string kfunc)`
-
-Determine if a kfunc exists using BTF.
-
-Argument kfunc must be string literal.
-
-
 ### memcmp
 - `int memcmp(left, right, uint64 count)`
 
