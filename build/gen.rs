@@ -9,6 +9,70 @@ struct DocItem {
     full_info: String,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct Version {
+    min_ver: Option<(u32, u32)>,
+    max_ver: Option<(u32, u32)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ParseVersionError {
+    InvalidFormat,
+    InvalidVersion,
+}
+
+fn parse_tuple(s: &str) -> Result<Option<(u32, u32)>, ParseVersionError> {
+    let s = s.trim();
+
+    if s.is_empty() {
+        return Ok(None);
+    }
+
+    let Some((major, minor)) = s.split_once('.') else {
+        return Err(ParseVersionError::InvalidVersion);
+    };
+
+    let major = major
+        .parse::<u32>()
+        .map_err(|_| ParseVersionError::InvalidVersion)?;
+
+    let minor = minor
+        .parse::<u32>()
+        .map_err(|_| ParseVersionError::InvalidVersion)?;
+
+    Ok(Some((major, minor)))
+}
+
+fn parse_version(input: &str) -> Result<Version, ParseVersionError> {
+    let input = input.trim();
+
+    // Empty string and [] mean no bounds.
+    if input.is_empty() || input == "[]" {
+        return Ok(Version {
+            min_ver: None,
+            max_ver: None,
+        });
+    }
+
+    // Must be enclosed in [...]
+    let Some(input) = input.strip_prefix('[') else {
+        return Err(ParseVersionError::InvalidFormat);
+    };
+
+    let Some(input) = input.strip_suffix(']') else {
+        return Err(ParseVersionError::InvalidFormat);
+    };
+
+    let Some((min, max)) = input.split_once("..") else {
+        return Err(ParseVersionError::InvalidFormat);
+    };
+
+    Ok(Version {
+        min_ver: parse_tuple(min)?,
+        max_ver: parse_tuple(max)?,
+    })
+}
+
 fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     let label = &doc_item.label;
 
