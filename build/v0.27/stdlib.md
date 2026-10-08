@@ -19,16 +19,6 @@ Basically all functions or macros that don't have arguments or have default argu
 
 ## Helpers
 
-### comm
-- `string comm()`
-- `string comm`
-- `string comm(uint32 pid)`
-
-Name of the current thread or the process with the specified PID
-
-This utilizes the BPF helper `get_current_comm`
-
-
 ### config
 - `Record config()`
 - `Record config`
@@ -47,86 +37,9 @@ printf("max_strlen: %d, stack_mode: %s\n", config.max_strlen, config.stack_mode)
 Returns a pointer to an object of the passed `type` given a pointer to the `member` of that object.
 
 
-### cpid
-- `uint32 cpid()`
-- `uint32 cpid`
-
-Child process ID, if bpftrace is invoked with `-c`.
-
-If there is no child process, a runtime warning will be issued and the
-return value will be zero.  This warning can be avoided by using `has_cpid`
-to check if `cpid` has a value, prior to referencing `cpid`.
-
-
-### cpu
-- `uint32 cpu()`
-- `uint32 cpu`
-
-ID of the processor executing the BPF program
-
-BPF program, in this case, is the probe body
-
-This utilizes the BPF helper `raw_smp_processor_id`
-
-
-### curtask
-- `uint64 curtask()`
-- `uint64 curtask`
-
-Pointer to `struct task_struct` of the current task
-
-This utilizes the BPF helper `get_current_task`
-
-
 ### default_str_length
 
 Returns the default unbounded length.
-
-
-### delete
-- `bool delete(map m, mapkey k)`
-- deprecated `bool delete(mapkey k)`
-
-Delete a single key from a map.
-For scalar maps (e.g. no explicit keys), the key is omitted and is equivalent to calling `clear`.
-For map keys that are composed of multiple values (e.g. `@mymap[3, "hello"] = 1` - remember these values are represented as a tuple) the syntax would be: `delete(@mymap, (3, "hello"));`
-
-If deletion fails (e.g. the key doesn’t exist) the function returns false (0).
-Additionally, if the return value for `delete` is discarded, and deletion fails, you will get a warning.
-
-```
-@a[1] = 1;
-
-delete(@a, 1); // no warning (the key exists)
-
-if (delete(@a, 2)) { // no warning (return value is used)
-  ...
-}
-
-$did_delete = delete(@a, 2); // no warning (return value is used)
-
-delete(@a, 2); // warning (return value is discarded and the key doesn’t exist)
-```
-
-The, now deprecated, API (supported in version &lt;= 0.21.x) of passing map arguments with the key is still supported:
-e.g. `delete(@mymap[3, "hello"]);`.
-
-```
-kprobe:dummy {
-  @scalar = 1;
-  delete(@scalar); // ok
-  @single["hello"] = 1;
-  delete(@single, "hello"); // ok
-  @associative[1,2] = 1;
-  delete(@associative, (1,2)); // ok
-  delete(@associative); // error
-  delete(@associative, 1); // error
-
-    // deprecated but ok
-    delete(@single["hello"]);
-    delete(@associative[1, 2]);
-}
-```
 
 
 ### dw_ustack
@@ -158,13 +71,6 @@ config = { unstable_dw_ustack=enable }
 For usage examples see [ustack](#ustack).
 
 
-### elapsed
-- `uint64 elapsed()`
-- `uint64 elapsed`
-
-ktime_get_ns - ktime_get_boot_ns
-
-
 ### errorf
 - `void errorf(const string fmt, args...)`
 
@@ -180,30 +86,6 @@ Prints:
 
 ```
 EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
-```
-
-
-### exit
-- `void exit([int code])`
-
-**async**
-
-Terminate bpftrace, as if a `SIGTERM` was received.
-The `END` probe will still trigger (if specified) and maps will be printed.
-An optional exit code can be provided.
-
-```
-BEGIN {
-  exit();
-}
-```
-
-Or
-
-```
-BEGIN {
-  exit(1);
-}
 ```
 
 
@@ -237,15 +119,6 @@ kprobe:dummy {
 ```
 
 
-### func
-- `ksym_t func()`
-- `ksym_t func`
-- `usym_t func()`
-- `usym_t func`
-
-Name of the current function being traced (kprobes,uprobes,fentry)
-
-
 ### getopt
 - `bool getopt(string arg_name)`
 - `bool getopt(string arg_name, bool default_value, [string description])`
@@ -272,42 +145,11 @@ You can use `--help` to see all named arguments/options.
 ```
 
 
-### gid
-- `uint64 gid()`
-- `uint64 gid`
-
-Group ID of the current thread, as seen from the init namespace
-
-This utilizes the BPF helper `get_current_uid_gid`
-
-
 ### has_cpid
 - `bool has_cpid()`
 - `bool has_cpid`
 
 Returns true iff cpid is available.
-
-
-### has_key
-- `boolean has_key(map m, mapkey k)`
-
-Return `true` if the key exists in this map.
-Otherwise return `false`.
-Error if called with a map that has no keys (aka scalar map).
-
-```
-kprobe:dummy {
-  @associative[1,2] = 1;
-  if (!has_key(@associative, (1,3))) { // ok
-    print(("bye"));
-  }
-
-    @scalar = 1;
-    if (has_key(@scalar)) { // error
-      print(("hello"));
-    }
-}
-```
 
 
 ### is_array
