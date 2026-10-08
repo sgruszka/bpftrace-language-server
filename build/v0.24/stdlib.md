@@ -18,5 +18,3 @@ Basically all functions or macros that don't have arguments or have default argu
 **unsafe** helpers can have dangerous side effects and should be used with care, the `--unsafe` flag is required for use.
 
 ## Helpers
-
-### END
