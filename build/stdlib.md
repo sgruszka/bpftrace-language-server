@@ -34,6 +34,7 @@ Since bpftrace v0.15
 
 ### buf [0.11..]
 Reads bytes from an address into a buffer.
+
 - `buffer buf(void * data, [int64 length])`
 
 `buf` reads `length` amount of bytes from address `data`.
@@ -1371,6 +1372,7 @@ Prints a value using its default formatting.
 
 ### print [0.25..]
 Prints a value using its default formatting.
+
 - `void print(T val)`
 - `void print(T val)`
 - `void print(@map)`
@@ -2707,10 +2709,9 @@ Set all values (for all keys) in the map to zero.
 ## MAP VALUE FUNCTIONS
 
 ### avg [..]
+Calculates the running average of values passed to the function.
 
 * `avg_t avg(int64 n)`
-
-Calculate the running average of `n` between consecutive calls.
 
 ```
 interval:s:1 {
@@ -2728,6 +2729,7 @@ count. However, you can get the average in kernel space in expressions like
 cpus to collect and sum BOTH count and total.
 
 ### count [..]
+Counts how many times the function is called.
 
 * `count_t count()`
 
@@ -2771,6 +2773,7 @@ interval:s:10 {
 ```
 
 ### hist [..]
+Records values in a logarithmic histogram.
 
 * `hist_t hist(int64 n[, int k])`
 
@@ -2801,6 +2804,7 @@ Prints:
 ```
 
 ### lhist [..]
+Records values in a linear histogram.
 
 * `lhist_t lhist(int64 n, int64 min, int64 max, int64 step)`
 
@@ -2835,6 +2839,7 @@ Prints:
 ```
 
 ### max [..]
+Tracks the largest value passed to the function.
 
 * `max_t max(int64 n)`
 
@@ -2864,6 +2869,8 @@ be returned.
 
 ### min [..]
 
+Tracks the smallest value passed to the function.
+
 * `min_t min(int64 n)`
 
 Update the map with `n` if `n` is smaller than the current value held.
@@ -2872,6 +2879,7 @@ Similar to `count` this uses a [PERCPU](./language.md#percpu-types) map (thread-
 See `max()` above for how this differs from the typical userspace `min()`.
 
 ### stats [..]
+Tracks the count, average, and sum of values.
 
 * `stats_t stats(int64 n)`
 
@@ -2891,6 +2899,7 @@ kprobe:vfs_read {
 ```
 
 ### sum [..0.23]
+Calculates the sum of values passed to the function.
 
 * `sum_t sum(int64 n)`
 
@@ -2934,128 +2943,8 @@ interval:s:10 {
 }
 ```
 
-#### Durations
-
-`interval_ns` is an unsigned integer that specifies the interval duration. You
-may use numbers with duration suffixes to improve readability:
-
-```
-@a = tseries(1, 100ns, 5); // 100 nanoseconds
-@b = tseries(1, 100us, 5); // 100 microseconds
-@c = tseries(1, 100ms, 5); // 100 milliseconds
-@d = tseries(1, 1s, 5);    // 1 second
-```
-
-#### Aggregation Functions
-
-By default, each interval in `tseries` contains the last value recorded in that
-interval. The optional `agg` parameter specifies how values in the same interval
-are aggregated.
-
-| Aggregation Function | Example | Description |
-| --- | --- | --- |
-| `avg` | `@ = tseries(@v, 1s, 5, "avg")` | Calculate the running average of all the values in each interval. |
-| `max` | `@ = tseries(@v, 1s, 5, "max")` | Calculate the maximum of all values in each interval. |
-| `min` | `@ = tseries(@v, 1s, 5, "min")` | Calculate the minimum of all values in each interval. |
-| `sum` | `@ = tseries(@v, 1s, 5, "sum")` | Calculate the sum of all values in each interval. |
-
-#### Examples
-
-Example one:
-
-```
-// Record the minimum of ten random values generated during each 100ms interval.
-i:ms:10 {
-  @ = tseries(rand % 10, 100ms, 20, "min");
-}
-```
-
-```
-Attached 2 probes
-
-
-@:
-             0                                                   2
-hh:mm:ss.ms  |___________________________________________________|
-10:41:46.700 *                                                   | 0
-10:41:46.800 *                                                   | 0
-10:41:46.900 |                         *                         | 1
-10:41:47.000 |                                                   * 2
-10:41:47.100 |                         *                         | 1
-10:41:47.200 *                                                   | 0
-10:41:47.300 |                         *                         | 1
-10:41:47.400 *                                                   | 0
-10:41:47.500 |                         *                         | 1
-10:41:47.600 *                                                   | 0
-10:41:47.700 |                                                   * 2
-10:41:47.800 *                                                   | 0
-10:41:47.900 *                                                   | 0
-10:41:48.000 |                         *                         | 1
-10:41:48.100 |                         *                         | 1
-10:41:48.200 |                         *                         | 1
-10:41:48.300 *                                                   | 0
-10:41:48.400 |                                                   * 2
-10:41:48.500 |                         *                         | 1
-10:41:48.600 |                         *                         | 1
-             v___________________________________________________v
-             0                                                   2
-```
-
-Example two:
-
-```
-// Create a zigzag pattern
-BEGIN {
-  @dir = 1;
-  @c = -5;
-}
-
-i:ms:100 {
-  @ = tseries(@c, 100ms, 20);
-  @c += @dir;
-
-  if (@c > 5) {
-    @dir = -1;
-    @c = 4
-  } else if (@c < -5) {
-    @dir = 1;
-    @c = -4;
-  }
-}
-```
-
-```
-Attached 2 probes
-
-
-@:
-             -5                                                  5
-hh:mm:ss.ms  |___________________________________________________|
-10:39:49.300 *                         .                         | -5
-10:39:49.400 |    *                    .                         | -4
-10:39:49.500 |         *               .                         | -3
-10:39:49.600 |              *          .                         | -2
-10:39:49.700 |                   *     .                         | -1
-10:39:49.800 |                         *                         | 0
-10:39:49.900 |                         .    *                    | 1
-10:39:50.000 |                         .         *               | 2
-10:39:50.100 |                         .              *          | 3
-10:39:50.200 |                         .                   *     | 4
-10:39:50.300 |                         .                         * 5
-10:39:50.400 |                         .                   *     | 4
-10:39:50.500 |                         .              *          | 3
-10:39:50.600 |                         .         *               | 2
-10:39:50.700 |                         .    *                    | 1
-10:39:50.800 |                         *                         | 0
-10:39:50.900 |                   *     .                         | -1
-10:39:51.000 |              *          .                         | -2
-10:39:51.100 |         *               .                         | -3
-10:39:51.200 |    *                    .                         | -4
-             v___________________________________________________v
-             -5                                                  5
-```
-
 ### sum [0.24..]
+Calculates the sum of values passed to the function.
 
 * `sum_t sum(int64 n)`
 
@@ -3100,6 +2989,7 @@ interval:s:10 {
 ```
 
 ### tseries [0.24..]
+Records integer values over a series of time intervals.
 
 * `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals)`
 * `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals, const string agg)`
@@ -3227,3 +3117,6 @@ hh:mm:ss.ms  |___________________________________________________|
              v___________________________________________________v
              -5                                                  5
 ```
+
+**Availability**
+Since bpftrace v0.24
