@@ -8,6 +8,7 @@ struct DocItem {
     short_name: String,
     full_info: String,
     version: Version,
+    helper_flags: usize,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -21,6 +22,11 @@ enum ParseVersionError {
     InvalidFormat,
     InvalidVersion,
 }
+
+pub const IS_ASYNC: usize = 1 << 0;
+pub const MAP_VALUE: usize = 1 << 1;
+pub const IS_UNSAFE: usize = 1 << 2;
+pub const IS_COMPTIME: usize = 1 << 3;
 
 fn parse_tuple(s: &str) -> Result<Option<(u32, u32)>, ParseVersionError> {
     let s = s.trim();
@@ -118,7 +124,37 @@ fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     text.push_str(&obj);
 }
 
-fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, map_fn: bool) {
+fn item_detail_and_kind(doc_item: &DocItem) -> (String, i32) {
+    let label = &doc_item.label;
+
+    let mut kind = 3;
+    let mut detail = format!("{} - synchronous function", label);
+
+    if doc_item.helper_flags & MAP_VALUE == MAP_VALUE {
+        detail = format!("{} - map value function", label);
+    } else if doc_item.helper_flags & (IS_ASYNC | IS_UNSAFE) == (IS_ASYNC | IS_UNSAFE) {
+        detail = format!("{} - unsafe asynchronous function", label)
+    } else if doc_item.helper_flags & IS_ASYNC == IS_ASYNC {
+        detail = format!("{} - asynchronous function", label)
+    } else if doc_item.helper_flags & IS_COMPTIME == IS_COMPTIME {
+        detail = format!("{} - compile-time function", label)
+    } else if doc_item.variants.len() == 1 {
+        if !doc_item.variants[0].ends_with(")") {
+            kind = 6;
+            detail = format!("{} - builtin variable", label);
+        }
+    } else {
+        for variant in &doc_item.variants {
+            if !variant.ends_with(")") {
+                detail = format!("{} - builtin function/variable", label);
+                break;
+            }
+        }
+    }
+
+    (detail, kind)
+}
+fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem) {
     let label = &doc_item.label;
 
     let mut docs = if doc_item.short_name.is_empty() {
@@ -130,25 +166,7 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, map_fn: bool) {
         )
     };
 
-    let mut kind = 3;
-
-    let mut detail = format!("{} - bpftrace function", label);
-
-    if map_fn {
-        detail = format!("{} - bpftrace map value function", label)
-    } else if doc_item.variants.len() == 1 {
-        if !doc_item.variants[0].ends_with(")") {
-            kind = 6;
-            detail = format!("{} - bpftrace builtin variable", label);
-        }
-    } else {
-        for variant in &doc_item.variants {
-            if !variant.ends_with(")") {
-                detail = format!("{} - bpftrace builtin function/variable", label);
-                break;
-            }
-        }
-    }
+    let (detail, kind) = item_detail_and_kind(doc_item);
 
     docs.push_str("\n\n");
     docs.push_str(&doc_item.full_info);
@@ -186,8 +204,8 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, map_fn: bool) {
     let _ = items.push(json_obj);
     "##
     );
-
     text.push_str(&obj);
+
     text.push_str(cond_max_end);
     text.push_str(cond_min_end);
 }
@@ -302,21 +320,26 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
     .to_string();
 
     for line in stdlib_md.lines() {
+        let line = line.trim();
+
         if line == "## MAP VALUE FUNCTIONS" {
             map_value_func = true;
             continue;
         }
 
-        if line.trim().starts_with("### ") {
+        if line.starts_with("### ") {
             if collected_item {
-                stdlib_add_json_obj(&mut text, &doc_item, map_value_func);
+                stdlib_add_json_obj(&mut text, &doc_item);
             }
 
             doc_item = DocItem::default();
 
-            let (label, range) = parse_header(line.trim()).unwrap();
+            let (label, range) = parse_header(line).unwrap();
             doc_item.label = label.to_string();
             doc_item.version = parse_version(range).unwrap();
+            if map_value_func {
+                doc_item.helper_flags |= MAP_VALUE;
+            }
 
             collected_item = true;
 
@@ -327,7 +350,7 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
         }
 
         if after_label {
-            if line.trim().is_empty() {
+            if line.is_empty() {
                 after_summary = true;
                 after_label = false;
             } else {
@@ -337,13 +360,30 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
         }
 
         if after_summary {
-            if line.trim().is_empty() {
+            if line.is_empty() {
                 doc_item.full_info.push('\n');
                 continue;
             }
 
+            if line.starts_with("**async**")
+                || line.starts_with("**unsafe**")
+                || line.starts_with("**compile time**")
+            {
+                if line.starts_with("**async**") {
+                    doc_item.helper_flags |= IS_ASYNC;
+                }
+                if line.starts_with("**unsafe**") {
+                    doc_item.helper_flags |= IS_UNSAFE;
+                }
+                if line.starts_with("**compile time**") {
+                    doc_item.helper_flags |= IS_COMPTIME;
+                }
+
+                continue;
+            }
+
             if !after_variants {
-                if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
+                if line.starts_with("- ") || line.starts_with("* ") {
                     doc_item.variants.push(line[3..line.len() - 1].to_string());
                 } else {
                     after_variants = true;
@@ -355,7 +395,7 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
     }
 
     if collected_item {
-        stdlib_add_json_obj(&mut text, &doc_item, map_value_func);
+        stdlib_add_json_obj(&mut text, &doc_item);
     }
 
     text.push_str("}");
