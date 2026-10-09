@@ -1,3 +1,9 @@
+<!--
+This file originates from https://github.com/bpftrace/bpftrace
+It is licensed under the Apache License, Version 2.0
+See the LICENSE file of that project or https://www.apache.org/licenses/LICENSE-2.0
+-->
+
 ### assert [0.24..]
 - `void assert(bool condition, string message)`
 

@@ -118,14 +118,8 @@ fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     text.push_str(&obj);
 }
 
-fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, ver: &str) {
+fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, map_fn: bool) {
     let label = &doc_item.label;
-
-    // if doc_item.variants.is_empty() {
-    //     &doc_item.label
-    // } else {
-    //     &doc_item.variants
-    // };
 
     let mut docs = if doc_item.short_name.is_empty() {
         doc_item.first_line.to_string()
@@ -136,24 +130,21 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem, ver: &str) {
         )
     };
 
-    let ver_str = if ver.is_empty() {
-        ""
-    } else {
-        &format!(" v{}", ver)
-    };
-
     let mut kind = 3;
-    let mut detail = format!("{} - bpftrace{} stdlib function", label, ver_str);
 
-    if doc_item.variants.len() == 1 {
+    let mut detail = format!("{} - bpftrace function", label);
+
+    if map_fn {
+        detail = format!("{} - bpftrace map value function", label)
+    } else if doc_item.variants.len() == 1 {
         if !doc_item.variants[0].ends_with(")") {
             kind = 6;
-            detail = format!("{} - bpftrace{} builtin variable", label, ver_str);
+            detail = format!("{} - bpftrace builtin variable", label);
         }
     } else {
         for variant in &doc_item.variants {
             if !variant.ends_with(")") {
-                detail = format!("{} - bpftrace{} builtin function/variable", label, ver_str);
+                detail = format!("{} - bpftrace builtin function/variable", label);
                 break;
             }
         }
@@ -292,140 +283,33 @@ pub fn bpftrace_probe_providers(items: &mut json::JsonValue) {
     text
 }
 
-fn gen_completion_stdlib(stdlib_md: &str, ver: &str) -> String {
-    let mut doc_item = DocItem::default();
-    let mut collected_item = false;
-    let mut after_label = false;
-    let mut after_summary = false;
-    let mut after_variants = false;
-
-    let fn_ver = ver.replace(".", "_");
-
-    let mut text = format!(
-        r#"
-fn bpftrace_stdlib_{fn_ver}(items: &mut json::JsonValue) {{
-"#
-    );
-
-    for line in stdlib_md.lines() {
-        if line.trim().starts_with("### ") {
-            if collected_item {
-                stdlib_add_json_obj(&mut text, &doc_item, ver);
-            }
-
-            doc_item = DocItem::default();
-            doc_item.label = line[4..].to_string();
-            collected_item = true;
-
-            after_label = true;
-            after_summary = false;
-            after_variants = false;
-            continue;
-        }
-
-        if after_label {
-            if line.trim().is_empty() {
-                after_summary = true;
-                after_label = false;
-            } else {
-                doc_item.full_info.push_str(line);
-                doc_item.full_info.push('\n');
-            }
-        }
-
-        if after_summary {
-            if line.trim().is_empty() {
-                doc_item.full_info.push('\n');
-                continue;
-            }
-
-            if !after_variants {
-                if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
-                    doc_item.variants.push(line[3..line.len() - 1].to_string());
-                } else {
-                    after_variants = true;
-                }
-            }
-            doc_item.full_info.push_str(line);
-            doc_item.full_info.push('\n');
-        }
-    }
-
-    text.push_str("}");
-
-    text
-}
-
-fn gen_completion_stdlib_dispatch(versions: &[&str]) -> String {
-    let mut text = r#"
-    #[allow(unused_comparisons)]
-pub fn bpftrace_stdlib_functions(items: &mut json::JsonValue, (major, minor): (u16, u16)) {
-    "#
-    .to_string();
-
-    let first = versions[0];
-    let mut nums = first.split(".");
-    let major: u16 = nums.next().unwrap().parse().ok().unwrap();
-    let minor: u16 = nums.next().unwrap().parse().ok().unwrap();
-
-    let entry = format!(
-        r#"
-        if major >= {major} && minor >= {minor} {{
-            return bpftrace_stdlib_{major}_{minor}(items);
-        }}"#
-    );
-    text.push_str(&entry);
-
-    for ver in &versions[1..versions.len() - 1] {
-        let mut nums = ver.split(".");
-        let major: u16 = nums.next().unwrap().parse().ok().unwrap();
-        let minor: u16 = nums.next().unwrap().parse().ok().unwrap();
-
-        let entry = format!(
-            r#"
-            if major == {major} && minor == {minor} {{
-                return bpftrace_stdlib_{major}_{minor}(items);
-            }}"#
-        );
-        text.push_str(&entry);
-    }
-
-    let last = versions[versions.len() - 1];
-    let mut nums = last.split(".");
-    let major: u16 = nums.next().unwrap().parse().ok().unwrap();
-    let minor: u16 = nums.next().unwrap().parse().ok().unwrap();
-
-    let last_entry = format!(
-        r#"
-            bpftrace_stdlib_{major}_{minor}(items)
-        }}"#
-    );
-    text.push_str(&last_entry);
-
-    text
-}
-
 fn parse_header(s: &str) -> Option<(&str, &str)> {
     let s = s.strip_prefix("### ")?;
     s.split_once(|c: char| c.is_whitespace())
 }
 
-fn gen_completion_stdlib_all(stdlib_md: &str) -> String {
+fn gen_completion_stdlib(stdlib_md: &str) -> String {
     let mut doc_item = DocItem::default();
     let mut collected_item = false;
     let mut after_label = false;
     let mut after_summary = false;
     let mut after_variants = false;
+    let mut map_value_func = false;
 
     let mut text = r#"
-pub fn bpftrace_stdlib_items(items: &mut json::JsonValue, this_version: (u16, u16) ) {
+pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, u16) ) {
 "#
     .to_string();
 
     for line in stdlib_md.lines() {
+        if line == "## MAP VALUE FUNCTIONS" {
+            map_value_func = true;
+            continue;
+        }
+
         if line.trim().starts_with("### ") {
             if collected_item {
-                stdlib_add_json_obj(&mut text, &doc_item, "");
+                stdlib_add_json_obj(&mut text, &doc_item, map_value_func);
             }
 
             doc_item = DocItem::default();
@@ -471,7 +355,7 @@ pub fn bpftrace_stdlib_items(items: &mut json::JsonValue, this_version: (u16, u1
     }
 
     if collected_item {
-        stdlib_add_json_obj(&mut text, &doc_item, "");
+        stdlib_add_json_obj(&mut text, &doc_item, map_value_func);
     }
 
     text.push_str("}");

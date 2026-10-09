@@ -5,6 +5,7 @@ include!("build/gen.rs");
 fn main() {
     println!("cargo:rerun-if-changed=build/language.md");
     println!("cargo:rerun-if-changed=build/config_variables.md");
+    println!("cargo:rerun-if-changed=build/stdlib.md");
     // println!("cargo:rerun-if-changed=src/gen/");
 
     let mut text = r#"
@@ -15,24 +16,11 @@ use json::object;
 
     let probes_md = fs::read_to_string("build/language.md").expect("Read failed");
     let conf_vars_md = fs::read_to_string("build/config_variables.md").expect("Read failed");
+    let stdlib_md = fs::read_to_string("build/stdlib.md").expect("Read failed");
 
     text.push_str(&gen_completion_probes(&probes_md));
     text.push_str(&gen_completion_config_variables(&conf_vars_md));
-
-    // Descent order needed
-    let versions = ["0.27", "0.26", "0.25", "0.24", "0.23"];
-    for ver in versions {
-        let path = format!("build/v{ver}/stdlib.md");
-        println!("cargo:rerun-if-changed={}", path);
-
-        let stdlib_md = fs::read_to_string(path).expect("Read failed");
-        text.push_str(&gen_completion_stdlib(&stdlib_md, ver));
-    }
-    text.push_str(&gen_completion_stdlib_dispatch(&versions));
-
-    println!("cargo:rerun-if-changed=build/stdlib.md");
-    let stdlib_md = fs::read_to_string("build/stdlib.md").expect("Read failed");
-    text.push_str(&gen_completion_stdlib_all(&stdlib_md));
+    text.push_str(&gen_completion_stdlib(&stdlib_md));
 
     fs::write("src/gen/completion.rs", text).expect("Write failed");
 }
