@@ -5,33 +5,35 @@ See the LICENSE file of that project or https://www.apache.org/licenses/LICENSE-
 -->
 
 ### assert [0.24..]
-- `void assert(bool condition, string message)`
+Checks a condition and terminates the script with an error if it is false.
 
-Simple assertion macro that will exit the entire script with an error code if the condition is not met.
+- `void assert(bool condition, string message)`
 
 **Availability**
 Since bpftrace v0.24
 
 ### assert_str [0.25..]
-
-Checks that this value is string-like.
+Checks that a value is string-like.
 
 **Availability**
 Since bpftrace v0.25
 
-### bswap [..]
+### bswap [0.15..]
+Reverses the byte order of an integer.
+
 - `uint8 bswap(uint8 n)`
 - `uint16 bswap(uint16 n)`
 - `uint32 bswap(uint32 n)`
 - `uint64 bswap(uint64 n)`
 
-`bswap` reverses the order of the bytes in integer `n`. In case of 8 bit integers, `n` is returned without being modified.
+In case of 8 bit integers, `n` is returned without being modified.
 The return type is an unsigned integer of the same width as `n`.
 
 **Availability**
 Since bpftrace v0.15
 
-### buf [..]
+### buf [0.11..]
+Reads bytes from an address into a buffer.
 - `buffer buf(void * data, [int64 length])`
 
 `buf` reads `length` amount of bytes from address `data`.
@@ -55,7 +57,12 @@ interval:s:1 {
 \xc2\x02\x00\x00\x00\x00\x00\x00
 ```
 
+**Availability**
+Since bpftrace v0.11
+
 ### cat [..]
+Prints the contents of a file to standard output.
+
 - `void cat(string namefmt, [...args])`
 
 **async**
@@ -79,16 +86,16 @@ tracepoint:syscalls:sys_enter_execve {
 ```
 
 ### cgroup [..]
+Returns the current process’s cgroup ID.
+
 - `uint64 cgroup()`
 - `uint64 cgroup`
 
-ID of the cgroup the current process belongs to
+Only works with cgroupv2. This utilizes the BPF helper `get_current_cgroup_id`
 
-Only works with cgroupv2
+### cgroup_path [0.15..]
+Converts a cgroup ID to its path.
 
-This utilizes the BPF helper `get_current_cgroup_id`
-
-### cgroup_path [..]
 - `cgroup_path_t cgroup_path(int cgroupid, string filter)`
 
 Convert cgroup id to cgroup path.
@@ -114,7 +121,9 @@ BEGIN {
 }
 ```
 
-### cgroupid [..]
+### cgroupid [0.10..]
+Returns the cgroup v2 ID for a cgroup path.
+
 - `uint64 cgroupid(const string path)`
 
 **compile time**
@@ -127,12 +136,15 @@ BEGIN {
 }
 ```
 
+**Availability**
+Since bpftrace v0.10
+
 ### clear [..]
+Clear all keys/values from a map.
+
 - `void clear(map m)`
 
 **async**
-
-Clear all keys/values from map `m`.
 
 ```
 interval:ms:100 {
@@ -146,22 +158,24 @@ interval:s:10 {
 ```
 
 ### comm [..0.23]
-- `string comm`
+Name of the current thread.
 
-Name of the current thread
+- `string comm`
 
 This utilizes the BPF helper `get_current_comm`
 
 ### comm [0.24..]
+Returns the name of the current thread or a specified process.
+
 - `string comm()`
 - `string comm`
 - `string comm(uint32 pid)`
 
-Name of the current thread or the process with the specified PID
-
 This utilizes the BPF helper `get_current_comm`
 
 ### config [0.27..]
+Returns the current bpftrace configuration.
+
 - `Record config()`
 - `Record config`
 
@@ -171,11 +185,12 @@ Returns a `Record` containing the current `bpftrace` configuration settings. [Li
 printf("max_strlen: %d, stack_mode: %s\n", config.max_strlen, config.stack_mode);
 }
 ```
-
 **Availability**
 Since bpftrace v0.27
 
 ### container_of [0.27..]
+Finds the containing object from a pointer to one of its members.
+
 - `Container* container_of(Member* ptr, Type type, Identifier member)`
 
 Returns a pointer to an object of the passed `type` given a pointer to the `member` of that object.
@@ -184,66 +199,72 @@ Returns a pointer to an object of the passed `type` given a pointer to the `memb
 Since bpftrace v0.27
 
 ### cpid [..0.23]
-- `uint32 cpid`
-
 Child process ID, if bpftrace is invoked with `-c`
 
-### cpid [0.24..]
-- `uint32 cpid()`
 - `uint32 cpid`
 
-Child process ID, if bpftrace is invoked with `-c`.
+### cpid [0.24..]
+Returns the child process ID when bpftrace was started with `-c`.
+
+- `uint32 cpid()`
+- `uint32 cpid`
 
 If there is no child process, a runtime warning will be issued and the
 return value will be zero.  This warning can be avoided by using `has_cpid`
 to check if `cpid` has a value, prior to referencing `cpid`.
 
 ### cpu [..0.23]
+ID of the processor executing the BPF program.
 - `uint32 cpu`
 
-ID of the processor executing the BPF program
-
-BPF program, in this case, is the probe body
-
+BPF program, in this case, is the probe body.
 This utilizes the BPF helper `raw_smp_processor_id`
 
 ### cpu [0.24..]
+Returns the ID of the CPU running the current BPF program.
+
 - `uint32 cpu()`
 - `uint32 cpu`
 
-ID of the processor executing the BPF program
-
-BPF program, in this case, is the probe body
-
+BPF program, in this case, is the probe body.
 This utilizes the BPF helper `raw_smp_processor_id`
 
-### curtask [..0.23]
-- `uint64 curtask`
+### curtask [0.22..0.23]
+Pointer to `struct task_struct` of the current task.
 
-Pointer to `struct task_struct` of the current task
+- `uint64 curtask`
 
 This utilizes the BPF helper `get_current_task`
 
+**Availability**
+Since bpftrace v0.22
+
 ### curtask [0.24..]
+Returns a pointer to the current task’s `task_struct`.
+
 - `uint64 curtask()`
 - `uint64 curtask`
 
-Pointer to `struct task_struct` of the current task
-
 This utilizes the BPF helper `get_current_task`
 
-### default_str_length [0.25..]
+**Availability**
+Since bpftrace v0.22
 
-Returns the default unbounded length.
+### default_str_length [0.25..]
+Returns the default unbounded string length.
+
+- `uint64 default_str_length()`
+- `uint64 default_str_length`
 
 **Availability**
 Since bpftrace v0.25
 
 ### delete [..]
+Removes one key and its value from a map.
+
 - `bool delete(map m, mapkey k)`
 - deprecated `bool delete(mapkey k)`
 
-Delete a single key from a map.
 For scalar maps (e.g. no explicit keys), the key is omitted and is equivalent to calling `clear`.
 For map keys that are composed of multiple values (e.g. `@mymap[3, "hello"] = 1` - remember these values are represented as a tuple) the syntax would be: `delete(@mymap, (3, "hello"));`
 
@@ -285,6 +306,8 @@ kprobe:dummy {
 ```
 
 ### dw_ustack [0.26..]
+Unwinds and returns a user-space stack using DWARF debug information.
+
 - `ustack_t dw_ustack([StackMode mode, ][int limit])`
 
 DWARF-based user-space stack unwinding. Unlike [ustack](#ustack), which
@@ -316,14 +339,14 @@ For usage examples see [ustack](#ustack).
 Since bpftrace v0.26
 
 ### elapsed [..]
+Returns nanoseconds since bpftrace initialization.
+
 - `uint64 elapsed()`
 - `uint64 elapsed`
 
-ktime_get_ns - ktime_get_boot_ns
-
-### END [..]
-
 ### errorf [0.24..]
+Formats and prints an error message with its source location.
+
 - `void errorf(const string fmt, args...)`
 
 **async**
@@ -344,6 +367,8 @@ EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
 Since bpftrace v0.24
 
 ### exit [..]
+Terminates bpftrace with an optional exit code.
+
 - `void exit([int code])`
 
 **async**
@@ -367,7 +392,11 @@ BEGIN {
 ```
 
 ### fail [0.25..]
+Reports a compile-time error and halts compilation when reached.
+
 - `void fail(const string fmt, args...)`
+
+**compile time**
 
 `fail()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location but, as opposed to [`errorf`](#errorf), is treated like a static assert and halts compilation if it is visited. All args have to be literals since they are evaluated at compile time.
 
@@ -379,6 +408,8 @@ BEGIN { if ($1 < 2) { fail("Expected the first positional param to be greater th
 Since bpftrace v0.25
 
 ### find [0.25..]
+Looks up a map key and stores its value in a scratch variable if found.
+
 - `boolean find(map m, mapkey k, mapvalue result)`
 
 Return `true` if the key exists in this map and sets the passed scratch variable (result) to the value of that map key.
@@ -400,25 +431,28 @@ kprobe:dummy {
 Since bpftrace v0.25
 
 ### func [..0.23]
+Name of the current function being traced (kprobes,uprobes,fentry).
+
 - `string func`
 
-Name of the current function being traced (kprobes,uprobes,fentry)
 
 ### func [0.24..0.26]
+Name of the current function being traced (kprobes,uprobes,fentry)
+
 - `string func()`
 - `string func`
 
+### func [0.27..]
 Name of the current function being traced (kprobes,uprobes,fentry)
 
-### func [0.27..]
 - `ksym_t func()`
 - `ksym_t func`
 - `usym_t func()`
 - `usym_t func`
 
-Name of the current function being traced (kprobes,uprobes,fentry)
-
 ### getopt [0.24..0.24]
+Reads a named command-line option, using its default value to determine the type.
+
 - `bool getopt(string arg_name)`
 - `string getopt(string arg_name, string default_value)`
 - `int getopt(string arg_name, int default_value)`
@@ -444,6 +478,8 @@ If the arg is not set on the command line, the default value is used.
 Since bpftrace v0.24
 
 ### getopt [0.25..]
+Reads a named command-line option, using its default value to determine the type.
+
 - `bool getopt(string arg_name)`
 - `bool getopt(string arg_name, bool default_value, [string description])`
 - `int getopt(string arg_name, int default_value, [string description])`
@@ -472,30 +508,32 @@ You can use `--help` to see all named arguments/options.
 Since bpftrace v0.24
 
 ### gid [..0.23]
-- `uint64 gid`
+Group ID of the current thread, as seen from the init namespace.
 
-Group ID of the current thread, as seen from the init namespace
+- `uint64 gid`
 
 This utilizes the BPF helper `get_current_uid_gid`
 
 ### gid [0.24..]
+Returns the current thread’s group ID in the initial namespace.
+
 - `uint64 gid()`
 - `uint64 gid`
-
-Group ID of the current thread, as seen from the init namespace
 
 This utilizes the BPF helper `get_current_uid_gid`
 
 ### has_cpid [0.25..]
+Returns whether a child process ID is available.
+
 - `bool has_cpid()`
 - `bool has_cpid`
-
-Returns true iff cpid is available.
 
 **Availability**
 Since bpftrace v0.25
 
-### has_key [..0.24]
+### has_key [0.22..0.24]
+Returns whether a map contains a specified key.
+
 - `boolean has_key(map m, mapkey k)`
 
 Return true (1) if the key exists in this map.
@@ -520,7 +558,12 @@ kprobe:dummy {
 }
 ```
 
+**Availability**
+Since bpftrace v0.22
+
 ### has_key [0.25..]
+Returns whether a map contains a specified key.
+
 - `boolean has_key(map m, mapkey k)`
 
 Return `true` if the key exists in this map.
@@ -541,18 +584,21 @@ kprobe:dummy {
 }
 ```
 
-### is_array [0.25..]
-- `bool is_array(any expression)`
+**Availability**
+Since bpftrace v0.22
 
+### is_array [0.25..]
 Determine whether the given expression is an array.
+
+- `bool is_array(any expression)`
 
 **Availability**
 Since bpftrace v0.25
 
 ### is_err [0.26..]
-- `bool is_err(void * ptr)`
-
 Returns true if the pointer is an ERR_PTR, i.e. it encodes a kernel error code.
+
+- `bool is_err(void * ptr)`
 
 In the Linux kernel, some functions return error codes encoded as pointers
 using the `ERR_PTR` macro. These are pointer values in the range
@@ -572,14 +618,16 @@ fexit:do_filp_open {
 Since bpftrace v0.26
 
 ### is_integer [0.25..]
-- `bool is_integer(any expression)`
-
 Determine whether the given expression is an integer.
+
+- `bool is_integer(any expression)`
 
 **Availability**
 Since bpftrace v0.25
 
 ### is_literal [0.25..]
+Determine whether an expression is a literal.
+
 - `bool is_literal(Expression expr)`
 
 Returns true if the passed expression is a literal, e.g. 1, true, "hello"
@@ -588,47 +636,52 @@ Returns true if the passed expression is a literal, e.g. 1, true, "hello"
 Since bpftrace v0.25
 
 ### is_ptr [0.25..]
-- `bool is_ptr(any expression)`
-
 Determine whether the given expression is a pointer.
+
+- `bool is_ptr(any expression)`
 
 **Availability**
 Since bpftrace v0.25
 
 ### is_str [0.25..]
-- `bool is_str(any expression)`
-
 Determine whether the given expression is a string.
+
+- `bool is_str(any expression)`
 
 **Availability**
 Since bpftrace v0.25
 
 ### is_unsigned_integer [0.25..]
-- `bool is_unsigned_integer(any expression)`
-
 Determine whether the given expression is an unsigned integer.
+
+- `bool is_unsigned_integer(any expression)`
 
 **Availability**
 Since bpftrace v0.25
 
-### jiffies [..0.23]
-- `uint64 jiffies`
+### jiffies [0.20..0.23]
+Jiffies counter of the kernel
 
-Jiffies of the kernel
+- `uint64 jiffies`
 
 On 32-bit systems, using this builtin might be slower
 
 This utilizes the BPF helper `get_jiffies_64`
 
+**Availability**
+Since bpftrace v0.20
+
 ### jiffies [0.24..]
+Returns the kernel jiffies counter.
+
 - `uint64 jiffies()`
 - `uint64 jiffies`
 
-Jiffies of the kernel
-
-On 32-bit systems, using this builtin might be slower
-
+On 32-bit systems, using this builtin might be slower.
 This utilizes the BPF helper `get_jiffies_64`
+
+**Availability**
+Since bpftrace v0.20
 
 ### join [..]
 - `void join(char *arr[], [char * sep = ' '])`
@@ -647,11 +700,11 @@ tracepoint:syscalls:sys_enter_execve {
 ```
 
 ### kaddr [..]
+Returns the address of a kernel symbol.
+
 - `uint64 kaddr(const string name)`
 
 **compile time**
-
-Get the address of the kernel symbol `name`.
 
 ```
 interval:s:1 {
@@ -663,9 +716,9 @@ interval:s:1 {
 You can find all kernel symbols at `/proc/kallsyms`.
 
 ### kfunc_allowed [0.25..]
-- `boolean kfunc_allowed(const string kfunc)`
-
 Determine if a kfunc is supported for particular probe types.
+
+- `boolean kfunc_allowed(const string kfunc)`
 
 Argument kfunc must be string literal.
 
@@ -673,23 +726,29 @@ Argument kfunc must be string literal.
 Since bpftrace v0.25
 
 ### kfunc_exist [0.25..]
-- `boolean kfunc_exist(const string kfunc)`
-
 Determine if a kfunc exists using BTF.
+
+- `boolean kfunc_exist(const string kfunc)`
 
 Argument kfunc must be string literal.
 
 **Availability**
 Since bpftrace v0.25
 
-### kptr [..]
+### kptr [0.12..]
+Marks a pointer as pointing to kernel address space.
+
 - `T * kptr(T * ptr)`
 
-Marks `ptr` as a kernel address space pointer.
 See the address-spaces section for more information on address-spaces.
 The pointer type is left unchanged.
 
+**Availability**
+Since bpftrace v0.12
+
 ### kstack [..0.24]
+Returns a kernel stack trace.
+
 - `kstack_t kstack([StackMode mode, ][int limit])`
 
 These are implemented using BPF stack maps.
@@ -748,6 +807,8 @@ kprobe:ip_output { @[kstack(perf, 3)] = count(); }
 ```
 
 ### kstack [0.25..0.26]
+Returns a kernel stack trace.
+
 - `kstack_t kstack([StackMode mode, ][int limit])`
 
 These are implemented using BPF stack maps.
@@ -808,6 +869,8 @@ kprobe:ip_output { @[kstack(perf, 3)] = count(); }
 ```
 
 ### kstack [0.27..]
+Returns a kernel stack trace.
+
 - `kstack_t kstack([StackMode mode, ][int limit])`
 
 There are several [formatting/StackMode options](./language.md#stack_mode).
@@ -867,6 +930,8 @@ kprobe:ip_output { @[kstack(perf, 3)] = count(); }
 ```
 
 ### ksym [..]
+Resolves a kernel address to the name of its containing function.
+
 - `ksym_t ksym(uint64 addr)`
 
 **async**
@@ -889,6 +954,8 @@ kprobe:do_nanosleep
 ```
 
 ### leader_comm [0.26..]
+Returns the name of the thread group leader.
+
 - `string leader_comm()`
 - `string leader_comm`
 - `string leader_comm(struct task_struct * task)`
@@ -901,6 +968,8 @@ See `pcomm()` for more details.
 Since bpftrace v0.26
 
 ### leader_tid [0.26..]
+Returns the thread ID of the thread group leader.
+
 - `string leader_tid()`
 - `string leader_tid`
 - `string leader_tid(struct task_struct * task)`
@@ -912,7 +981,9 @@ See `ppid()` for more details.
 **Availability**
 Since bpftrace v0.26
 
-### len [..]
+### len [0.20..]
+Returns the number of map entries or the depth of a stack trace.
+
 - `int64 len(map m)`
 - `int64 len(ustack stack)`
 - `int64 len(kstack stack)`
@@ -921,10 +992,14 @@ For maps, return the number of elements in the map.
 
 For kstack/ustack, return the depth (measured in # of frames) of the call stack.
 
-### macaddr [..]
+**Availability**
+Since bpftrace v0.20
+
+### macaddr [0.12..]
+Creates a printable buffer from a MAC address.
+
 - `macaddr_t macaddr(char [6] mac)`
 
-Create a buffer that holds a macaddress as read from `mac`
 This buffer can be printed in the canonical string format using the `%s` format specifier.
 
 ```
@@ -940,7 +1015,12 @@ kprobe:arp_create {
  */
 ```
 
+**Availability**
+Since bpftrace v0.12
+
 ### memcmp [0.25..]
+Compares a specified number of bytes.
+
 - `int memcmp(left, right, uint64 count)`
 
 Compares the first 'count' bytes of two expressions.
@@ -952,15 +1032,17 @@ than the corresponding byte in right.
 Since bpftrace v0.25
 
 ### ncpus [0.24..]
+Number of CPUs.
+
 - `uint64 ncpus()`
 - `uint64 ncpus`
-
-Number of CPUs
 
 **Availability**
 Since bpftrace v0.24
 
 ### nsecs [..0.26]
+Returns a timestamp in nanoseconds from the selected kernel clock.
+
 - `timestamp nsecs([TimestampMode mode])`
 - `nsecs(monotonic) - nanosecond timestamp since boot, exclusive of time the system spent suspended (CLOCK_MONOTONIC)`
 - `nsecs(boot) - nanoseconds since boot, inclusive of time the system spent suspended (CLOCK_BOOTTIME)`
@@ -988,6 +1070,8 @@ interval:s:1 {
 ```
 
 ### nsecs [0.27..]
+Returns a timestamp in nanoseconds from the selected kernel clock.
+
 - `timestamp nsecs([TimestampMode mode])`
 - `timestamp nsecs`
 - `nsecs(monotonic) - nanosecond timestamp since boot, exclusive of time the system spent suspended (CLOCK_MONOTONIC)`
@@ -1015,36 +1099,45 @@ interval:s:1 {
  */
 ```
 
-### ntop [..]
+### ntop [0.12..]
+Converts an IPv4 or IPv6 address to its text representation.
+
 - `inet ntop([int64 af, ] int addr)`
 - `inet ntop([int64 af, ] char addr[4])`
 - `inet ntop([int64 af, ] char addr[16])`
 
-`ntop` returns the string representation of an IPv4 or IPv6 address.
 `ntop` will infer the address type (IPv4 or IPv6) based on the `addr` type and size.
 If an integer or `char[4]` is given, ntop assumes IPv4, if a `char[16]` is given, ntop assumes IPv6.
 You can also pass the address type (e.g. AF_INET) explicitly as the first parameter.
 
-### numaid [..0.23]
+**Availability**
+Since bpftrace v0.12
+
+### numaid [0.16..0.23]
+ID of the NUMA node executing the BPF program.
 - `uint32 numaid`
 
-ID of the NUMA node executing the BPF program
-
-BPF program, in this case, is the probe body
-
+BPF program, in this case, is the probe body.
 This utilizes the BPF helper `numa_node_id`
 
+**Availability**
+Since bpftrace v0.16
+
 ### numaid [0.24..]
+Returns the ID of the NUMA node running the current BPF program.
+
 - `uint32 numaid()`
 - `uint32 numaid`
 
-ID of the NUMA node executing the BPF program
-
 BPF program, in this case, is the probe body
-
 This utilizes the BPF helper `numa_node_id`
 
-### offsetof [..]
+**Availability**
+Since bpftrace v0.16
+
+### offsetof [0.18..]
+Returns the byte offset of a field within a type.
+
 - `uint64 offsetof(STRUCT, FIELD[.SUBFIELD])`
 - `uint64 offsetof(EXPRESSION, FIELD[.SUBFIELD])`
 
@@ -1071,7 +1164,12 @@ BEGIN {
 }
 ```
 
+**Availability**
+Since bpftrace v0.18
+
 ### override [..]
+Prevents a probed function from running and supplies its return value.
+
 - `void override(uint64 rc)`
 
 **unsafe**
@@ -1106,10 +1204,8 @@ ioctl(PERF_EVENT_IOC_SET_BPF): Invalid argument
 Error attaching probe: 'kprobe:vfs_read'
 ```
 
-### path [..]
+### path [0.12..]
 - `char * path(struct path * path [, int32 size])`
-
-**Kernel** 5.10
 
 This utilizes the BPF helper `bpf_d_path`
 
@@ -1120,7 +1216,13 @@ If `size` is smaller than the resolved path, the resulting string will be trunca
 
 This function can only be used by functions that are allowed to, these functions are contained in the `btf_allowlist_d_path` set in the kernel.
 
+**Availability**
+Since bpftrace v0.12
+Since kernel v5.10
+
 ### pcomm [0.25..0.25]
+Returns the name of the parent process.
+
 - `string pcomm()`
 - `string pcomm`
 - `string pcomm(struct task_struct * task)`
@@ -1131,6 +1233,8 @@ Get the name of the process for the passed task or the current task if called wi
 Since bpftrace v0.25
 
 ### pcomm [0.26..]
+Returns the name of the parent process.
+
 - `string pcomm()`
 - `string pcomm`
 - `string pcomm(struct task_struct * task)`
@@ -1141,7 +1245,9 @@ This is an alias for `task.real_parent.comm`, which is different than `task.grou
 **Availability**
 Since bpftrace v0.26
 
-### percpu_kaddr [..0.24]
+### percpu_kaddr [0.22..0.24]
+Returns the address of a per-CPU kernel symbol.
+
 - `uint64 *percpu_kaddr(const string name)`
 - `uint64 *percpu_kaddr(const string name, int cpu)`
 
@@ -1171,7 +1277,12 @@ interval:s:1 {
 }
 ```
 
+**Availability**
+Since bpftrace v0.22
+
 ### percpu_kaddr [0.25..]
+Returns the address of a per-CPU kernel symbol.
+
 - `uint64 *percpu_kaddr(const string name)`
 - `uint64 *percpu_kaddr(const string name, int cpu)`
 
@@ -1201,34 +1312,36 @@ interval:s:1 {
 }
 ```
 
+**Availability**
+Since bpftrace v0.22
+
 ### pid [..0.23]
+Returns the process ID of the current thread.
+
 - `uint32 pid`
 
-Returns the process ID of the current thread.
-Defaults to `curr_ns`.
-
-* `pid(curr_ns)` - The process ID as seen from the PID namespace of bpftrace.
-* `pid(init)` - The process ID as seen from the initial PID namespace.
-
 ### pid [0.24..]
+Returns the process ID of the current thread.
+
 - `uint32 pid([curr_ns|init])`
 - `uint32 pid`
 
-Returns the process ID of the current thread.
 Defaults to `curr_ns`.
 
 * `pid(curr_ns)` - The process ID as seen from the PID namespace of bpftrace.
 * `pid(init)` - The process ID as seen from the initial PID namespace.
 
 ### ppid [0.24..0.24]
-- `uint32 ppid(struct task_struct * task)`
+Returns the process ID of the parent process.
 
-Get the pid of the parent process
+- `uint32 ppid(struct task_struct * task)`
 
 **Availability**
 Since bpftrace v0.24
 
 ### ppid [0.25..0.25]
+Returns the process ID of the parent process.
+
 - `uint32 ppid()`
 - `uint32 ppid`
 - `uint32 ppid(struct task_struct * task)`
@@ -1250,11 +1363,14 @@ This is an alias for `task.real_parent.pid`, which is different than `task.group
 Since bpftrace v0.24
 
 ### print [..0.24]
+Prints a value using its default formatting.
+
 - `void print(T val)`
 
 **async**
 
 ### print [0.25..]
+Prints a value using its default formatting.
 - `void print(T val)`
 - `void print(T val)`
 - `void print(@map)`
@@ -1351,6 +1467,8 @@ Changing the print call to `print(@, 5, 2)` will take the top 5 values and scale
 ```
 
 ### printf [..0.25]
+Prints arguments using a format string.
+
 - `void printf(const string fmt, args...)`
 
 **async**
@@ -1398,6 +1516,8 @@ print("\033[31mRed\t\033[33mYellow\033[0m\n")
 ```
 
 ### printf [0.26..]
+Prints arguments using a format string.
+
 - `void printf(const string fmt, args...)`
 
 **async**
@@ -1462,22 +1582,20 @@ Colors are supported too, using standard terminal escape sequences:
 print("\033[31mRed\t\033[33mYellow\033[0m\n")
 ```
 
-### probe [..0.23]
-- `string probe`
-
-Name of the fully expanded probe
-
-For example: `kprobe:do_nanosleep`
-
 ### probe [0.24..]
+Returns the fully expanded name of the current probe.
+
 - `string probe()`
 - `string probe`
 
-Name of the fully expanded probe
-
 For example: `kprobe:do_nanosleep`
 
+**Availability**
+Since bpftrace v0.24
+
 ### probetype [0.25..]
+Returns the type of the current probe.
+
 - `string probetype()`
 - `string probetype`
 
@@ -1489,7 +1607,9 @@ For example: `kprobe`, `special`, `tracepoint`
 **Availability**
 Since bpftrace v0.25
 
-### pton [..0.26]
+### pton [0.16..0.26]
+Converts an IPv4 or IPv6 address string to a byte array.
+
 - `char addr[4] pton(const string *addr_v4)`
 - `char addr[16] pton(const string *addr_v6)`
 
@@ -1499,7 +1619,12 @@ Since bpftrace v0.25
 `pton` infers the address family based on `.` or `:` in the given argument.
 `pton` comes in handy when we need to select packets with certain IP addresses.
 
+**Availability**
+Since bpftrace v0.16
+
 ### pton [0.27..]
+Converts an IPv4 or IPv6 address string to a byte array.
+
 - `char addr[4] pton(const string *addr_v4)`
 - `char addr[16] pton(const string *addr_v6)`
 
@@ -1514,7 +1639,12 @@ When casting the result of `pton()` to an integer (e.g. `(uint32)pton("127.0.0.1
 **Big-endian systems**: The bytes maintain their network byte order. For example, `(uint32)pton("127.0.0.1")` yields `0x7f000001` (bytes: `[0x7f, 0x00, 0x00, 0x01]` interpreted as big-endian).
 This behavior is consistent with how the underlying `inet_pton()` function works.
 
+**Availability**
+Since bpftrace v0.16
+
 ### rand [..0.23]
+Returns a pseudo-random number.
+
 - `uint32 rand`
 
 Get a pseudo random number
@@ -1522,6 +1652,8 @@ Get a pseudo random number
 This utilizes the BPF helper `get_prandom_u32`
 
 ### rand [0.24..]
+Returns a pseudo-random number.
+
 - `uint32 rand()`
 - `uint32 rand`
 
@@ -1530,6 +1662,8 @@ Get a pseudo random number
 This utilizes the BPF helper `get_prandom_u32`
 
 ### reg [..]
+Returns the value of a named CPU register.
+
 - `uint64 reg(const string name)`
 
 **Supported probes**
@@ -1541,12 +1675,12 @@ Get the contents of the register identified by `name`.
 Valid names depend on the CPU architecture.
 
 ### signal [..0.24]
++Sends a signal to the process being traced.
+
 - `void signal(const string sig)`
 - `void signal(uint32 signum)`
 
 **unsafe**
-
-**Kernel** 5.3
 
 This utilizes the BPF helper `bpf_send_signal`
 
@@ -1565,8 +1699,11 @@ kprobe:__x64_sys_execve
 $ ls
 Trace/breakpoint trap (core dumped)
 ```
+Since kernel v5.3
 
 ### signal [0.25..]
+Sends a signal to the process being traced.
+
 - `void signal(const string sig)`
 - `void signal(uint32 signum)`
 
@@ -1590,11 +1727,12 @@ kprobe:__x64_sys_execve
 $ ls
 Trace/breakpoint trap (core dumped)
 ```
+Since kernel v5.3
 
 ### signal_name [0.26..]
-- `string signal_name(int sig)`
+Converts a signal number to its name.
 
-Convert signal code to string.
+- `string signal_name(int sig)`
 
 ```
 #include <signal.h>
@@ -1607,6 +1745,8 @@ begin {
 Since bpftrace v0.26
 
 ### signal_thread [0.25..]
+Sends a signal to the thread being traced.
+
 - `void signal_thread(const string sig)`
 - `void signal_thread(uint32 signum)`
 
@@ -1623,7 +1763,9 @@ The signal can either be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` 
 **Availability**
 Since bpftrace v0.25
 
-### sizeof [..]
+### sizeof [0.11..]
+Returns the size of a type or expression in bytes.
+
 - `uint64 sizeof(TYPE)`
 - `uint64 sizeof(EXPRESSION)`
 
@@ -1633,10 +1775,13 @@ Returns size of the argument in bytes.
 Similar to C/C++ `sizeof` operator.
 Note that the expression does not get evaluated.
 
-### skboutput [..0.24]
-- `uint32 skboutput(const string path, struct sk_buff *skb, uint64 length, const uint64 offset)`
+**Availability**
+Since bpftrace v0.11
 
-**Kernel** 5.5
+### skboutput [0.12..0.24]
+Writes packet data from a socket buffer to a PCAP file.
+
+- `uint32 skboutput(const string path, struct sk_buff *skb, uint64 length, const uint64 offset)`
 
 This utilizes the BPF helper `bpf_skb_output`
 
@@ -1677,10 +1822,12 @@ dropped privs to tcpdump
 10:23:45.823229 IP 100.101.2.146.53 > 192.168.0.23.46158: 45799 1/0/0 A 100.100.45.106 (60)
 ```
 
+**Availability**
+Since bpftrace v0.12
+Since kernel v5.5 
+
 ### skboutput [0.25..]
 - `uint32 skboutput(const string path, struct sk_buff *skb, uint64 length, const uint64 offset)`
-
-**Kernel** 5.5
 
 This utilizes the BPF helper `bpf_skb_output`
 
@@ -1721,7 +1868,13 @@ dropped privs to tcpdump
 10:23:45.823229 IP 100.101.2.146.53 > 192.168.0.23.46158: 45799 1/0/0 A 100.100.45.106 (60)
 ```
 
+**Availability**
+Since bpftrace v0.12
+Since kernel v5.5 
+
 ### socket_cookie [0.24..0.24]
+Returns the kernel-generated cookie for a socket.
+
 - `uint64 socket_cookie(struct sock *sk)`
 
 This utilizes the BPF helper `bpf_get_socket_cookie`
@@ -1759,6 +1912,8 @@ Prints:
 Since bpftrace v0.24
 
 ### socket_cookie [0.25..]
+Returns the kernel-generated cookie for a socket.
+
 - `uint64 socket_cookie(struct sock *sk)`
 
 This utilizes the BPF helper `bpf_get_socket_cookie`
@@ -1796,14 +1951,18 @@ Prints:
 Since bpftrace v0.24
 
 ### static_assert [0.25..]
+Fails compilation if a condition is false.
+
 - `void static_assert(bool condition, string msg)`
 
-Assert something is true or fail the build.
+**compile time**
 
 **Availability**
 Since bpftrace v0.25
 
 ### str [..0.24]
+Reads a null-terminated string from an address.
+
 - `string str(char * data [, uint32 length)`
 
 This utilizes the BPF helpers `probe_read_str, probe_read_{kernel,user}_str`
@@ -1815,7 +1974,9 @@ In case the string is longer than the specified length only `length - 1` bytes a
 When available (starting from kernel 5.5, see the `--info` flag) bpftrace will automatically use the `kernel` or `user` variant of `probe_read_{kernel,user}_str` based on the address space of `data`, see [Address-spaces](./language.md#address-spaces) for more information.
 
 ### str [0.25..]
-- `string str(char * data [, uint32 length)`
+Reads a null-terminated string from an address.
+
+- `string str(char * data [, uint32 length])`
 
 This utilizes the BPF helpers `probe_read_str, probe_read_{kernel,user}_str`
 
@@ -1826,6 +1987,8 @@ In case the string is longer than the specified length only `length - 1` bytes a
 bpftrace will automatically use the `kernel` or `user` variant of `probe_read_{kernel,user}_str` based on the address space of `data`, see [Address-spaces](./language.md#address-spaces) for more information.
 
 ### str_concat [0.27..]
+Concatenates two strings into a new string.
+
 - `string str_concat(string s1, string s2)`
 
 Concatenate two strings into a new string.
@@ -1835,11 +1998,11 @@ Returns the new string.
 Since bpftrace v0.27
 
 ### strcap [0.25..]
+Returns the capacity of a string-like object.
+
 - `int64 strcap(string exp)`
 - `int64 strcap(int8 exp[])`
 - `int64 strcap(int8 *exp)`
-
-Returns the "capacity" of a string-like object.
 
 In most cases this is the same as the length, but for bpftrace-native
 strings and arrays, this is the underlying object capacity. This is used to
@@ -1848,7 +2011,9 @@ bound searches and lookups without needing to scan the string itself.
 **Availability**
 Since bpftrace v0.25
 
-### strcontains [..0.24]
+### strcontains [0.17..0.24]
+Checks whether one string contains another.
+
 - `int64 strcontains(const char *haystack, const char *needle)`
 
 `strcontains` compares whether the string haystack contains the string needle.
@@ -1856,14 +2021,24 @@ If needle is contained `1` is returned, else zero is returned.
 
 bpftrace doesn’t read past the length of the shortest string.
 
+**Availability**
+Since bpftrace v0.17
+
 ### strcontains [0.25..]
+Checks whether one string contains another.
+
 - `bool strcontains(string haystack, string needle)`
 
 Compares whether the string haystack contains the string needle.
 
 If needle is contained then true is returned, else false is returned.
 
-### strerror [..0.24]
+**Availability**
+Since bpftrace v0.17
+
+### strerror [0.16..0.24]
+Converts an error number to its description.
+
 - `strerror_t strerror(int error)`
 
 Convert errno code to string.
@@ -1876,7 +2051,12 @@ BEGIN {
 }
 ```
 
+**Availability**
+Since bpftrace v0.16
+
 ### strerror [0.25..]
+Converts an error number to its description.
+
 - `string strerror(int error)`
 
 Convert errno code to string.
@@ -1888,7 +2068,12 @@ begin {
 }
 ```
 
-### strftime [..0.26]
+**Availability**
+Since bpftrace v0.16
+
+### strftime [0.12..0.26]
+Formats a timestamp according to a time format string.
+
 - `timestamp strftime(const string fmt, int64 timestamp_ns)`
 
 **async**
@@ -1910,7 +2095,12 @@ bpftrace also supports the following format string extensions:
 | --- | --- |
 | `%f` | Microsecond as a decimal number, zero-padded on the left |
 
+**Availability**
+Since bpftrace v0.12
+
 ### strftime [0.27..]
+Formats a timestamp according to a time format string.
+
 - `timestamp strftime(const string fmt, uint64 timestamp_ns)`
 
 **async**
@@ -1933,17 +2123,22 @@ bpftrace also supports the following format string extensions:
 | --- | --- |
 | `%f` | Microsecond as a decimal number, zero-padded on the left |
 
+**Availability**
+Since bpftrace v0.12
+
 ### strlen [0.25..]
+Returns the length of a string-like object.
+
 - `uint64 strlen(string exp)`
 - `uint64 strlen(int8 exp[])`
 - `uint64 strlen(int8 *exp)`
 
-Returns the length of a string-like object.
-
 **Availability**
 Since bpftrace v0.25
 
-### strncmp [..]
+### strncmp [0.24..]
+Compares up to a specified number of characters in two strings.
+
 - `int64 strncmp(char * s1, char * s2, int64 n)`
 
 `strncmp` compares up to `n` characters string `s1` and string `s2`.
@@ -1953,7 +2148,12 @@ bpftrace doesn’t read past the length of the shortest string.
 
 The use of the `==` and `!=` operators is recommended over calling `strncmp` directly.
 
+**Availability**
+Since bpftrace v0.24
+
 ### strstr [0.25..]
+Returns the index of the first occurrence of one string in another.
+
 - `int64 strstr(string haystack, string needle)`
 
 Returns the index of the first occurrence of the string needle in the string haystack. If needle is not in haystack then -1 is returned.
@@ -1962,6 +2162,8 @@ Returns the index of the first occurrence of the string needle in the string hay
 Since bpftrace v0.25
 
 ### syscall_name [0.25..]
+Converts a system call number to its name.
+
 - `string syscall_name(int nr_syscall)`
 
 Convert syscall number to string.
@@ -1977,6 +2179,8 @@ begin {
 Since bpftrace v0.25
 
 ### system [..]
+Runs a command in a child process and prints its output.
+
 - `void system(string namefmt [, ...args])`
 
 **unsafe**
@@ -2033,25 +2237,23 @@ tracepoint:syscalls:sys_enter_execve {
 ```
 
 ### tid [..0.23]
+Thread ID of the current thread.
+
 - `uint32 tid`
 
-Returns the thread ID of the current thread.
-Defaults to `curr_ns`.
-
-* `tid(curr_ns)` - The thread ID as seen from the PID namespace of bpftrace.
-* `tid(init)` - The thread ID as seen from the initial PID namespace.
-
 ### tid [0.24..]
+Returns the thread ID of the current thread.
 - `uint32 tid([curr_ns|init])`
 - `uint32 tid`
 
-Returns the thread ID of the current thread.
 Defaults to `curr_ns`.
 
 * `tid(curr_ns)` - The thread ID as seen from the PID namespace of bpftrace.
 * `tid(init)` - The thread ID as seen from the initial PID namespace.
 
 ### time [..]
+Formats and prints the current wall-clock time.
+
 - `void time(const string fmt)`
 
 **async**
@@ -2062,6 +2264,8 @@ Unlike `strftime()` `time()` doesn’t send a timestamp from the probe, instead 
 bpftrace uses the `strftime(3)` function for formatting time and supports the same format specifiers.
 
 ### typeof [0.27..]
+Returns the static type of a parsed type or expression.
+
 - `TYPE typeof(TYPE)`
 - `TYPE typeof(EXPRESSION)`
 
@@ -2125,47 +2329,54 @@ uprobe:/bin/bash:readline {
 ```
 
 ### uid [..0.23]
-- `uint64 uid`
+User ID of the current thread in the initial namespace.
 
-User ID of the current thread, as seen from the init namespace
+- `uint64 uid`
 
 This utilizes the BPF helper `get_current_uid_gid`
 
 ### uid [0.24..]
+Returns the user ID of the current thread in the initial namespace.
+
 - `uint64 uid()`
 - `uint64 uid`
-
-User ID of the current thread, as seen from the init namespace
 
 This utilizes the BPF helper `get_current_uid_gid`
 
 ### unwatch [..]
+Removes a watchpoint.
+
 - `void unwatch(void * addr)`
 
 **async**
 
-Removes a watchpoint
+### uptr [0.12..]
+Marks a pointer as pointing to user address space.
 
-### uptr [..]
 - `T * uptr(T * ptr)`
 
-Marks `ptr` as a user address space pointer.
 See the address-spaces section for more information on address-spaces.
 The pointer type is left unchanged.
 
-### usermode [..]
+**Availability**
+Since bpftrace v0.12
+
+### usermode [0.24..]
+Returns whether execution is currently in user mode.
+
 - `uint8 usermode()`
 - `uint8 usermode`
 
-Returns 1 if the current process is in user mode, 0 otherwise
-
 Currently only available on x86_64.
 
+**Availability**
+Since bpftrace v0.24
+
 ### username [0.24..]
+Returns the current user’s name.
+
 - `string username()`
 - `string username`
-
-Get the current username
 
 Often this is just "root"
 
@@ -2173,6 +2384,8 @@ Often this is just "root"
 Since bpftrace v0.24
 
 ### ustack [..0.24]
+Returns a user-space stack trace.
+
 - `ustack_t ustack([StackMode mode, ][int limit])`
 
 These are implemented using BPF stack maps.
@@ -2248,6 +2461,8 @@ kprobe:ip_output { @[ustack(perf, 3)] = count(); }
 Note that for these examples to work, bash had to be recompiled with frame pointers.
 
 ### ustack [0.25..0.26]
+Returns a user-space stack trace.
+
 - `ustack_t ustack([StackMode mode, ][int limit])`
 
 These are implemented using BPF stack maps.
@@ -2325,6 +2540,8 @@ kprobe:ip_output { @[ustack(perf, 3)] = count(); }
 Note that for these examples to work, bash had to be recompiled with frame pointers.
 
 ### ustack [0.27..]
+Returns a user-space stack trace.
+
 - `ustack_t ustack([StackMode mode, ][int limit])`
 
 There are several [formatting/StackMode options](./language.md#stack_mode).
@@ -2401,6 +2618,8 @@ kprobe:ip_output { @[ustack(perf, 3)] = count(); }
 Note that for these examples to work, bash had to be recompiled with frame pointers.
 
 ### usym [..]
+Resolves a user-space address to a symbol name.
+
 - `usym_t usym(uint64 * addr)`
 
 **async**
@@ -2427,6 +2646,8 @@ uprobe:/bin/bash:readline
 ```
 
 ### warnf [0.25..]
+Formats and prints a warning message with its source location.
+
 - `void warnf(const string fmt, args...)`
 
 **async**
@@ -2447,6 +2668,8 @@ EXPECT stdin:1:9-62: WARNING: Something kinda bad with args: 10, arg2
 Since bpftrace v0.25
 
 ### write_user [0.26..]
+Writes bytes from BPF memory to a user-space address.
+
 - `bool write_user(T * dst, T * src, uint32 len)`
 
 **unsafe**
@@ -2474,6 +2697,8 @@ tracepoint:syscalls:sys_enter_openat
 Since bpftrace v0.26
 
 ### zero [..]
+Sets every value in a map to zero.
+
 - `void zero(map m)`
 
 **async**
