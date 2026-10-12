@@ -187,6 +187,7 @@ Returns the current bpftrace configuration.
 
 Returns a `Record` containing the current `bpftrace` configuration settings. [List of config variables](./language.md#config-variables)
 
+**Example**
 ```
 printf("max_strlen: %d, stack_mode: %s\n", config.max_strlen, config.stack_mode);
 }
@@ -298,6 +299,7 @@ delete(@a, 2); // warning (return value is discarded and the key doesn’t exist
 The, now deprecated, API (supported in version &lt;= 0.21.x) of passing map arguments with the key is still supported:
 e.g. `delete(@mymap[3, "hello"]);`.
 
+**Example**
 ```
 kprobe:dummy {
   @scalar = 1;
@@ -339,6 +341,7 @@ information for a process, a runtime warning is emitted.
 `dw_ustack` is an unstable feature. By default a warning is printed when it
 is used. Set the config flag to suppress the warning or to make it an error:
 
+**Example**
 ```
 config = { unstable_dw_ustack=enable }
 ```
@@ -363,6 +366,7 @@ Formats and prints an error message with its source location.
 
 `errorf()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location.
 
+**Example**
 ```
 BEGIN { errorf("Something bad with args: %d, %s", 10, "arg2"); }
 ```
@@ -387,6 +391,7 @@ Terminate bpftrace, as if a `SIGTERM` was received.
 The `END` probe will still trigger (if specified) and maps will be printed.
 An optional exit code can be provided.
 
+**Examples**
 ```
 BEGIN {
   exit();
@@ -410,6 +415,7 @@ Reports a compile-time error and halts compilation when reached.
 
 `fail()` formats and prints data (similar to [`printf`](#printf)) as an error message with the source location but, as opposed to [`errorf`](#errorf), is treated like a static assert and halts compilation if it is visited. All args have to be literals since they are evaluated at compile time.
 
+**Example**
 ```
 BEGIN { if ($1 < 2) { fail("Expected the first positional param to be greater than 1. Got %d", $1); } }
 ```
@@ -427,6 +433,7 @@ Otherwise return `false` and don't mutate result.
 Use this instead of `has_key` and a map access to avoid an additional map lookup.
 Error if called with a map that has no keys (aka scalar map).
 
+**Example**
 ```
 kprobe:dummy {
   @map[2] = (1, "hello");
@@ -469,7 +476,8 @@ Reads a named command-line option, using its default value to determine the type
 - `bool getopt(string arg_name, bool default_value)`
 
 Get the named command line argument/option e.g.
-```
+**Example**
+```sh
 # bpftrace -e 'BEGIN { print(getopt("hello", 1)); }' -- --hello=5
 
 ```
@@ -479,6 +487,7 @@ If no default type is provided, the option is treated like a boolean arg e.g. `g
 Additionally, boolean args accept the following false values: `0`, `false` e.g. `--hello=false`.
 If the arg is not set on the command line, the default value is used.
 
+**Example**
 ```
 # bpftrace -e 'BEGIN { print((getopt("aa", 10), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
 
@@ -496,6 +505,7 @@ Reads a named command-line option, using its default value to determine the type
 - `string getopt(string arg_name, string default_value, [string description])`
 
 Get the named command line argument/option e.g.
+**Example**
 ```
 # bpftrace -e 'BEGIN { print(getopt("hello", 1, "Description of hello")); }' -- --hello=5
 
@@ -509,6 +519,7 @@ If the arg is not set on the command line, the default value is used.
 
 You can use `--help` to see all named arguments/options.
 
+**Example**
 ```
 # bpftrace -e 'BEGIN { print((getopt("aa", 10, "Description of aa"), getopt("bb", "hello"), getopt("cc"), getopt("dd", false))); }' -- --cc --bb=bye
 
@@ -551,6 +562,7 @@ Otherwise return false (0).
 Error if called with a map that has no keys (aka scalar map).
 Return value can also be used for scratch variables and map keys/values.
 
+**Example**
 ```
 kprobe:dummy {
   @associative[1,2] = 1;
@@ -580,6 +592,7 @@ Return `true` if the key exists in this map.
 Otherwise return `false`.
 Error if called with a map that has no keys (aka scalar map).
 
+**Example**
 ```
 kprobe:dummy {
   @associative[1,2] = 1;
@@ -616,6 +629,7 @@ using the `ERR_PTR` macro. These are pointer values in the range
 
 This is equivalent to the kernel's `IS_ERR()` macro.
 
+**Example**
 ```
 fexit:do_filp_open {
   if (is_err(retval)) {
@@ -703,6 +717,7 @@ This string will be printed to stdout directly, it cannot be used as string valu
 
 The concatenation of the array members is done in BPF and the printing happens in userspace.
 
+**Example**
 ```
 tracepoint:syscalls:sys_enter_execve {
   join(args.argv);
@@ -716,6 +731,7 @@ Returns the address of a kernel symbol.
 
 **compile time**
 
+**Example**
 ```
 interval:s:1 {
   $avenrun = kaddr("avenrun");
@@ -763,6 +779,7 @@ Returns a kernel stack trace.
 
 These are implemented using BPF stack maps.
 
+**Examples**
 ```
 kprobe:ip_output { @[kstack()] = count(); }
 
@@ -823,6 +840,7 @@ Returns a kernel stack trace.
 
 These are implemented using BPF stack maps.
 
+**Examples**
 ```
 kprobe:ip_output { @[kstack()] = count(); }
 
@@ -885,6 +903,7 @@ Returns a kernel stack trace.
 
 There are several [formatting/StackMode options](./language.md#stack_mode).
 
+**Examples**
 ```
 kprobe:ip_output { @[kstack()] = count(); }
 
@@ -951,6 +970,7 @@ The address to name mapping happens in user-space.
 
 The `ksym_t` type can be printed with the `%s` format specifier.
 
+**Example**
 ```
 kprobe:do_nanosleep
 {
@@ -1012,6 +1032,7 @@ Creates a printable buffer from a MAC address.
 
 This buffer can be printed in the canonical string format using the `%s` format specifier.
 
+**Example**
 ```
 kprobe:arp_create {
   $stack_arg0 = *(uint8*)(reg("sp") + 8);
@@ -1063,6 +1084,7 @@ Returns a timestamp in nanoseconds, as given by the requested kernel clock.
 Defaults to `boot` if no clock is explicitly requested.
 
 
+**Example**
 ```
 interval:s:1 {
   $sw_tai1 = nsecs(sw_tai);
@@ -1093,6 +1115,7 @@ Returns a timestamp in nanoseconds, as given by the requested kernel clock.
 Defaults to `boot` if no clock is explicitly requested.
 
 
+**Example**
 ```
 interval:s:1 {
   $sw_tai1 = nsecs(sw_tai);
@@ -1158,6 +1181,7 @@ Similar to kernel `offsetof` operator.
 
 Support any number of sub field levels, for example:
 
+**Example**
 ```
 struct Foo {
   struct {
@@ -1194,6 +1218,7 @@ This utilizes the BPF helper `bpf_override`
 
 When using `override` the probed function will not be executed and instead `rc` will be returned.
 
+**Example**
 ```
 kprobe:__x64_sys_getuid
 /comm == "id"/ {
@@ -1266,6 +1291,7 @@ Returns the address of a per-CPU kernel symbol.
 Get the address of the percpu kernel symbol `name` for CPU `cpu`. When `cpu` is
 omitted, the current CPU is used.
 
+**Examples**
 ```
 interval:s:1 {
   $proc_cnt = percpu_kaddr("process_counts");
@@ -1301,6 +1327,7 @@ Returns the address of a per-CPU kernel symbol.
 Get the address of the percpu kernel symbol `name` for CPU `cpu`. When `cpu` is
 omitted, the current CPU is used.
 
+**Examples**
 ```
 interval:s:1 {
   $proc_cnt = percpu_kaddr("process_counts");
@@ -1392,6 +1419,7 @@ Prints a value using its default formatting.
 
 `print` prints a the value, which can be a map or a scalar value, with the default formatting for the type.
 
+**Examples**
 ```
 interval:s:1 {
   print(123);
@@ -1502,6 +1530,7 @@ The non-standard ones can be found in the table below:
 `printf()` can also symbolize enums as strings. User defined enums as well as enums
 defined in the kernel are supported. For example:
 
+**Examples**
 ```
 enum custom {
   CUSTOM_ENUM = 3,
@@ -1553,6 +1582,7 @@ The non-standard ones can be found in the table below:
 `printf()` can also symbolize enums as strings. User defined enums as well as enums
 defined in the kernel are supported. For example:
 
+**Examples**
 ```
 enum custom {
   CUSTOM_ENUM = 3,
@@ -1700,6 +1730,7 @@ Probe types: k(ret)probe, u(ret)probe, USDT, profile
 Send a signal to the process being traced.
 The signal can either be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill -l`.
 
+**Example**
 ```
 kprobe:__x64_sys_execve
 /comm == "bash"/ {
@@ -1728,6 +1759,7 @@ Send a signal to the process being traced (any thread).
 Use `signal_thread` to send to the thread being traced.
 The signal can either be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill -l`.
 
+**Example**
 ```
 kprobe:__x64_sys_execve
 /comm == "bash"/ {
@@ -1745,6 +1777,7 @@ Converts a signal number to its name.
 
 - `string signal_name(int sig)`
 
+**Example**
 ```
 #include <signal.h>
 begin {
@@ -1809,6 +1842,7 @@ Environment variable `BPFTRACE_PERF_RB_PAGES` should be increased in order to ca
 
 Usage
 
+**Examples**
 ```
 # cat dump.bt
 fentry:napi_gro_receive {
@@ -1855,6 +1889,7 @@ Environment variable `BPFTRACE_PERF_RB_PAGES` should be increased in order to ca
 
 Usage
 
+**Examples**
 ```
 # cat dump.bt
 fentry:napi_gro_receive {
@@ -1895,6 +1930,7 @@ If no cookie has been set yet, generate a new cookie. Once generated, the socket
 
 This function returns a `uint64` unique number on success, or 0 if **sk** is NULL.
 
+**Example**
 ```
 fentry:tcp_rcv_established
 {
@@ -1934,6 +1970,7 @@ If no cookie has been set yet, generate a new cookie. Once generated, the socket
 
 This function returns a `uint64` unique number on success, or 0 if **sk** is NULL.
 
+**Example**
 ```
 fentry:tcp_rcv_established
 {
@@ -2055,6 +2092,7 @@ Converts an error number to its description.
 Convert errno code to string.
 This is done asynchronously in userspace when the strerror value is printed, hence the returned value can only be used for printing.
 
+**Example**
 ```
 #include <errno.h>
 BEGIN {
@@ -2072,6 +2110,7 @@ Converts an error number to its description.
 
 Convert errno code to string.
 
+**Example**
 ```
 #include <errno.h>
 begin {
@@ -2094,6 +2133,7 @@ The time conversion and formatting happens in user space, therefore  the `timest
 
 bpftrace uses the `strftime(3)` function for formatting time and supports the same format specifiers.
 
+**Example**
 ```
 interval:s:1 {
   printf("%s\n", strftime("%H:%M:%S", nsecs));
@@ -2122,6 +2162,7 @@ The time conversion and formatting happens in user space, therefore  the `timest
 
 bpftrace uses the `strftime(3)` function for formatting time and supports the same format specifiers.
 
+**Example**
 ```
 interval:s:1 {
   printf("%s\n", strftime("%H:%M:%S", nsecs));
@@ -2179,6 +2220,7 @@ Converts a system call number to its name.
 
 Convert syscall number to string.
 
+**Example**
 ```
 #include <syscall.h>
 begin {
@@ -2200,6 +2242,7 @@ Runs a command in a child process and prints its output.
 `system` lets bpftrace run the specified command (`fork` and `exec`) until it completes and print its stdout.
 The `command` is run with the same privileges as bpftrace and it blocks execution of the processing threads which can lead to missed events and delays processing of async events.
 
+**Examples**
 ```
 interval:s:1 {
   time("%H:%M:%S: ");
@@ -2309,6 +2352,7 @@ The default return type is `uint64*`.
 If the ELF object size matches a known integer size (1, 2, 4 or 8 bytes) the return type is modified to match the width (`uint8*`, `uint16*`, `uint32*` or `uint64*` resp.).
 As ELF does not contain type info the type is always assumed to be unsigned.
 
+**Example**
 ```
 uprobe:/bin/bash:readline {
   printf("PS1: %s\n", str(*uaddr("ps1_prompt")));
@@ -2333,6 +2377,7 @@ The default return type is `uint64*`.
 If the ELF object size matches a known integer size (1, 2, 4 or 8 bytes) the return type is modified to match the width (`uint8*`, `uint16*`, `uint32*` or `uint64*` resp.).
 As ELF does not contain type info the type is always assumed to be unsigned.
 
+**Example**
 ```
 uprobe:/bin/bash:readline {
   printf("PS1: %s\n", str(*uaddr("ps1_prompt")));
@@ -2401,6 +2446,7 @@ Returns a user-space stack trace.
 
 These are implemented using BPF stack maps.
 
+**Examples**
 ```
 kprobe:do_sys_open /comm == "bash"/ { @[ustack()] = count(); }
 
@@ -2478,6 +2524,7 @@ Returns a user-space stack trace.
 
 These are implemented using BPF stack maps.
 
+**Examples**
 ```
 kprobe:do_sys_open /comm == "bash"/ { @[ustack()] = count(); }
 
@@ -2557,6 +2604,7 @@ Returns a user-space stack trace.
 
 There are several [formatting/StackMode options](./language.md#stack_mode).
 
+**Examples**
 ```
 kprobe:do_sys_open /comm == "bash"/ { @[ustack()] = count(); }
 
@@ -2644,6 +2692,7 @@ Equal to [ksym](#ksym) but resolves user space symbols.
 
 If ASLR is enabled, user space symbolication only works when the process is running at either the time of the symbol resolution or the time of the probe attachment. The latter requires `BPFTRACE_CACHE_USER_SYMBOLS` to be set to `PER_PID`, and might not work with older versions of BCC. A similar limitation also applies to dynamically loaded symbols.
 
+**Example**
 ```
 uprobe:/bin/bash:readline
 {
@@ -2665,6 +2714,7 @@ Formats and prints a warning message with its source location.
 
 `warnf()` formats and prints data (similar to [`printf`](#printf)) as an warning message with the source location. This respects the "--no-warnings" flag and will be silent if that is used.
 
+**Example**
 ```
 BEGIN { warnf("Something kinda bad with args: %d, %s", 10, "arg2"); }
 ```
@@ -2722,6 +2772,7 @@ Calculates the running average of values passed to the function.
 
 * `avg_t avg(int64 n)`
 
+**Example**
 ```
 interval:s:1 {
   @x++;
@@ -2754,7 +2805,7 @@ Note: This differs from "raw" writes (e.g. `@++`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any atomic instructions
 for `++`.
 
-Example one:
+**Examples**
 ```
 BEGIN {
   @ = count();
@@ -2764,7 +2815,6 @@ BEGIN {
 }
 ```
 
-Example two:
 ```
 interval:ms:100 {
   @ = count();
@@ -2789,6 +2839,7 @@ Records values in a logarithmic histogram.
 Create a log2 histogram of `n` using $2^k$ buckets per power of 2,
 0 &lt;= k &lt;= 5, defaults to 0.
 
+**Example**
 ```
 kretprobe:vfs_read {
   @bytes = hist(retval);
@@ -2821,6 +2872,7 @@ Create a linear histogram of `n`.
 `lhist` creates `M` (`(max - min) / step`) buckets in the range `[min,max)` where each bucket is `step` in size.
 Values in the range `(-inf, min)` and `(max, inf)` get their get their own bucket too, bringing the total amount of buckets created to `M+2`.
 
+**Example**
 ```
 interval:ms:1 {
   @ = lhist(rand %10, 0, 10, 1);
@@ -2894,6 +2946,7 @@ Tracks the count, average, and sum of values.
 
 `stats` combines the `count`, `avg` and `sum` calls into one.
 
+**Example**
 ```
 kprobe:vfs_read {
   @bytes[comm] = stats(arg2);
@@ -2924,7 +2977,7 @@ Note: This differs from "raw" writes (e.g. `@+=5`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any implicit
 atomic operations.
 
-Example one:
+**Examples**
 ```
 BEGIN {
   @ = sum(5);
@@ -2935,7 +2988,6 @@ BEGIN {
 }
 ```
 
-Example two:
 ```
 interval:ms:100 {
   @ = sum(5);
@@ -2969,7 +3021,7 @@ Note: This differs from "raw" writes (e.g. `@+=5`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any implicit
 atomic operations.
 
-Example one:
+**Examples**
 ```
 BEGIN {
   @ = sum(5);
@@ -2980,7 +3032,6 @@ BEGIN {
 }
 ```
 
-Example two:
 ```
 interval:ms:100 {
   @ = sum(5);
@@ -3031,10 +3082,7 @@ are aggregated.
 | `min` | `@ = tseries(@v, 1s, 5, "min")` | Calculate the minimum of all values in each interval. |
 | `sum` | `@ = tseries(@v, 1s, 5, "sum")` | Calculate the sum of all values in each interval. |
 
-#### Examples
-
-Example one:
-
+**Examples**
 ```
 // Record the minimum of ten random values generated during each 100ms interval.
 i:ms:10 {
