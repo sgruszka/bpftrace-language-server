@@ -379,6 +379,10 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
                     doc_item.helper_flags |= IS_COMPTIME;
                 }
 
+                if doc_item.full_info.ends_with("\n") {
+                    let _ = doc_item.full_info.pop();
+                }
+
                 continue;
             }
 

@@ -5,7 +5,7 @@ See the LICENSE file of that project or https://www.apache.org/licenses/LICENSE-
 -->
 
 ### assert [0.24..]
-Checks a condition and terminates the script with an error if it is false.
+Terminates the script if a condition is false.
 
 - `void assert(bool condition, string message)`
 
