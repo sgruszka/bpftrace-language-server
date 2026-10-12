@@ -320,14 +320,12 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
     .to_string();
 
     for line in stdlib_md.lines() {
-        let line = line.trim();
-
-        if line == "## MAP VALUE FUNCTIONS" {
+        if line.trim() == "## MAP VALUE FUNCTIONS" {
             map_value_func = true;
             continue;
         }
 
-        if line.starts_with("### ") {
+        if line.trim().starts_with("### ") {
             if collected_item {
                 stdlib_add_json_obj(&mut text, &doc_item);
             }
@@ -350,7 +348,7 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
         }
 
         if after_label {
-            if line.is_empty() {
+            if line.trim().is_empty() {
                 after_summary = true;
                 after_label = false;
             } else {
@@ -360,22 +358,22 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
         }
 
         if after_summary {
-            if line.is_empty() {
+            if line.trim().is_empty() {
                 doc_item.full_info.push('\n');
                 continue;
             }
 
-            if line.starts_with("**async**")
-                || line.starts_with("**unsafe**")
-                || line.starts_with("**compile time**")
+            if line.trim().starts_with("**async**")
+                || line.trim().starts_with("**unsafe**")
+                || line.trim().starts_with("**compile time**")
             {
-                if line.starts_with("**async**") {
+                if line.trim().starts_with("**async**") {
                     doc_item.helper_flags |= IS_ASYNC;
                 }
-                if line.starts_with("**unsafe**") {
+                if line.trim().starts_with("**unsafe**") {
                     doc_item.helper_flags |= IS_UNSAFE;
                 }
-                if line.starts_with("**compile time**") {
+                if line.trim().starts_with("**compile time**") {
                     doc_item.helper_flags |= IS_COMPTIME;
                 }
 
@@ -387,7 +385,7 @@ pub fn bpftrace_stdlib_helpers(items: &mut json::JsonValue, this_version: (u16, 
             }
 
             if !after_variants {
-                if line.starts_with("- ") || line.starts_with("* ") {
+                if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
                     doc_item.variants.push(line[3..line.len() - 1].to_string());
                 } else {
                     after_variants = true;
