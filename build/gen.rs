@@ -3,6 +3,7 @@ use std::fs;
 #[derive(Default, Debug)]
 struct DocItem {
     label: String,
+    detail: String,
     first_line: String,
     variants: Vec<String>,
     short_name: String,
@@ -82,17 +83,7 @@ fn parse_version(input: &str) -> Result<Version, ParseVersionError> {
 
 fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     let label = &doc_item.label;
-
-    let mut tmp_str = String::new();
-    let detail = if doc_item.variants.is_empty() {
-        &doc_item.label
-    } else {
-        for variant in &doc_item.variants {
-            tmp_str.push_str(variant);
-            tmp_str.push('\n');
-        }
-        &tmp_str
-    };
+    let detail = &doc_item.detail;
 
     let mut docs = if doc_item.short_name.is_empty() {
         doc_item.first_line.to_string()
@@ -240,7 +231,7 @@ pub fn bpftrace_probe_providers(items: &mut json::JsonValue) {
 
         if line.trim().starts_with("### ") {
             if collected_probe {
-                add_json_obj(&mut text, &doc_item, 8);
+                probe_add_json_obj(&mut text, &mut doc_item);
             }
 
             doc_item = DocItem::default();
@@ -429,6 +420,7 @@ pub fn bpftrace_config_variables(items: &mut json::JsonValue, this_version: (u16
             doc_item = DocItem::default();
             let (label, range) = parse_header(line.trim()).unwrap();
             doc_item.label = label.to_string();
+            doc_item.detail = format!("{} - config variable", label);
             doc_item.version = parse_version(range).unwrap();
             collected_item = true;
 
@@ -449,6 +441,23 @@ pub fn bpftrace_config_variables(items: &mut json::JsonValue, this_version: (u16
     text.push_str("}");
 
     text
+}
+
+fn probe_add_json_obj(text: &mut String, doc_item: &mut DocItem) {
+    let mut tmp_str = String::new();
+    let detail = if doc_item.variants.is_empty() {
+        doc_item.label.clone()
+    } else {
+        for variant in &doc_item.variants {
+            tmp_str.push_str(variant);
+            tmp_str.push('\n');
+        }
+        tmp_str
+    };
+
+    doc_item.detail = detail;
+
+    add_json_obj(text, doc_item, 8);
 }
 
 fn config_add_json_obj(text: &mut String, doc_item: &DocItem) {
