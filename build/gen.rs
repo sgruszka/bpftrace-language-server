@@ -411,18 +411,25 @@ fn gen_completion_config_variables(stdlib_md: &str) -> String {
     let mut after_label = false;
 
     let mut text = r#"
-pub fn bpftrace_config_variables(items: &mut json::JsonValue) {
+pub fn bpftrace_config_variables(items: &mut json::JsonValue, this_version: (u16, u16)) {
     "#
     .to_string();
 
     for line in stdlib_md.lines() {
         if line.trim().starts_with("### ") {
             if collected_item {
-                add_json_obj(&mut text, &doc_item, 6);
+                config_add_json_obj(&mut text, &doc_item);
+            }
+
+            if line.trim() == "### END" {
+                collected_item = false;
+                break;
             }
 
             doc_item = DocItem::default();
-            doc_item.label = line[4..].to_string();
+            let (label, range) = parse_header(line.trim()).unwrap();
+            doc_item.label = label.to_string();
+            doc_item.version = parse_version(range).unwrap();
             collected_item = true;
 
             after_label = true;
@@ -435,7 +442,37 @@ pub fn bpftrace_config_variables(items: &mut json::JsonValue) {
         }
     }
 
+    if collected_item {
+        config_add_json_obj(&mut text, &doc_item);
+    }
+
     text.push_str("}");
 
     text
+}
+
+fn config_add_json_obj(text: &mut String, doc_item: &DocItem) {
+    let mut cond_min_end = "";
+    let mut cond_max_end = "";
+
+    if let Some(min_ver) = doc_item.version.min_ver {
+        text.push_str(&format!(
+            "if this_version >= ({},{}) {{",
+            min_ver.0, min_ver.1
+        ));
+        cond_min_end = "}";
+    }
+
+    if let Some(max_ver) = doc_item.version.max_ver {
+        text.push_str(&format!(
+            "if this_version <= ({},{}) {{",
+            max_ver.0, max_ver.1
+        ));
+        cond_max_end = "}";
+    }
+
+    add_json_obj(text, doc_item, 6);
+
+    text.push_str(cond_max_end);
+    text.push_str(cond_min_end);
 }

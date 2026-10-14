@@ -8,7 +8,7 @@ See the LICENSE file of that project or https://www.apache.org/licenses/LICENSE-
 Some behavior can only be controlled through config variables, which are listed here.
 These can be set via the [Config Block](#config-block) directly in a script (before any probes) or via their environment variable equivalent, which is upper case and includes the `BPFTRACE_` prefix e.g. `stack_mode`’s environment variable would be `BPFTRACE_STACK_MODE`.
 
-### cache_user_symbols
+### cache_user_symbols [..]
 
 Default: PER_PROGRAM if ASLR disabled or `-c` option given, PER_PID otherwise.
 
@@ -17,7 +17,7 @@ Default: PER_PROGRAM if ASLR disabled or `-c` option given, PER_PID otherwise.
 If there are many processes running, it will consume a lot of a memory.
 * NONE - caching disabled. This saves the most memory, but at the cost of speed.
 
-### cpp_demangle
+### cpp_demangle [..]
 
 Default: true
 
@@ -25,13 +25,13 @@ C++ symbol demangling in userspace stack traces is enabled by default.
 
 This feature can be turned off by setting the value of this variable to `false`.
 
-### lazy_symbolication
+### lazy_symbolication [..]
 
 Default: false
 
 For user space symbols, symbolicate lazily/on-demand (`true`) or symbolicate everything ahead of time (`false`).
 
-### license
+### license [..]
 
 Default: "GPL"
 
@@ -45,13 +45,13 @@ The license bpftrace will use to load BPF programs into the linux kernel. Here i
 
 [Read More about BPF licenses](#bpf-license)
 
-### log_size
+### log_size [..]
 
 Default: 1000000
 
 Log size in bytes.
 
-### max_bpf_progs
+### max_bpf_progs [..]
 
 Default: 1024
 
@@ -59,13 +59,13 @@ This is the maximum number of BPF programs (functions) that bpftrace can generat
 The main purpose of this limit is to prevent bpftrace from hanging since generating a lot of probes
 takes a lot of resources (and it should not happen often).
 
-### max_cat_bytes
+### max_cat_bytes [..]
 
 Default: 10240
 
 Maximum bytes read by cat builtin.
 
-### max_map_keys
+### max_map_keys [..]
 
 Default: 4096
 
@@ -73,7 +73,7 @@ This is the maximum number of keys that can be stored in a map.
 Increasing the value will consume more memory and increase startup times.
 There are some cases where you will want to, for example: sampling stack traces, recording timestamps for each page, etc.
 
-### max_probes
+### max_probes [..]
 
 Default: 1024
 
@@ -81,7 +81,7 @@ This is the maximum number of probes that bpftrace can attach to.
 Increasing the value will consume more memory, increase startup times, and can incur high performance overhead or even freeze/crash the
 system.
 
-### max_strlen
+### max_strlen [..]
 
 Default: 1024
 
@@ -90,7 +90,7 @@ The maximum length (in bytes) for values created by `str()`, `buf()` and `path()
 This limit is necessary because BPF requires the size of all dynamically-read strings (and similar) to be declared up front. This is the size for all strings (and similar) in bpftrace unless specified at the call site.
 There is no artificial limit on what you can tune this to. But you may be wasting resources (memory and cpu) if you make this too high.
 
-### missing_probes
+### missing_probes [..]
 
 Default: `error`
 
@@ -101,7 +101,7 @@ The possible options are:
 - `warn` - print a warning but continue execution
 - `ignore` - silently ignore missing probes
 
-### on_stack_limit
+### on_stack_limit [0.22..]
 
 Default: 32
 
@@ -109,7 +109,10 @@ The maximum size (in bytes) of individual objects that will be stored on the BPF
 
 This exists because the BPF stack is limited to 512 bytes and large objects make it more likely that we’ll run out of space. bpftrace can store objects that are larger than the `on_stack_limit` in pre-allocated memory to prevent this stack error. However, storing in pre-allocated memory may be less memory efficient. Lower this default number if you are still seeing a stack memory error or increase it if you’re worried about memory consumption.
 
-### perf_rb_pages
+**Availability**
+Since bpftrace v0.22
+
+### perf_rb_pages [..]
 
 Default: Based on available system memory
 
@@ -121,12 +124,15 @@ The tradeoff is that bpftrace will use more memory.
 The default value is based on available system memory; max is 4096 pages (16mb) and min is 64 pages (256kb), which presumes 4k page size.
 If your system has a larger page size the amount of allocated memory will be the same but we'll just use fewer pages.
 
-### show_debug_info
+### show_debug_info [0.24..]
 
 This is only available if the [Blazesym](https://github.com/libbpf/blazesym) library is available at build time. If it is available this defaults to `true`, meaning that when printing ustack and kstack symbols bpftrace will also show (if debug info is available) symbol file and line ('bpftrace' stack mode) and a label if the function was inlined ('bpftrace' and 'perf' stack modes).
 There might be a performance difference when symbolicating, which is the only reason to disable this.
 
-### stack_mode
+**Availability**
+Since bpftrace v0.24
+
+### stack_mode [..]
 
 Default: bpftrace
 
@@ -142,20 +148,23 @@ This can be overwritten at the call site.
 
 When [debug info](#show_debug_info) is available the file and line is added at the end for `bpftrace` or `perf` stack mode e.g. `spin+37@/home/jordalgo/local/bpftrace/tests/testprogs/uprobe_loop.c:14`.
 
-### str_trunc_trailer
+### str_trunc_trailer [..]
 
 Default: `..`
 
 Trailer to add to strings that were truncated.
 Set to empty string to disable truncation trailers.
 
-### print_maps_on_exit
+### print_maps_on_exit [0.22..]
 
 Default: true
 
 Controls whether maps are printed on exit. Set to `false` in order to change the default behavior and not automatically print maps at program exit.
 
-### unstable_tseries
+**Availability**
+Since bpftrace v0.22
+
+### unstable_tseries [0.24..]
 
 Default: warn
 
@@ -166,7 +175,10 @@ The possible options are:
 - `warn` - enable feature but print a warning
 - `enable` - enable feature
 
-### unstable_dw_ustack
+**Availability**
+Since bpftrace v0.24
+
+### unstable_dw_ustack [0.26..]
 
 Default: warn
 
@@ -176,6 +188,9 @@ The possible options are:
 - `error` - fail if this feature is used
 - `warn` - enable feature but print a warning
 - `enable` - enable feature
+
+**Availability**
+Since bpftrace v0.26
 
 ### END
 

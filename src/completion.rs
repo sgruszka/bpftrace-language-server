@@ -1281,7 +1281,7 @@ fn encode_completion_for_line(line_str: &str) -> JsonValue {
 fn encode_completion_for_config_block() -> JsonValue {
     let mut items = JsonValue::new_array();
 
-    bpftrace_config_variables(&mut items);
+    bpftrace_config_variables(&mut items, bpftrace_major_minor_version());
 
     object! {
         "result": {
