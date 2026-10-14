@@ -2799,27 +2799,25 @@ interval:s:1 {
 ```
 
 Internally this keeps two values in the map: value count and running total.
-The average is computed in user-space when printing by dividing the total by the
-count. However, you can get the average in kernel space in expressions like
-`if (@y == 5)` but this is expensive as bpftrace needs to iterate over all the
-cpus to collect and sum BOTH count and total.
+The average is computed in userspace when printing by dividing the total by the
+count. You can also get the average in kernel space in expressions like
+`if (@y == 5)`, but this is expensive because bpftrace must iterate over all
+CPUs to collect and sum both the count and total.
 
 ### count [..]
 Counts how many times the function is called.
 
 * `count_t count()`
 
-Count how often this function is called.
-
-Using `@=count()` is conceptually similar to `@++`.
-The difference is that the `count()` function uses a map type optimized for
-performance and correctness using cheap, thread-safe writes ([PERCPU](./language.md#percpu-types)). However, sync reads
-can be expensive as bpftrace needs to iterate over all the cpus to collect and
-sum these values.
+Using `@=count()` is conceptually similar to `@++`. The difference is that the
+`count()` function uses a map type optimized for performance and correctness
+using cheap, thread-safe writes. However, sync reads can be expensive as
+bpftrace needs to iterate over all the CPUs to collect and sum these values.
+See [PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
 
 Note: This differs from "raw" writes (e.g. `@++`) where multiple writers to a
-shared location might lose updates, as bpftrace does not generate any atomic instructions
-for `++`.
+shared location might lose updates, as bpftrace does not generate any atomic
+instructions for `++`.
 
 **Examples**
 ```
@@ -2852,31 +2850,27 @@ Records values in a logarithmic histogram.
 
 * `hist_t hist(int64 n[, int k])`
 
-Create a log2 histogram of `n` using $2^k$ buckets per power of 2,
-0 &lt;= k &lt;= 5, defaults to 0.
+Create a log2 histogram of `n` using $2^k$ buckets per power of 2, where
+`0 <= k <= 5`. The default value of `k` is 0.
 
 **Example**
 ```
 kretprobe:vfs_read {
   @bytes = hist(retval);
+  // Sample output:
+  // @:
+  // [1M, 2M)               3 |                                                    |
+  // [2M, 4M)               2 |                                                    |
+  // [4M, 8M)               2 |                                                    |
+  // [8M, 16M)              6 |                                                    |
+  // [16M, 32M)            16 |                                                    |
+  // [32M, 64M)            27 |                                                    |
+  // [64M, 128M)           48 |@                                                   |
+  // [128M, 256M)          98 |@@@                                                 |
+  // [256M, 512M)         191 |@@@@@@                                              |
+  // [512M, 1G)           394 |@@@@@@@@@@@@@                                       |
+  // [1G, 2G)             820 |@@@@@@@@@@@@@@@@@@@@@@@@@@@                         |
 }
-```
-
-Prints:
-
-```
-@:
-[1M, 2M)               3 |                                                    |
-[2M, 4M)               2 |                                                    |
-[4M, 8M)               2 |                                                    |
-[8M, 16M)              6 |                                                    |
-[16M, 32M)            16 |                                                    |
-[32M, 64M)            27 |                                                    |
-[64M, 128M)           48 |@                                                   |
-[128M, 256M)          98 |@@@                                                 |
-[256M, 512M)         191 |@@@@@@                                              |
-[512M, 1G)           394 |@@@@@@@@@@@@@                                       |
-[1G, 2G)             820 |@@@@@@@@@@@@@@@@@@@@@@@@@@@                         |
 ```
 
 ### lhist [..]
@@ -2884,9 +2878,10 @@ Records values in a linear histogram.
 
 * `lhist_t lhist(int64 n, int64 min, int64 max, int64 step)`
 
-Create a linear histogram of `n`.
-`lhist` creates `M` (`(max - min) / step`) buckets in the range `[min,max)` where each bucket is `step` in size.
-Values in the range `(-inf, min)` and `(max, inf)` get their own bucket too, bringing the total amount of buckets created to `M+2`.
+Create a linear histogram of `n`. `lhist` creates `M` (`(max - min) / step`)
+buckets in the range `[min, max)`, each of size `step`. Values below `min` and
+above or equal to `max` are placed in their own buckets, for a total of `M + 2`
+buckets.
 
 **Example**
 ```
@@ -2896,23 +2891,19 @@ interval:ms:1 {
 
 interval:s:5 {
   exit();
+  // Sample output:
+  // @:
+  // [0, 1)               306 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@         |
+  // [1, 2)               284 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            |
+  // [2, 3)               294 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@          |
+  // [3, 4)               318 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@       |
+  // [4, 5)               311 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@        |
+  // [5, 6)               362 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+  // [6, 7)               336 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    |
+  // [7, 8)               326 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      |
+  // [8, 9)               328 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@     |
+  // [9, 10)              318 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@       |
 }
-```
-
-Prints:
-
-```
-@:
-[0, 1)               306 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@         |
-[1, 2)               284 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            |
-[2, 3)               294 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@          |
-[3, 4)               318 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@       |
-[4, 5)               311 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@        |
-[5, 6)               362 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[6, 7)               336 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    |
-[7, 8)               326 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      |
-[8, 9)               328 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@     |
-[9, 10)              318 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@       |
 ```
 
 ### max [..]
@@ -2921,11 +2912,13 @@ Tracks the largest value passed to the function.
 * `max_t max(int64 n)`
 
 Update the map with `n` if `n` is bigger than the current value held.
-Similar to `count` this uses a [PERCPU](./language.md#percpu-types) map (thread-safe, fast writes, slow reads).
 
-Note: this is different than the typical userspace `max()` in that bpftrace’s `max()`
-only takes a single argument. The logical "other" argument to compare to is the value
-in the map the "result" is being assigned to.
+This function uses a [PERCPU map](https://bpftrace.org/docs/release_027/language#percpu-types).
+Writes are fast and thread-safe, but reads are slow.
+
+Note: Unlike the typical userspace `max()`, bpftrace's `max()` takes only one
+argument. The other value being compared is the current value in the map to
+which the result is assigned.
 
 For example, compare the two logically equivalent samples (C++ vs bpftrace):
 
@@ -2951,7 +2944,9 @@ Tracks the smallest value passed to the function.
 * `min_t min(int64 n)`
 
 Update the map with `n` if `n` is smaller than the current value held.
-Similar to `count` this uses a [PERCPU](./language.md#percpu-types) map (thread-safe, fast writes, slow reads).
+
+This function uses a [PERCPU map](https://bpftrace.org/docs/release_027/language#percpu-types).
+Writes are fast and thread-safe, but reads are slow.
 
 See `max()` above for how this differs from the typical userspace `min()`.
 
@@ -2966,14 +2961,11 @@ Tracks the count, average, and sum of values.
 ```
 kprobe:vfs_read {
   @bytes[comm] = stats(arg2);
+  // Sample output:
+  // @bytes[bash]: count 7, average 1, total 7
+  // @bytes[sleep]: count 5, average 832, total 4160
+  // @bytes[ls]: count 7, average 886, total 6208
 }
-```
-
-```
-@bytes[bash]: count 7, average 1, total 7
-@bytes[sleep]: count 5, average 832, total 4160
-@bytes[ls]: count 7, average 886, total 6208
-@
 ```
 
 ### sum [..0.23]
@@ -2983,11 +2975,11 @@ Calculates the sum of values passed to the function.
 
 Calculate the sum of all `n` passed.
 
-Using `@=sum(5)` is conceptually similar to `@+=5`.
-The difference is that the `sum()` function uses a map type optimized for
-performance and correctness using cheap, thread-safe writes ([PERCPU](./language.md#percpu-types)). However, sync reads
-can be expensive as bpftrace needs to iterate over all the cpus to collect and
-sum these values.
+Using `@=sum(5)` is conceptually similar to `@+=5`. The difference is that the
+`sum()` function uses a map type optimized for performance and correctness
+using cheap, thread-safe writes. However, sync reads can be expensive as
+bpftrace needs to iterate over all CPUs to collect and sum these values.
+See [PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
 
 Note: This differs from "raw" writes (e.g. `@+=5`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any implicit
@@ -3027,11 +3019,11 @@ Calculates the sum of values passed to the function.
 
 Calculate the sum of all `n` passed.
 
-Using `@=sum(5)` is conceptually similar to `@+=5`.
-The difference is that the `sum()` function uses a map type optimized for
-performance and correctness using cheap, thread-safe writes ([PERCPU](./language.md#percpu-types)). However, sync reads
-can be expensive as bpftrace needs to iterate over all the cpus to collect and
-sum these values.
+Using `@=sum(5)` is conceptually similar to `@+=5`. The difference is that the
+`sum()` function uses a map type optimized for performance and correctness
+using cheap, thread-safe writes. However, sync reads can be expensive as
+bpftrace needs to iterate over all CPUs to collect and sum these values.
+See [PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
 
 Note: This differs from "raw" writes (e.g. `@+=5`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any implicit
@@ -3068,15 +3060,16 @@ interval:s:10 {
 Records integer values over a series of time intervals.
 
 * `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals)`
-* `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals, const string agg)`
+* `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals,`
+  `const string agg)`
 
 Create a time series that tracks an integer value. `tseries` records up to
 `num_intervals` intervals representing `interval_ns` nanoseconds.
 
 #### Durations
 
-`interval_ns` is an unsigned integer that specifies the interval duration. You
-may use numbers with duration suffixes to improve readability:
+`interval_ns` is an unsigned integer that specifies the interval duration. Use
+duration suffixes to improve readability:
 
 ```
 @a = tseries(1, 100ns, 5); // 100 nanoseconds
@@ -3085,56 +3078,55 @@ may use numbers with duration suffixes to improve readability:
 @d = tseries(1, 1s, 5);    // 1 second
 ```
 
-#### Aggregation Functions
+#### Aggregation functions
 
 By default, each interval in `tseries` contains the last value recorded in that
 interval. The optional `agg` parameter specifies how values in the same interval
 are aggregated.
 
-| Aggregation Function | Example | Description |
-| --- | --- | --- |
-| `avg` | `@ = tseries(@v, 1s, 5, "avg")` | Calculate the running average of all the values in each interval. |
-| `max` | `@ = tseries(@v, 1s, 5, "max")` | Calculate the maximum of all values in each interval. |
-| `min` | `@ = tseries(@v, 1s, 5, "min")` | Calculate the minimum of all values in each interval. |
-| `sum` | `@ = tseries(@v, 1s, 5, "sum")` | Calculate the sum of all values in each interval. |
+- `avg`: `@ = tseries(@v, 1s, 5, "avg")` — calculates the running average of
+  values in each interval.
+- `max`: `@ = tseries(@v, 1s, 5, "max")` — calculates the maximum value in
+  each interval.
+- `min`: `@ = tseries(@v, 1s, 5, "min")` — calculates the minimum value in
+  each interval.
+- `sum`: `@ = tseries(@v, 1s, 5, "sum")` — calculates the sum of values in
+  each interval.
 
 **Examples**
 ```
 // Record the minimum of ten random values generated during each 100ms interval.
 i:ms:10 {
   @ = tseries(rand % 10, 100ms, 20, "min");
+  // Sample output:
+  // Attached 2 probes
+  //
+  // @:
+  //              0                                                   2
+  // hh:mm:ss.ms  |___________________________________________________|
+  // 10:41:46.700 *                                                   | 0
+  // 10:41:46.800 *                                                   | 0
+  // 10:41:46.900 |                         *                         | 1
+  // 10:41:47.000 |                                                   * 2
+  // 10:41:47.100 |                         *                         | 1
+  // 10:41:47.200 *                                                   | 0
+  // 10:41:47.300 |                         *                         | 1
+  // 10:41:47.400 *                                                   | 0
+  // 10:41:47.500 |                         *                         | 1
+  // 10:41:47.600 *                                                   | 0
+  // 10:41:47.700 |                                                   * 2
+  // 10:41:47.800 *                                                   | 0
+  // 10:41:47.900 *                                                   | 0
+  // 10:41:48.000 |                         *                         | 1
+  // 10:41:48.100 |                         *                         | 1
+  // 10:41:48.200 |                         *                         | 1
+  // 10:41:48.300 *                                                   | 0
+  // 10:41:48.400 |                                                   * 2
+  // 10:41:48.500 |                         *                         | 1
+  // 10:41:48.600 |                         *                         | 1
+  //              v___________________________________________________v
+  //              0                                                   2
 }
-```
-
-```
-Attached 2 probes
-
-
-@:
-             0                                                   2
-hh:mm:ss.ms  |___________________________________________________|
-10:41:46.700 *                                                   | 0
-10:41:46.800 *                                                   | 0
-10:41:46.900 |                         *                         | 1
-10:41:47.000 |                                                   * 2
-10:41:47.100 |                         *                         | 1
-10:41:47.200 *                                                   | 0
-10:41:47.300 |                         *                         | 1
-10:41:47.400 *                                                   | 0
-10:41:47.500 |                         *                         | 1
-10:41:47.600 *                                                   | 0
-10:41:47.700 |                                                   * 2
-10:41:47.800 *                                                   | 0
-10:41:47.900 *                                                   | 0
-10:41:48.000 |                         *                         | 1
-10:41:48.100 |                         *                         | 1
-10:41:48.200 |                         *                         | 1
-10:41:48.300 *                                                   | 0
-10:41:48.400 |                                                   * 2
-10:41:48.500 |                         *                         | 1
-10:41:48.600 |                         *                         | 1
-             v___________________________________________________v
-             0                                                   2
 ```
 
 Example two:
@@ -3152,43 +3144,40 @@ i:ms:100 {
 
   if (@c > 5) {
     @dir = -1;
-    @c = 4
+    @c = 4;
   } else if (@c < -5) {
     @dir = 1;
     @c = -4;
   }
+  // Sample output:
+  // Attached 2 probes
+  //
+  // @:
+  //              -5                                                  5
+  // hh:mm:ss.ms  |___________________________________________________|
+  // 10:39:49.300 *                         .                         | -5
+  // 10:39:49.400 |    *                    .                         | -4
+  // 10:39:49.500 |         *               .                         | -3
+  // 10:39:49.600 |              *          .                         | -2
+  // 10:39:49.700 |                   *     .                         | -1
+  // 10:39:49.800 |                         *                         | 0
+  // 10:39:49.900 |                         .    *                    | 1
+  // 10:39:50.000 |                         .         *               | 2
+  // 10:39:50.100 |                         .              *          | 3
+  // 10:39:50.200 |                         .                   *     | 4
+  // 10:39:50.300 |                         .                         * 5
+  // 10:39:50.400 |                         .                   *     | 4
+  // 10:39:50.500 |                         .              *          | 3
+  // 10:39:50.600 |                         .         *               | 2
+  // 10:39:50.700 |                         .    *                    | 1
+  // 10:39:50.800 |                         *                         | 0
+  // 10:39:50.900 |                   *     .                         | -1
+  // 10:39:51.000 |              *          .                         | -2
+  // 10:39:51.100 |         *               .                         | -3
+  // 10:39:51.200 |    *                    .                         | -4
+  //              v___________________________________________________v
+  //              -5                                                  5
 }
-```
-
-```
-Attached 2 probes
-
-
-@:
-             -5                                                  5
-hh:mm:ss.ms  |___________________________________________________|
-10:39:49.300 *                         .                         | -5
-10:39:49.400 |    *                    .                         | -4
-10:39:49.500 |         *               .                         | -3
-10:39:49.600 |              *          .                         | -2
-10:39:49.700 |                   *     .                         | -1
-10:39:49.800 |                         *                         | 0
-10:39:49.900 |                         .    *                    | 1
-10:39:50.000 |                         .         *               | 2
-10:39:50.100 |                         .              *          | 3
-10:39:50.200 |                         .                   *     | 4
-10:39:50.300 |                         .                         * 5
-10:39:50.400 |                         .                   *     | 4
-10:39:50.500 |                         .              *          | 3
-10:39:50.600 |                         .         *               | 2
-10:39:50.700 |                         .    *                    | 1
-10:39:50.800 |                         *                         | 0
-10:39:50.900 |                   *     .                         | -1
-10:39:51.000 |              *          .                         | -2
-10:39:51.100 |         *               .                         | -3
-10:39:51.200 |    *                    .                         | -4
-             v___________________________________________________v
-             -5                                                  5
 ```
 
 **Availability**
