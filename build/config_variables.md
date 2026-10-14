@@ -14,6 +14,7 @@ name is uppercase and prefixed with `BPFTRACE_`; for example, `stack_mode` is
 set with `BPFTRACE_STACK_MODE`.
 
 ### cache_user_symbols [..]
+Controls caching of user-space symbol lookups.
 
 Default: PER_PROGRAM if ASLR disabled or `-c` option given, PER_PID otherwise.
 
@@ -27,8 +28,9 @@ Default: PER_PROGRAM if ASLR disabled or `-c` option given, PER_PID otherwise.
   speed.
 
 ### cpp_demangle [..]
+Enables or disables C++ symbol demangling in user-space stack traces.
 
-Default: true
+Default: `true`
 
 C++ symbol demangling in userspace stack traces is enabled by default.
 
@@ -36,13 +38,15 @@ This feature can be turned off by setting the value of this variable to
 `false`.
 
 ### lazy_symbolication [..]
+Controls whether user-space symbols are resolved lazily or in advance.
 
-Default: false
+Default: `false`
 
 For user space symbols, symbolicate lazily/on-demand (`true`) or symbolicate
 everything ahead of time (`false`).
 
 ### license [..]
+Sets the license string used when loading BPF programs.
 
 Default: "GPL"
 
@@ -60,12 +64,14 @@ is the list of accepted license strings:
 [bpf-license]: https://bpftrace.org/docs/release_026/language#bpf-license
 
 ### log_size [..]
+Sets the size of the bpftrace log buffer in bytes.
 
 Default: 1000000
 
 Log size in bytes.
 
 ### max_bpf_progs [..]
+Limits the number of BPF programs that bpftrace can generate.
 
 Default: 1024
 
@@ -75,12 +81,14 @@ since generating a lot of probes takes a lot of resources (and it should not
 happen often).
 
 ### max_cat_bytes [..]
+Limits the number of bytes read by `cat`.
 
 Default: 10240
 
 Maximum bytes read by cat builtin.
 
 ### max_map_keys [..]
+Limits the number of keys that can be stored in a map.
 
 Default: 4096
 
@@ -90,6 +98,7 @@ value may be useful when sampling stack traces or recording timestamps for each
 page.
 
 ### max_probes [..]
+Limits the number of probes that bpftrace can attach to.
 
 Default: 1024
 
@@ -98,6 +107,7 @@ value will consume more memory, increase startup times, and can incur high
 performance overhead or even freeze/crash the system.
 
 ### max_strlen [..]
+Limits the byte length of values from `str()`, `buf()`, and `path()`.
 
 Default: 1024
 
@@ -111,6 +121,7 @@ artificial limit on what you can tune this to. But you may be wasting resources
 (memory and cpu) if you make this too high.
 
 ### missing_probes [..]
+Controls how bpftrace handles probes that cannot be attached.
 
 Default: `error`
 
@@ -123,6 +134,7 @@ The possible options are:
 - `ignore` - silently ignore missing probes
 
 ### on_stack_limit [0.22..]
+Sets the maximum size of objects stored directly on the BPF stack.
 
 Default: 32
 
@@ -141,6 +153,7 @@ increase it if you’re worried about memory consumption.
 Since bpftrace v0.22
 
 ### perf_rb_pages [..]
+Sets the number of pages allocated for each ring or perf buffer.
 
 Default: Based on available system memory
 
@@ -156,8 +169,9 @@ uses a larger page size, the allocated memory stays the same but uses fewer
 pages.
 
 ### show_debug_info [0.24..]
+Controls whether stack traces include source and inline function details.
 
-Available only when bpftrace is built with Blazesym. Defaults to `true`.
+Default: `true`. Available only when bpftrace is built with `Blazesym`.
 
 When enabled and debug information is available, bpftrace adds source file
 and line details to `bpftrace` stack traces. It also labels inlined functions
@@ -167,8 +181,9 @@ in `bpftrace` and `perf` modes. Symbolication may affect performance.
 Since bpftrace v0.24
 
 ### stack_mode [..]
+Sets the output format for `ustack` and `kstack` stack traces.
 
-Default: bpftrace
+Default: `bpftrace`
 
 Output format for ustack and kstack builtins. Available modes/formats:
 
@@ -184,6 +199,7 @@ appends the file and line in `bpftrace` or `perf` stack mode, for example:
 `spin+37@/home/jordalgo/local/bpftrace/tests/testprogs/uprobe_loop.c:14`.
 
 ### str_trunc_trailer [..]
+Sets the suffix appended to truncated strings.
 
 Default: `..`
 
@@ -191,8 +207,9 @@ Trailer to add to strings that were truncated. Set to empty string to disable
 truncation trailers.
 
 ### print_maps_on_exit [0.22..]
+Controls whether bpftrace automatically prints maps on exit.
 
-Default: true
+Default: `true`
 
 Controls whether maps are printed on exit. Set to `false` in order to change the
 default behavior and not automatically print maps at program exit.
@@ -201,8 +218,9 @@ default behavior and not automatically print maps at program exit.
 Since bpftrace v0.22
 
 ### unstable_tseries [0.24..]
+Controls whether the unstable time series map type is enabled.
 
-Default: warn
+Default: `warn`
 
 Feature flag for time series map type.
 
@@ -215,8 +233,9 @@ The possible options are:
 Since bpftrace v0.24
 
 ### unstable_dw_ustack [0.26..]
+Controls whether DWARF-based user-space stack unwinding is enabled.
 
-Default: warn
+Default: `warn`
 
 Feature flag for DWARF-based user-space stack unwinding
 
