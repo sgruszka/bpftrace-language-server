@@ -4,6 +4,43 @@ It is licensed under the Apache License, Version 2.0
 See the LICENSE file of that project or https://www.apache.org/licenses/LICENSE-2.0
 -->
 
+### abs_path [0.28..]
+Resolves a relative path or filename to an absolute path.
+
+- `string abs_path(string path, uint64 max_path_depth)`
+
+If `path` is empty, the returned string is empty.
+
+**Example**
+```
+tracepoint:syscalls:sys_enter_openat {
+  print(abs_path(str(args.filename), 32));
+}
+```
+
+See also `cwd`.
+
+**Availability**
+Since bpftrace v0.28
+
+### arch [0.28..]
+Returns the architecture bpftrace was built for.
+
+- `string arch()`
+- `string arch`
+
+**compile time**
+
+The result is one of: `x86_64`, `arm64`, `arm`, `s390x`, `ppc64le`, `ppc64`,
+`mips64`, `riscv64`, or `loongarch64`.
+
+This describes the architecture of the bpftrace binary, which may differ from
+the architecture reported by `uname -m`. For example, a 32-bit ARM build on an
+arm64 kernel returns `arm`.
+
+**Availability**
+Since bpftrace v0.28
+
 ### assert [0.24..]
 Terminates the script if a condition is false.
 
@@ -253,7 +290,7 @@ This utilizes the BPF helper `get_current_task`.
 **Availability**
 Since bpftrace v0.22
 
-### curtask [0.24..]
+### curtask [0.24..0.27]
 Returns a pointer to the current task’s `task_struct`.
 
 - `uint64 curtask()`
@@ -263,6 +300,27 @@ This utilizes the BPF helper `get_current_task`.
 
 **Availability**
 Since bpftrace v0.22
+
+### curtask [0.28..]
+Returns a pointer to the current task’s `task_struct`.
+
+- `struct task_struct * curtask()`
+- `struct task_struct * curtask`
+
+This utilizes the BPF helper `bpf_get_current_task_btf`.
+
+**Availability**
+Since bpftrace v0.22
+
+### cwd [0.28..]
+Returns the current working directory.
+
+- `string cwd()`
+- `string cwd`
+- `string cwd(max_path_depth)`
+
+**Availability**
+Since bpftrace v0.28
 
 ### default_str_length [0.25..]
 Returns the default unbounded string length.
@@ -2949,12 +3007,12 @@ Writes are fast and thread-safe, but reads are slow.
 
 See `max()` above for how this differs from the typical userspace `min()`.
 
-### stats [..]
+### stats [..0.27]
 Tracks the count, average, and sum of values.
 
 * `stats_t stats(int64 n)`
 
-`stats` combines the `count`, `avg` and `sum` calls into one.
+`stats` combines the `count`, `avg`, and `sum` calls into one.
 
 **Example**
 ```
@@ -2964,6 +3022,40 @@ kprobe:vfs_read {
   // @bytes[bash]: count 7, average 1, total 7
   // @bytes[sleep]: count 5, average 832, total 4160
   // @bytes[ls]: count 7, average 886, total 6208
+}
+```
+
+### stats [0.28..]
+Tracks the count, average, and sum of values.
+
+* `stats_t stats(int64 n)`
+
+`stats` combines the `count`, `avg`, and `sum` calls into one.
+
+Individual fields of a `stats_t` map can be accessed synchronously using
+`.count`, `.total`, and `.avg`.
+
+**Examples**
+```
+kprobe:vfs_read {
+  @bytes[comm] = stats(arg2);
+  // Sample output:
+  // @bytes[bash]: count 7, average 1, total 7
+  // @bytes[sleep]: count 5, average 832, total 4160
+  // @bytes[ls]: count 7, average 886, total 6208
+}
+```
+
+```
+kprobe:vfs_read {
+  @bytes[comm] = stats(arg2);
+}
+
+interval:s:1 {
+  printf("Count: %d, Total: %d, Avg: %d\n",
+         @bytes["bash"].count,
+         @bytes["bash"].total,
+         @bytes["bash"].avg);
 }
 ```
 
