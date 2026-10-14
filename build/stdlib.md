@@ -336,7 +336,7 @@ startup. For this, one or more pids have to be specified. This can either be
 done via `-p`, `-c` (implicitly) or `--dwarf-pid`. If `dw_ustack` cannot find
 unwind information for a process, a runtime warning is emitted.
 
-`dw_ustack` is currently only available on x86_64.
+`dw_ustack` is currently only available on `x86_64`.
 
 **Unstable feature**
 
@@ -643,7 +643,7 @@ Determine whether the given expression is an array.
 Since bpftrace v0.25
 
 ### is_err [0.26..]
-Returns true if the pointer is an ERR_PTR, i.e. it encodes a kernel error code.
+Returns true if the pointer is an `ERR_PTR`, i.e. it encodes a kernel error code.
 
 - `bool is_err(void * ptr)`
 
@@ -1128,7 +1128,7 @@ Converts an IPv4 or IPv6 address to its text representation.
 
 `ntop` will infer the address type (IPv4 or IPv6) based on the `addr` type and
 size. If an integer or `char[4]` is given, ntop assumes IPv4, if a `char[16]` is
-given, ntop assumes IPv6. You can also pass the address type (e.g. AF_INET)
+given, ntop assumes IPv6. You can also pass the address type (e.g. `AF_INET`)
 explicitly as the first parameter.
 
 **Availability**
@@ -1826,7 +1826,7 @@ Writes packet data from a socket buffer to a PCAP file.
 
 This utilizes the BPF helper `bpf_skb_output`.
 
-Write sk_buff `skb` 's data section to a PCAP file in the `path`, starting from
+Write `skb` 's data section to a PCAP file in the `path`, starting from
 `offset` to `offset` + `length`.
 
 The PCAP file is encapsulated in RAW IP, so no ethernet header is included. The
@@ -1877,7 +1877,7 @@ Writes packet data from a socket buffer to a PCAP file.
 
 This utilizes the BPF helper `bpf_skb_output`.
 
-Write sk_buff `skb` 's data section to a PCAP file in the `path`, starting from
+Write `skb` 's data section to a PCAP file in the `path`, starting from
 `offset` to `offset` + `length`.
 
 The PCAP file is encapsulated in RAW IP, so no ethernet header is included. The
@@ -2380,12 +2380,11 @@ Returns the address of a user-space symbol.
 - `T * uaddr(const string sym)`
 
 **Supported probes**
-
-* uprobes
-* uretprobes
+* uprobe
+* uretprobe
 * usdt
 
-If kernel supports task_vma open-coded iterator kfuncs (linux >= 6.7), `uaddr()`
+If kernel supports `task_vma` open-coded iterator kfuncs (linux >= 6.7), `uaddr()`
 will correct the symbol addresses of PIE and dynamic libraries instead of
 directly using the symbol addresses in the ELF file, see
 [linux commit](https://github.com/torvalds/linux/commit/4ac454682158).
@@ -2444,7 +2443,7 @@ Returns whether execution is currently in user mode.
 - `uint8 usermode()`
 - `uint8 usermode`
 
-Currently only available on x86_64.
+Currently only available on `x86_64`.
 
 **Availability**
 Since bpftrace v0.24
