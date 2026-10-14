@@ -16,16 +16,16 @@ set with `BPFTRACE_STACK_MODE`.
 ### cache_user_symbols [..]
 Controls caching of user-space symbol lookups.
 
-Default: PER_PROGRAM if ASLR disabled or `-c` option given, PER_PID otherwise.
+Default: `PER_PROGRAM` if ASLR disabled or `-c` option given, `PER_PID` otherwise.
 
-* PER_PROGRAM - each program has its own cache. If there are more processes
-  with ASLR enabled for a single program, this might produce incorrect results.
-* PER_PID - each process has its own cache. This is accurate for processes with
-  ASLR enabled, and enables bpftrace to preload caches for processes running at
-  probe attachment time. If many processes are running, this can consume a lot
-  of memory.
-* NONE - caching disabled. This saves the most memory, but at the cost of
-  speed.
+* `PER_PROGRAM` - each program has its own cache. If there are more processes
+with ASLR enabled for a single program, this might produce incorrect results.
+* `PER_PID` - each process has its own cache. This is accurate for processes
+with ASLR enabled, and enables bpftrace to preload caches for processes running
+at probe attachment time. If many processes are running, this can consume a lot
+of memory.
+* `NONE` - caching disabled. This saves the most memory, but at the cost of
+speed.
 
 ### cpp_demangle [..]
 Enables or disables C++ symbol demangling in user-space stack traces.
@@ -187,10 +187,10 @@ Default: `bpftrace`
 
 Output format for ustack and kstack builtins. Available modes/formats:
 
-* bpftrace: symbol + offset (e.g. `do_mmap+1`)
-* perf: Linux perf style with leading IP (e.g. `ffffffffb4019501 do_mmap+1`)
-* raw: no symbolication (print instruction pointer)
-* build_id: no symbolication (print build_id and file offset) (ustack only)
+* `bpftrace`: symbol + offset (e.g. `do_mmap+1`)
+* `perf`: Linux perf style with leading IP (e.g. `ffffffffb4019501 do_mmap+1`)
+* `raw`: no symbolication (print instruction pointer)
+* `build_id`: no symbolication (print build ID and file offset) (ustack only)
 
 This can be overwritten at the call site.
 
