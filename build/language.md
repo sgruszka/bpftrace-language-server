@@ -588,9 +588,8 @@ the `-p` option) by using a single wildcard in place of `binary_path` or
 usdt:*:loop { printf("hi\n"); }
 ```
 
-If you use wildcards for `probe_name` or `probe_namespace` and end up targeting
-multiple USDTs for the same probe you might get errors if you also utilize the
-USDT argument builtin (e.g. arg0) as they could be of different types.
+Wildcard matches can include USDT probes whose corresponding arguments have
+different types, which may cause errors when using `argN`.
 
 Arguments are available via the `argN` builtins:
 
