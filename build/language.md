@@ -540,77 +540,19 @@ User-space function entry probe. Short name `u`.
 * `uprobe:binary:function+offset`
 * `uprobe:binary:offset`
 
-`uprobe` s or user-space probes are the user-space equivalent of `kprobe` s.
-The same limitations that apply [kprobe and kretprobe](#kprobe-and-kretprobe) also apply to `uprobe` s and `uretprobe` s, namely: arguments are available via the `argN` builtins and can only be accessed with a uprobe.
-retval is the return value for the instrumented function and can only be accessed with a uretprobe.
-**Note**: When tracing some languages, like C++, `arg0` and even `arg1` may refer to runtime internals such as the current object instance (`this`) and/or the eventual return value for large returned objects where copy elision is used.
-This will push the actual function arguments to possibly start at `arg1` or `arg2` - the only way to know is to experiment.
+`uprobe` attaches at a user-space function entry or at an offset in a binary.
+Arguments are available through `argN`. If the binary has DWARF debug
+information, typed arguments are also available through the `args` struct.
+For C++ functions, `argN` may include hidden runtime arguments such as `this`,
+so explicit arguments may start at a later index.
 
-```
-uprobe:/bin/bash:readline { printf("arg0: %d\n", arg0); }
-```
+For libraries, you can use the library name instead of its full path. bpftrace
+resolves it through `/etc/ld.so.cache`. Use a versioned SONAME to select a
+specific library version.
 
-What does arg0 of readline() in /bin/bash contain?
-I don’t know, so I’ll need to look at the bash source code to find out what its arguments are.
-
-When tracing libraries, it is sufficient to specify the library name instead of
-a full path. The path will be then automatically resolved using `/etc/ld.so.cache`:
-
+**Example**
 ```
 uprobe:libc:malloc { printf("Allocated %d bytes\n", arg0); }
-```
-
-If multiple versions of the same shared library exist (e.g. `libssl.so.3` and
-`libssl.so.59`), bpftrace may resolve the wrong one. To fix this, you can specify
-a versioned SONAME to ensure the correct library is traced:
-
-```
-uprobe:libssl.so.3:SSL_write { ... }
-```
-
-If the traced binary has DWARF included, function arguments are available in
-the `args` struct which can be inspected with verbose listing, see the [Listing
-Probes](../man/adoc/bpftrace.adoc#listing-probes) section for more details.
-
-```
-# bpftrace -lv 'uprobe:/bin/bash:rl_set_prompt'
-
-uprobe:/bin/bash:rl_set_prompt
-    const char* prompt
-```
-
-When tracing C++ programs, it’s possible to turn on automatic symbol demangling by using the `:cpp` prefix:
-
-```
-# bpftrace:cpp:"bpftrace::BPFtrace::add_probe" { ... }
-```
-
-It is important to note that for `uretprobe` s to work the kernel runs a special helper on user-space function entry which overrides the return address on the stack.
-This can cause issues with languages that have their own runtime like Golang:
-
-**example.go**
-
-```
-func myprint(s string) {
-  fmt.Printf("Input: %s\n", s)
-}
-
-func main() {
-  ss := []string{"a", "b", "c"}
-  for _, s := range ss {
-    go myprint(s)
-  }
-  time.Sleep(1*time.Second)
-}
-```
-
-**bpftrace**
-
-```
-# bpftrace -e 'uretprobe:./test:main.myprint { @=count(); }' -c ./test
-runtime: unexpected return pc for main.myprint called from 0x7fffffffe000
-stack: frame={sp:0xc00008cf60, fp:0xc00008cfd0} stack=[0xc00008c000,0xc00008d000)
-fatal error: unknown caller pc
 ```
 
 ### uretprobe [..]
@@ -618,6 +560,13 @@ User-space function return probe. Short name `ur`.
 
 **variants**
 * `uretprobe:binary:function`
+
+`uretprobe` attaches when a user-space function returns. Its return value is
+available through `retval`; use `uprobe` to inspect function arguments.
+
+Note that for `uretprobe` to work the kernel runs a special helper on
+user-space function entry which overrides the return address on the stack.
+This can cause issues with languages with their own runtime, such as Go.
 
 ### usdt [..]
 User-space statically defined tracepoint. Short name `U`.
