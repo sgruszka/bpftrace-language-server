@@ -47,6 +47,7 @@ Most providers also support a short name which can be used instead of the full n
 | [`begin/end`](#beginend) | - | Built-in events |
 | [`bench`](#bench) | - | Micro benchmarks |
 | [`self`](#self) | - | Built-in events |
+| [`test`](#test) | - | Script tests |
 | [`hardware`](#hardware) | `h` | Processor-level events |
 | [`interval`](#interval) | `i` | Timed output |
 | [`iter`](#iterator) | `it` | Iterators tracing |
@@ -94,7 +95,7 @@ end {
 }
 ```
 
-### test
+### test [0.25..]
 Built-in event
 
 **variants**
@@ -107,6 +108,9 @@ bpftrace executes each `test` probe and checks the return value, error count and
 If multiple `test` probes exist in a script, bpftrace executes them sequentially in the order they are specified.
 To run `test` probes, you must run bpftrace in test mode: `bpftrace --test ...`; otherwise `test` probes will be ignored.
 
+**Availability**
+Since bpftrace v0.25
+
 ```
 test:okay {
   print("I'm okay! This output will be suppressed.");
@@ -118,7 +122,7 @@ test:failure {
 }
 ```
 
-### bench
+### bench [0.24..]
 Micro benchmarks
 
 **variants**
@@ -130,6 +134,9 @@ Micro benchmarks
 bpftrace executes each `bench` probe repeatedly to measure the average execution time of the contained code.
 If multiple `bench` probes exist in a script, bpftrace executes them sequentially in the order they are specified.
 To run `bench` probes, you must run bpftrace in bench mode: `bpftrace --bench ...`; otherwise, `bench` probes will be ignored.
+
+**Availability**
+Since bpftrace v0.24
 
 ```
 bench:lhist {
@@ -161,7 +168,7 @@ Attached 3 probes
 +-----------+-------------+
 ```
 
-### self
+### self [0.22..]
 Built-in events
 
 **variants**
@@ -177,6 +184,9 @@ self:signal:SIGUSR1 {
   print("abc");
 }
 ```
+
+**Availability**
+Since bpftrace v0.22
 
 ### hardware
 Processor-level events
@@ -327,7 +337,7 @@ iter:task_file:/sys/fs/bpf/files {
  */
 ```
 
-### fentry
+### fentry [0.20..]
 Kernel function entry (tracing with BTF support)
 
 **variants**
@@ -341,9 +351,9 @@ Kernel function entry (tracing with BTF support)
 
 ``fentry``/``fexit`` probes attach to kernel functions similar to [kprobe and kretprobe](#kprobe-and-kretprobe).
 They make use of eBPF trampolines which allow kernel code to call into BPF programs with near zero overhead.
-Originally, these were called `kfunc` and `kretfunc` but were later renamed to `fentry` and `fexit` to match
-how these are referenced in the kernel and to prevent confusion with [BPF Kernel Functions](https://docs.kernel.org/bpf/kfuncs.html).
-The original names are still supported for backwards compatibility.
+`fentry` and `fexit` were introduced in bpftrace v0.20 as aliases for `kfunc`
+and `kretfunc`. They became the preferred names in v0.22. The original names
+remain supported as compatibility aliases.
 
 ``fentry``/``fexit`` probes make use of BTF type information to derive the type of function arguments at compile time.
 This removes the need for manual type casting and makes the code more resilient against small signature changes in the kernel.
@@ -373,7 +383,11 @@ fentry:x86_pmu_stop {
   printf("pmu %s stop\n", str(args.event.pmu.name));
 }
 ```
-### fexit
+
+**Availability**
+Since bpftrace v0.20; preferred names since v0.22
+
+### fexit [0.20..]
 Kernel function exit (tracing with BTF support)
 
 **variants**
@@ -385,9 +399,9 @@ Kernel function exit (tracing with BTF support)
 
 ``fentry``/``fexit`` probes attach to kernel functions similar to [kprobe and kretprobe](#kprobe-and-kretprobe).
 They make use of eBPF trampolines which allow kernel code to call into BPF programs with near zero overhead.
-Originally, these were called `kfunc` and `kretfunc` but were later renamed to `fentry` and `fexit` to match
-how these are referenced in the kernel and to prevent confusion with [BPF Kernel Functions](https://docs.kernel.org/bpf/kfuncs.html).
-The original names are still supported for backwards compatibility.
+`fentry` and `fexit` were introduced in bpftrace v0.20 as aliases for `kfunc`
+and `kretfunc`. They became the preferred names in v0.22. The original names
+remain supported as compatibility aliases.
 
 The fget function takes one argument as file descriptor and you can access it via args.fd and the return value is accessible via retval:
 
@@ -403,14 +417,17 @@ fexit:fget {
  */
 ```
 
+**Availability**
+Since bpftrace v0.20; preferred names since v0.22
+
 ### kfunc
-Deprecated alias for `fentry`.
+Deprecated alias for `fentry`, the preferred name since bpftrace v0.22.
 
 **variants**
 * `kfunc[:module]:function`
 
 ### kretfunc
-Deprecated alias for `fexit`.
+Deprecated alias for `fexit`, the preferred name since bpftrace v0.22.
 
 **variants**
 * `kretfunc[:module:]function`
@@ -791,7 +808,7 @@ These are memory watchpoints provided by the kernel.
 Whenever a memory address is written to (`w`), read
 from (`r`), or executed (`x`), the kernel can generate an event.
 
-### asyncwatchpoint
+### asyncwatchpoint [..0.24]
 Memory watchpoint
 
 **variants**
@@ -821,6 +838,9 @@ If synchronous (`watchpoint`), a `SIGSTOP` is sent to the tracee upon function e
 The tracee will be ``SIGCONT``ed after the watchpoint is attached.
 This is to ensure events are not missed.
 If you want to avoid the `SIGSTOP` + `SIGCONT` use `asyncwatchpoint`.
+
+**Availability**
+Available through bpftrace v0.24.
 
 Note that on most architectures you may not monitor for execution while monitoring read or write.
 

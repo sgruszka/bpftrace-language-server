@@ -213,7 +213,10 @@ fn gen_completion_probes(language_md: &str) -> String {
     let mut doc_item = DocItem::default();
 
     let mut text = r#"
-pub fn bpftrace_probe_providers(items: &mut json::JsonValue) {
+pub fn bpftrace_probe_providers(
+    items: &mut json::JsonValue,
+    this_version: (u16, u16),
+) {
     "#
     .to_string();
 
@@ -235,7 +238,17 @@ pub fn bpftrace_probe_providers(items: &mut json::JsonValue) {
             }
 
             doc_item = DocItem::default();
-            doc_item.label = line[4..].to_string();
+            let header = line.trim().strip_prefix("### ").unwrap();
+            if let Some((label, range)) = header.split_once(' ') {
+                if range.starts_with('[') {
+                    doc_item.label = label.to_string();
+                    doc_item.version = parse_version(range).unwrap();
+                } else {
+                    doc_item.label = header.to_string();
+                }
+            } else {
+                doc_item.label = header.to_string();
+            }
             collected_probe = true;
 
             after_label = true;
@@ -285,6 +298,10 @@ pub fn bpftrace_probe_providers(items: &mut json::JsonValue) {
             doc_item.full_info.push_str(line);
             doc_item.full_info.push('\n');
         }
+    }
+
+    if collected_probe {
+        probe_add_json_obj(&mut text, &mut doc_item);
     }
 
     text.push_str("}");
@@ -457,7 +474,29 @@ fn probe_add_json_obj(text: &mut String, doc_item: &mut DocItem) {
 
     doc_item.detail = detail;
 
+    let mut cond_min_end = "";
+    let mut cond_max_end = "";
+
+    if let Some(min_ver) = doc_item.version.min_ver {
+        text.push_str(&format!(
+            "if this_version >= ({},{}) {{",
+            min_ver.0, min_ver.1
+        ));
+        cond_min_end = "}";
+    }
+
+    if let Some(max_ver) = doc_item.version.max_ver {
+        text.push_str(&format!(
+            "if this_version <= ({},{}) {{",
+            max_ver.0, max_ver.1
+        ));
+        cond_max_end = "}";
+    }
+
     add_json_obj(text, doc_item, 8);
+
+    text.push_str(cond_max_end);
+    text.push_str(cond_min_end);
 }
 
 fn config_add_json_obj(text: &mut String, doc_item: &DocItem) {

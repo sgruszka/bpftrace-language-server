@@ -1162,7 +1162,7 @@ fn encode_completion_for_new_line(line_str: &str) -> JsonValue {
         add_map_declarations(&mut items);
     // Do not complete after space or some special symbol/number, only for single word
     } else if line.is_empty() || line.chars().all(|c| c.is_alphabetic()) {
-        bpftrace_probe_providers(&mut items);
+        bpftrace_probe_providers(&mut items, bpftrace_major_minor_version());
         add_empty_line_keywords(&mut items);
 
         if bpftrace_has_property(BpftraceProperty::HasCaseInsensitive) {
@@ -2078,7 +2078,7 @@ fn encode_hover_for_probe_provider(node: &Node, text: &str) -> JsonValue {
     };
 
     let mut items = JsonValue::new_array();
-    bpftrace_probe_providers(&mut items);
+    bpftrace_probe_providers(&mut items, bpftrace_major_minor_version());
 
     let provider_name = provider_doc_name(provider);
 
