@@ -397,64 +397,33 @@ Kernel function entry or instruction probe. Short name `k`.
 **variants**
 * `kprobe[:module]:function[+offset]`
 
-``kprobe``s allow for dynamic instrumentation of kernel functions.
-Each time the specified kernel function is executed the attached BPF programs are ran.
+`kprobe` attaches at kernel function entry. The optional `:module` qualifier
+selects a kernel module. The `+offset` suffix selects an instruction relative
+to the function start.
 
+Register arguments are available through `argN`. On x86_64, the first six
+function arguments are passed in registers, additional arguments are passed on
+the stack. Stack-passed arguments are accessed through the stack pointer. Their
+locations depend on the architecture and calling convention. At x86_64 function
+entry, the first stack-passed argument is at `sp + 8`, for example:
+`$stack_arg0 = *(uint64*)(reg("sp") + 8)`.
+
+If kernel BTF is available, its types can be used without manually defining
+structs.
+
+**Examples**
 ```
 kprobe:tcp_reset {
   @tcp_resets = count()
 }
 ```
 
-Function arguments are available through the `argN` for register args. Arguments passed on stack are available using the stack pointer, e.g. `$stack_arg0 = **(int64**)reg("sp") + 16`.
-Whether arguments passed on stack or in a register depends on the architecture and the number or arguments used, e.g. on x86_64 the first 6 non-floating point arguments are passed in registers and all following arguments are passed on the stack.
-Note that floating point arguments are typically passed in special registers which don’t count as `argN` arguments which can cause confusion.
-Consider a function with the following signature:
-
-```
-void func(int a, double d, int x)
-```
-
-Due to `d` being a floating point, `x` is accessed through `arg1` where one might expect `arg2`.
-
-bpftrace does not detect the function signature so it is not aware of the argument count or their type.
-It is up to the user to perform [Type conversion](#type-conversion) when needed, e.g.
-
-```
-#include <linux/path.h>
-#include <linux/dcache.h>
-
-kprobe:vfs_open
-{
-	printf("open path: %s\n", str(((struct path *)arg0).dentry.d_name.name));
-}
-```
-
-Here arg0 was cast as a (struct path *), since that is the first argument to vfs_open.
-The struct support is the same as bcc and based on available kernel headers.
-This means that many, but not all, structs will be available, and you may need to manually define structs.
-
-If the kernel has BTF (BPF Type Format) data, all kernel structs are always available without defining them. For example:
-
+This probe reads the path passed to `vfs_open` using kernel BTF types:
 ```
 kprobe:vfs_open {
   printf("open path: %s\n", str(((struct path *)arg0).dentry.d_name.name));
 }
 ```
-
-You can optionally specify a kernel module, either to include BTF data from that module, or to specify that the traced function should come from that module.
-
-```
-kprobe:kvm:x86_emulate_insn
-{
-  $ctxt = (struct x86_emulate_ctxt *) arg0;
-  printf("eip = 0x%lx\n", $ctxt.eip);
-}
-```
-
-See [BTF Support](#btf-support) for more details.
-
-`kprobe` s are not limited to function entry, they can be attached to any instruction in a function by specifying an offset from the start of the function.
 
 ### kretprobe [..]
 Kernel function return probe. Short name `kr`.
@@ -462,24 +431,8 @@ Kernel function return probe. Short name `kr`.
 **variants**
 * `kretprobe[:module]:function`
 
-`kretprobe` s trigger on the return from a kernel function.
-Return probes do not have access to the function (input) arguments, only to the return value (through `retval`).
-A common pattern to work around this is by storing the arguments in a map on function entry and retrieving in the return probe:
-
-```
-kprobe:d_lookup
-{
-	$name = (struct qstr *)arg1;
-	@fname[tid] = $name.name;
-}
-
-kretprobe:d_lookup
-/@fname[tid]/
-{
-	printf("%-8d %-6d %-16s M %s\n", elapsed / 1e6, pid, comm,
-	    str(@fname[tid]));
-}
-```
+`kretprobe` attaches when a kernel function returns. Function arguments are
+unavailable; the return value is available through `retval`.
 
 ### profile [..]
 Per-CPU sampling probe at a specified interval. Short name `p`.
