@@ -97,14 +97,14 @@ Built-in probe for testing bpftrace scripts.
 **variants**
 * `test:name`
 
-`test` is a special built-in probe type for creating tests.
-bpftrace executes each `test` probe and checks the return value, error count and possible exit calls to determine a pass.
-If multiple `test` probes exist in a script, bpftrace executes them sequentially in the order they are specified.
-To run `test` probes, you must run bpftrace in test mode: `bpftrace --test ...`; otherwise `test` probes will be ignored.
+`test` is a special built-in probe type for creating tests. bpftrace executes
+each `test` probe and checks the return value, error count and possible exit
+calls to determine a pass. If multiple `test` probes exist in a script,
+bpftrace executes them sequentially in the order they are specified. To run
+`test` probes, you must run bpftrace in test mode: `bpftrace --test ...`;
+otherwise `test` probes will be ignored.
 
-**Availability**
-Since bpftrace v0.25
-
+**Example**
 ```
 test:okay {
   print("I'm okay! This output will be suppressed.");
@@ -116,6 +116,10 @@ test:failure {
 }
 ```
 
+**Availability**
+Since bpftrace v0.25
+
+
 ### bench [0.24..]
 Microbenchmark probe for measuring execution time.
 
@@ -123,13 +127,13 @@ Microbenchmark probe for measuring execution time.
 * `bench:name`
 
 `bench` is a special built-in probe type for creating micro benchmarks.
-bpftrace executes each `bench` probe repeatedly to measure the average execution time of the contained code.
-If multiple `bench` probes exist in a script, bpftrace executes them sequentially in the order they are specified.
-To run `bench` probes, you must run bpftrace in bench mode: `bpftrace --bench ...`; otherwise, `bench` probes will be ignored.
+bpftrace executes each `bench` probe repeatedly to measure the average
+execution time of the contained code. If multiple `bench` probes exist in a
+script, bpftrace executes them sequentially in the order they are specified. To
+run `bench` probes, use bench mode with `bpftrace --bench ...`; otherwise,
+`bench` probes will be ignored.
 
-**Availability**
-Since bpftrace v0.24
-
+**Example**
 ```
 bench:lhist {
     @a = lhist(rand % 10, 1, 10, 1);
@@ -150,7 +154,6 @@ bench:my_loop {
 ```
 Attached 3 probes
 
-
 +-----------+-------------+
 | BENCHMARK | NANOSECONDS |
 +-----------+-------------+
@@ -160,15 +163,20 @@ Attached 3 probes
 +-----------+-------------+
 ```
 
+**Availability**
+Since bpftrace v0.24
+
 ### self [0.22..]
 Signal event for the bpftrace process.
 
 **variants**
 * `self:signal:SIGUSR1`
 
-These are special built-in events provided by the bpftrace runtime.
-The trigger function is called by the bpftrace runtime when the bpftrace process receives specific events, such as a `SIGUSR1` signal.
+These are special built-in events provided by the bpftrace runtime. The trigger
+function is called by the bpftrace runtime when the bpftrace process receives
+specific events, such as a `SIGUSR1` signal.
 
+**Example**
 ```
 self:signal:SIGUSR1 {
   print("abc");
@@ -185,9 +193,10 @@ Processor hardware performance event. Short name `h`.
 
 * `hardware:event_name[:count]`
 
-These are the pre-defined hardware events provided by the Linux kernel, as commonly traced by the perf utility.
-They are implemented using performance monitoring counters (PMCs): hardware resources on the processor.
-There are about ten of these, and they are documented in the perf_event_open(2) man page.
+These are the pre-defined hardware events provided by the Linux kernel, as
+commonly traced by the perf utility. They are implemented using performance
+monitoring counters (PMCs): hardware resources on the processor. There are
+about ten of these, and they are documented in the perf_event_open(2) man page.
 The event names are:
 
 * `cpu-cycles` or `cycles`
@@ -201,11 +210,12 @@ The event names are:
 * `backend-stalls`
 * `ref-cycles`
 
-The `count` option specifies how many events must happen before the probe fires (sampling interval).
-If `count` is left unspecified a default value is used.
+The `count` option specifies how many events must happen before the probe fires
+(sampling interval). If `count` is left unspecified a default value is used.
 
 This will fire once for every 1,000,000 cache misses.
 
+**Example**
 ```
 hardware:cache-misses:1e6 { @[pid] = count(); }
 ```
@@ -219,15 +229,17 @@ Periodic event at a specified time interval. Short name `i`.
 * `interval:hz:rate`
 
 The interval probe fires at a fixed interval as specified by its time spec.
-Interval fires on one CPU at a time, unlike [profile](#profile) probes.
-If a unit of time is not specified in the second position, the number is interpreted as nanoseconds; e.g., `interval:1s`, `interval:1000000000`, and `interval:s:1` are all equivalent.
+Interval fires on one CPU at a time, unlike `profile` probes. If a unit of time
+is not specified in the second position, the number is interpreted as
+nanoseconds; e.g., `interval:1s`, `interval:1000000000`, and `interval:s:1` are
+all equivalent.
 
-This prints the rate of syscalls per second.
-
+**Example**
 ```
 tracepoint:raw_syscalls:sys_enter { @syscalls = count(); }
 interval:1s { print(@syscalls); clear(@syscalls); }
 ```
+This prints the rate of syscalls per second.
 
 ### iter [..]
 Kernel object iterator. Short name `it`.
@@ -235,17 +247,18 @@ Kernel object iterator. Short name `it`.
 **variants**
 * `iter:object[:pin]`
 
-***Warning*** this feature is experimental and may be subject to interface changes.
+***Warning*** this feature is experimental and may be subject to interface
+changes.
 
 These are eBPF iterator probes that allow iteration over kernel objects.
 Iterator probe can’t be mixed with any other probe, not even another iterator.
 Each iterator probe provides a set of fields that could be accessed with the
-ctx pointer. Users can display the set of available fields for each iterator via
--lv options as described below.
+ctx pointer. Users can display the set of available fields for each iterator
+via -lv options as described below.
 
+**Examples**
 ```
 iter:task { printf("%s:%d\n", ctx.task.comm, ctx.task.pid); }
-
 /*
  * Sample output:
  * systemd:1
@@ -261,7 +274,6 @@ iter:task { printf("%s:%d\n", ctx.task.comm, ctx.task.pid); }
 iter:task_file {
   printf("%s:%d %d:%s\n", ctx.task.comm, ctx.task.pid, ctx.fd, path(ctx.file.f_path));
 }
-
 /*
  * Sample output:
  * systemd:1 1:/dev/null
@@ -278,7 +290,6 @@ iter:task_file {
 iter:task_vma {
   printf("%s %d %lx-%lx\n", comm, pid, ctx.vma.vm_start, ctx.vma.vm_end);
 }
-
 /*
  * Sample output:
  * bpftrace 119480 55b92c380000-55b92c386000
@@ -287,8 +298,9 @@ iter:task_vma {
  */
 ```
 
-It’s possible to pin an iterator by specifying the optional probe ':pin' part, that defines the pin file.
-It can be specified as an absolute or relative path to /sys/fs/bpf.
+It’s possible to pin an iterator by specifying the optional probe ':pin' part,
+that defines the pin file. It can be specified as an absolute or relative path
+to /sys/fs/bpf.
 
 **relative pin**
 
@@ -441,10 +453,13 @@ Per-CPU sampling probe at a specified interval. Short name `p`.
 * `profile[:time_unit]:count`
 * `profile:hz:rate`
 
-Profile probes fire on each CPU on the specified interval.
-These operate using perf_events (a Linux kernel facility, which is also used by the perf command).
-If a unit of time is not specified in the second position, the number is interpreted as nanoseconds; e.g., `interval:1s`, `interval:1000000000`, and `interval:s:1` are all equivalent.
+Profile probes fire on each CPU on the specified interval. These operate using
+perf_events (a Linux kernel facility, which is also used by the perf command).
+If a unit of time is not specified in the second position, the number is
+interpreted as nanoseconds; e.g., `interval:1s`, `interval:1000000000`, and
+`interval:s:1` are all equivalent.
 
+**Example**
 ```
 profile:hz:99 { @[tid] = count(); }
 ```
@@ -473,9 +488,10 @@ Kernel software performance event. Short name `s`.
 **variants**
 * `software:event[:count]`
 
-These are the pre-defined software events provided by the Linux kernel, as commonly traced via the perf utility.
-They are similar to tracepoints, but there is only about a dozen of these, and they are documented in the perf_event_open(2) man page.
-If the count is not provided, a default is used.
+These are the pre-defined software events provided by the Linux kernel, as
+commonly traced via the perf utility. They are similar to tracepoints, but
+there are about a dozen of these, and they are documented in the
+`perf_event_open(2)` man page. If the count is not provided, a default is used.
 
 The event names are:
 
@@ -491,11 +507,12 @@ The event names are:
 * `dummy`
 * `bpf-output`
 
+**Example**
 ```
 software:faults:100 { @[comm] = count(); }
 ```
-
-This roughly counts who is causing page faults, by sampling the process name for every one in one hundred faults.
+This roughly counts who is causing page faults, by sampling the process name
+for every one in one hundred faults.
 
 ### tracepoint [..]
 Kernel static tracepoint probe. Short name `t`.
@@ -551,7 +568,9 @@ a versioned SONAME to ensure the correct library is traced:
 uprobe:libssl.so.3:SSL_write { ... }
 ```
 
-If the traced binary has DWARF included, function arguments are available in the `args` struct which can be inspected with verbose listing, see the [Listing Probes](../man/adoc/bpftrace.adoc#listing-probes) section for more details.
+If the traced binary has DWARF included, function arguments are available in
+the `args` struct which can be inspected with verbose listing, see the [Listing
+Probes](../man/adoc/bpftrace.adoc#listing-probes) section for more details.
 
 ```
 # bpftrace -lv 'uprobe:/bin/bash:rl_set_prompt'
@@ -610,13 +629,18 @@ User-space statically defined tracepoint. Short name `U`.
 
 Where probe_namespace is optional if probe_name is unique within the binary.
 
-You can target the entire host (or an entire process’s address space by using the `-p` arg) by using a single wildcard in place of the binary_path/library_path:
+You can target the entire host (or an entire process’s address space by using
+the `-p` arg) by using a single wildcard in place of the
+binary_path/library_path:
 
 ```
 usdt:*:loop { printf("hi\n"); }
 ```
 
-Please note that if you use wildcards for the probe_name or probe_namespace and end up targeting multiple USDTs for the same probe you might get errors if you also utilize the USDT argument builtin (e.g. arg0) as they could be of different types.
+Please note that if you use wildcards for the probe_name or probe_namespace and
+end up targeting multiple USDTs for the same probe you might get errors if you
+also utilize the USDT argument builtin (e.g. arg0) as they could be of
+different types.
 
 Arguments are available via the `argN` builtins:
 
@@ -624,9 +648,10 @@ Arguments are available via the `argN` builtins:
 usdt:/root/tick:loop { printf("%s: %d\n", str(arg0), arg1); }
 ```
 
-bpftrace also supports USDT semaphores.
-If both your environment and bpftrace support uprobe refcounts, then USDT semaphores are automatically activated for all processes upon probe attachment (and --usdt-file-activation becomes a noop).
-You can check if your system supports uprobe refcounts by running:
+bpftrace also supports USDT semaphores. If both your environment and bpftrace
+support uprobe refcounts, then USDT semaphores are automatically activated for
+all processes upon probe attachment (and --usdt-file-activation becomes a
+noop). You can check if your system supports uprobe refcounts by running:
 
 ```
 # bpftrace --info 2>&1 | grep "uprobe refcount"
@@ -634,13 +659,18 @@ bcc bpf_attach_uprobe refcount: yes
   uprobe refcount (depends on Build:bcc bpf_attach_uprobe refcount): yes
 ```
 
-If your system does not support uprobe refcounts, you may activate semaphores by passing in -p $PID or --usdt-file-activation.
---usdt-file-activation looks through /proc to find processes that have your probe’s binary mapped with executable permissions into their address space and then tries to attach your probe.
-Note that file activation occurs only once (during attach time).
-In other words, if later during your tracing session a new process with your executable is spawned, your current tracing session will not activate the new process.
-Also note that --usdt-file-activation matches based on file path.
-This means that if bpftrace runs from the root host, things may not work as expected if there are processes execved from private mount namespaces or bind mounted directories.
-One workaround is to run bpftrace inside the appropriate namespaces (i.e. the container).
+If your system does not support uprobe refcounts, you may activate semaphores
+by passing in -p $PID or --usdt-file-activation. --usdt-file-activation looks
+through /proc to find processes that have your probe’s binary mapped with
+executable permissions into their address space and then tries to attach your
+probe. Note that file activation occurs only once (during attach time). In
+other words, if later during your tracing session a new process with your
+executable is spawned, your current tracing session will not activate the new
+process. Also note that --usdt-file-activation matches based on file path. This
+means that if bpftrace runs from the root host, things may not work as expected
+if there are processes execved from private mount namespaces or bind mounted
+directories. One workaround is to run bpftrace inside the appropriate
+namespaces (i.e. the container).
 
 ### watchpoint [..]
 Synchronous memory access watchpoint. Short name `w`.
@@ -649,9 +679,9 @@ Synchronous memory access watchpoint. Short name `w`.
 * `watchpoint:absolute_address:length:mode`
 * `watchpoint:function+argN:length:mode`
 
-These are memory watchpoints provided by the kernel.
-Whenever a memory address is written to (`w`), read
-from (`r`), or executed (`x`), the kernel can generate an event.
+These are memory watchpoints provided by the kernel. Whenever a memory address
+is written to (`w`), read from (`r`), or executed (`x`), the kernel can
+generate an event.
 
 ### asyncwatchpoint [..0.24]
 Asynchronous memory access watchpoint. Short name `aw`.
@@ -661,29 +691,30 @@ Asynchronous memory access watchpoint. Short name `aw`.
 * `asyncwatchpoint:absolute_address:length:mode`
 * `asyncwatchpoint:function+argN:length:mode`
 
-This feature is experimental and may be subject to interface changes.
-Memory watchpoints are also architecture dependent.
+This feature is experimental and may be subject to interface changes. Memory
+watchpoints are also architecture dependent.
 
-These are memory watchpoints provided by the kernel.
-Whenever a memory address is written to (`w`), read
-from (`r`), or executed (`x`), the kernel can generate an event.
+These are memory watchpoints provided by the kernel. Whenever a memory address
+is written to (`w`), read from (`r`), or executed (`x`), the kernel can
+generate an event.
 
-In the first form, an absolute address is monitored.
-If a pid (`-p`) or a command (`-c`) is provided, bpftrace takes the address as a userspace address and monitors the appropriate process.
-If not, bpftrace takes the address as a kernel space address.
+In the first form, an absolute address is monitored. If a pid (`-p`) or a
+command (`-c`) is provided, bpftrace takes the address as a userspace address
+and monitors the appropriate process. If not, bpftrace takes the address as a
+kernel space address.
 
 In the second form, the address present in `argN` when `function` is entered is
-monitored.
-A pid or command must be provided for this form.
-If synchronous (`watchpoint`), a `SIGSTOP` is sent to the tracee upon function entry.
-The tracee will be ``SIGCONT``ed after the watchpoint is attached.
-This is to ensure events are not missed.
-If you want to avoid the `SIGSTOP` + `SIGCONT` use `asyncwatchpoint`.
+monitored. A pid or command must be provided for this form. If synchronous
+(`watchpoint`), a `SIGSTOP` is sent to the tracee upon function entry. The
+tracee will be ``SIGCONT``ed after the watchpoint is attached. This is to
+ensure events are not missed. If you want to avoid the `SIGSTOP` + `SIGCONT`
+use `asyncwatchpoint`.
 
 **Availability**
 Available through bpftrace v0.24.
 
-Note that on most architectures you may not monitor for execution while monitoring read or write.
+Note that on most architectures you may not monitor for execution while
+monitoring read or write.
 
 ```
 # bpftrace -e 'watchpoint:0x10000000:8:rw { printf("hit!\n"); }' -c ./testprogs/watchpoint
@@ -727,7 +758,9 @@ int main()
 # bpftrace -e 'watchpoint:increment+arg1:4:w { printf("hit!\n"); exit() }' -c ./wpfunc
 ```
 
-Note that threads are monitored, but only for threads created after watchpoint attachment.
-The is a limitation from the kernel.
-Additionally, because of how watchpoints are implemented in bpftrace the specified function must be called at least once in the main thread in order to observe future calls to this function in child threads.
+Note that threads are monitored, but only for threads created after watchpoint
+attachment. This is a kernel limitation. Additionally, because of how
+watchpoints are implemented in bpftrace the specified function must be called at
+least once in the main thread in order to observe future calls to this function
+in child threads.
 
