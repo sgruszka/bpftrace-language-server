@@ -4,9 +4,7 @@ use std::fs;
 struct DocItem {
     label: String,
     detail: String,
-    first_line: String,
     variants: Vec<String>,
-    short_name: String,
     full_info: String,
     version: Version,
     helper_flags: usize,
@@ -84,18 +82,7 @@ fn parse_version(input: &str) -> Result<Version, ParseVersionError> {
 fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     let label = &doc_item.label;
     let detail = &doc_item.detail;
-
-    let mut docs = if doc_item.short_name.is_empty() {
-        doc_item.first_line.to_string()
-    } else {
-        format!(
-            "{}, short name {}",
-            doc_item.first_line, &doc_item.short_name
-        )
-    };
-
-    docs.push_str("\n\n");
-    docs.push_str(&doc_item.full_info);
+    let docs = &doc_item.full_info;
 
     let obj = format!(
         r##"
@@ -148,18 +135,9 @@ fn item_detail_and_kind(doc_item: &DocItem) -> (String, i32) {
 fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem) {
     let label = &doc_item.label;
 
-    let mut docs = if doc_item.short_name.is_empty() {
-        doc_item.first_line.to_string()
-    } else {
-        format!(
-            "{}, short name {}",
-            doc_item.first_line, &doc_item.short_name
-        )
-    };
-
     let (detail, kind) = item_detail_and_kind(doc_item);
 
-    docs.push_str("\n\n");
+    let mut docs = String::new();
     docs.push_str(&doc_item.full_info);
 
     let mut cond_min_end = "";
@@ -204,11 +182,7 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem) {
 fn gen_completion_probes(language_md: &str) -> String {
     let mut probes_section = false;
     let mut collected_probe = false;
-    let mut in_full_docs = false;
-
-    let mut after_label = false;
     let mut after_variants = false;
-    let mut after_short_name = false;
 
     let mut doc_item = DocItem::default();
 
@@ -238,32 +212,13 @@ pub fn bpftrace_probe_providers(
             }
 
             doc_item = DocItem::default();
-            let header = line.trim().strip_prefix("### ").unwrap();
-            if let Some((label, range)) = header.split_once(' ') {
-                if range.starts_with('[') {
-                    doc_item.label = label.to_string();
-                    doc_item.version = parse_version(range).unwrap();
-                } else {
-                    doc_item.label = header.to_string();
-                }
-            } else {
-                doc_item.label = header.to_string();
-            }
+            let (label, range) = parse_header(line).unwrap();
+            doc_item.label = label.to_string();
+            doc_item.version = parse_version(range).unwrap();
+            doc_item.detail = format!("{} - probe provider", doc_item.label);
+
             collected_probe = true;
-
-            after_label = true;
-            after_short_name = false;
             after_variants = false;
-            in_full_docs = false;
-            continue;
-        }
-
-        if line.trim().is_empty() && !in_full_docs {
-            continue;
-        }
-        if after_label {
-            doc_item.first_line = line.trim().to_string();
-            after_label = false;
             continue;
         }
 
@@ -271,33 +226,16 @@ pub fn bpftrace_probe_providers(
             after_variants = true;
             continue;
         }
-
         if after_variants {
-            if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
-                doc_item.variants.push(line[3..line.len() - 1].to_string());
-            } else if !line.trim().is_empty() {
+            if line.trim().is_empty() {
+                continue;
+            } else {
                 after_variants = false;
             }
         }
 
-        if line.trim().starts_with("**short names**") || line.trim().starts_with("**short name**") {
-            after_short_name = true;
-            continue;
-        }
-
-        if after_short_name {
-            if line.trim().starts_with("- ") || line.trim().starts_with("* ") {
-                doc_item.short_name.push_str(&line[2..]);
-            } else if !line.trim().is_empty() {
-                after_short_name = false;
-                in_full_docs = true;
-            }
-        }
-
-        if in_full_docs {
-            doc_item.full_info.push_str(line);
-            doc_item.full_info.push('\n');
-        }
+        doc_item.full_info.push_str(line);
+        doc_item.full_info.push('\n');
     }
 
     if collected_probe {
@@ -461,19 +399,6 @@ pub fn bpftrace_config_variables(items: &mut json::JsonValue, this_version: (u16
 }
 
 fn probe_add_json_obj(text: &mut String, doc_item: &mut DocItem) {
-    let mut tmp_str = String::new();
-    let detail = if doc_item.variants.is_empty() {
-        doc_item.label.clone()
-    } else {
-        for variant in &doc_item.variants {
-            tmp_str.push_str(variant);
-            tmp_str.push('\n');
-        }
-        tmp_str
-    };
-
-    doc_item.detail = detail;
-
     let mut cond_min_end = "";
     let mut cond_max_end = "";
 

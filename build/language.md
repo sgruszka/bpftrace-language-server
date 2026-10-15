@@ -61,24 +61,20 @@ Most providers also support a short name which can be used instead of the full n
 | [`usdt`](#usdt) | `U` | User-level static tracepoints |
 | [`watchpoint/asyncwatchpoint`](#watchpoint-and-asyncwatchpoint) | `w`/`aw` | Memory watchpoints |
 
-### BEGIN
+### BEGIN [..]
 Built-in event before other probes are attached.
 
 **variants**
 * `BEGIN`
 
-**short name**
-
 Special built-in event provided by the bpftrace runtime.
 `BEGIN` is triggered before all other probes are attached.
 
-### END
+### END [..]
 Built-in event after all other probes are detached.
 
 **variants**
 * `END`
-
-**short name**
 
 Special built-in event provided by the bpftrace runtime.
 `END` is triggered after all other probes are detached.
@@ -100,8 +96,6 @@ Built-in probe for testing bpftrace scripts.
 
 **variants**
 * `test:name`
-
-**short name**
 
 `test` is a special built-in probe type for creating tests.
 bpftrace executes each `test` probe and checks the return value, error count and possible exit calls to determine a pass.
@@ -127,8 +121,6 @@ Microbenchmark probe for measuring execution time.
 
 **variants**
 * `bench:name`
-
-**short name**
 
 `bench` is a special built-in probe type for creating micro benchmarks.
 bpftrace executes each `bench` probe repeatedly to measure the average execution time of the contained code.
@@ -174,8 +166,6 @@ Signal event for the bpftrace process.
 **variants**
 * `self:signal:SIGUSR1`
 
-**short name**
-
 These are special built-in events provided by the bpftrace runtime.
 The trigger function is called by the bpftrace runtime when the bpftrace process receives specific events, such as a `SIGUSR1` signal.
 
@@ -188,16 +178,12 @@ self:signal:SIGUSR1 {
 **Availability**
 Since bpftrace v0.22
 
-### hardware
-Processor hardware performance event.
+### hardware [..]
+Processor hardware performance event. Short name `h`.
 
 **variants**
 
 * `hardware:event_name[:count]`
-
-**short name**
-
-* `h`
 
 These are the pre-defined hardware events provided by the Linux kernel, as commonly traced by the perf utility.
 They are implemented using performance monitoring counters (PMCs): hardware resources on the processor.
@@ -224,17 +210,13 @@ This will fire once for every 1,000,000 cache misses.
 hardware:cache-misses:1e6 { @[pid] = count(); }
 ```
 
-### interval
-Periodic event at a specified time interval.
+### interval [..]
+Periodic event at a specified time interval. Short name `i`.
 
 **variants**
 
 * `interval[:time_unit]:count`
 * `interval:hz:rate`
-
-**short name**
-
-* `i`
 
 The interval probe fires at a fixed interval as specified by its time spec.
 Interval fires on one CPU at a time, unlike [profile](#profile) probes.
@@ -247,16 +229,11 @@ tracepoint:raw_syscalls:sys_enter { @syscalls = count(); }
 interval:1s { print(@syscalls); clear(@syscalls); }
 ```
 
-### iter
-Kernel object iterator.
+### iter [..]
+Kernel object iterator. Short name `it`.
 
 **variants**
-
 * `iter:object[:pin]`
-
-**short name**
-
-* `it`
 
 ***Warning*** this feature is experimental and may be subject to interface changes.
 
@@ -338,16 +315,11 @@ iter:task_file:/sys/fs/bpf/files {
 ```
 
 ### fentry [0.20..]
-Kernel function entry probe using BTF.
+Kernel function entry probe using BTF. Short name `f`.
 
 **variants**
-
 * `fentry[:module]:function`
 * `fentry:bpf[:prog_id]:prog_name`
-
-**short names**
-
-* `f`
 
 ``fentry``/``fexit`` probes attach to kernel functions similar to [kprobe and kretprobe](#kprobe-and-kretprobe).
 They make use of eBPF trampolines which allow kernel code to call into BPF programs with near zero overhead.
@@ -388,14 +360,11 @@ fentry:x86_pmu_stop {
 Since bpftrace v0.20; preferred names since v0.22
 
 ### fexit [0.20..]
-Kernel function entry probe using BTF.
+Kernel function exit probe using BTF. Short name `fr`.
 
 **variants**
 * `fexit[:module]:function`
 * `fexit:bpf[:prog_id]:prog_name`
-
-**short name**
-* `fr`
 
 ``fentry``/``fexit`` probes attach to kernel functions similar to [kprobe and kretprobe](#kprobe-and-kretprobe).
 They make use of eBPF trampolines which allow kernel code to call into BPF programs with near zero overhead.
@@ -420,26 +389,23 @@ fexit:fget {
 **Availability**
 Since bpftrace v0.20; preferred names since v0.22
 
-### kfunc
+### kfunc [..]
 Deprecated alias for `fentry`.
 
 **variants**
 * `kfunc[:module]:function`
 
-### kretfunc
+### kretfunc [..]
 Deprecated alias for `fexit`.
 
 **variants**
 * `kretfunc[:module:]function`
 
-
-### kprobe
-Kernel function entry or instruction probe.
+### kprobe [..]
+Kernel function entry or instruction probe. Short name `k`.
 
 **variants**
 * `kprobe[:module]:function[+offset]`
-**short name**
-* `k`
 
 ``kprobe``s allow for dynamic instrumentation of kernel functions.
 Each time the specified kernel function is executed the attached BPF programs are ran.
@@ -500,13 +466,11 @@ See [BTF Support](#btf-support) for more details.
 
 `kprobe` s are not limited to function entry, they can be attached to any instruction in a function by specifying an offset from the start of the function.
 
-### kretprobe
-Kernel function return probe.
+### kretprobe [..]
+Kernel function return probe. Short name `kr`.
 
 **variants**
 * `kretprobe[:module]:function`
-**short name**
-* `kr`
 
 `kretprobe` s trigger on the return from a kernel function.
 Return probes do not have access to the function (input) arguments, only to the return value (through `retval`).
@@ -527,17 +491,12 @@ kretprobe:d_lookup
 }
 ```
 
-### profile
-Per-CPU sampling probe at a specified interval.
+### profile [..]
+Per-CPU sampling probe at a specified interval. Short name `p`.
 
 **variants**
-
 * `profile[:time_unit]:count`
 * `profile:hz:rate`
-
-**short name**
-
-* `p`
 
 Profile probes fire on each CPU on the specified interval.
 These operate using perf_events (a Linux kernel facility, which is also used by the perf command).
@@ -547,16 +506,11 @@ If a unit of time is not specified in the second position, the number is interpr
 profile:hz:99 { @[tid] = count(); }
 ```
 
-### rawtracepoint
-Kernel static tracepoint probe with raw arguments.
+### rawtracepoint [..]
+Kernel static tracepoint probe with raw arguments. Short name `rt`.
 
 **variants**
-
 * `rawtracepoint[:module]:event`
-
-**short name**
-
-* `rt`
 
 Raw tracepoints are attached to the same tracepoints as normal tracepoint programs.
 The reason why you might want to use raw tracepoints over normal tracepoints is due to the performance improvement - [Read More](https://docs.ebpf.io/linux/program-type/BPF_PROG_TYPE_RAW_TRACEPOINT/).
@@ -575,16 +529,11 @@ This removes the need for manual type casting and makes the code more resilient 
 The arguments accessible by a `rawtracepoint` are different from the arguments you can access from the `tracepoint` of the same name.
 The function arguments are available in the `args` struct which can be inspected by doing verbose listing (see [Listing Probes](../man/adoc/bpftrace.adoc#listing-probes)).
 
-### software
-Kernel software performance event.
+### software [..]
+Kernel software performance event. Short name `s`.
 
 **variants**
-
 * `software:event[:count]`
-
-**short name**
-
-* `s`
 
 These are the pre-defined software events provided by the Linux kernel, as commonly traced via the perf utility.
 They are similar to tracepoints, but there is only about a dozen of these, and they are documented in the perf_event_open(2) man page.
@@ -610,16 +559,12 @@ software:faults:100 { @[comm] = count(); }
 
 This roughly counts who is causing page faults, by sampling the process name for every one in one hundred faults.
 
-### tracepoint
-Kernel static tracepoint probe.
+### tracepoint [..]
+Kernel static tracepoint probe. Short name `t`.
 
 **variants**
 
 * `tracepoint:subsys:event`
-
-**short name**
-
-* `t`
 
 Tracepoints are hooks into events in the kernel.
 Tracepoints are defined in the kernel source and compiled into the kernel binary which makes them a form of static tracing.
@@ -655,16 +600,13 @@ After the "common" members listed first, the members are specific to the tracepo
 
 * https://www.kernel.org/doc/html/latest/trace/tracepoints.html
 
-### uprobe
-User-space function entry probe.
+### uprobe [..]
+User-space function entry probe. Short name `u`.
 
 **variants**
 * `uprobe:binary:function`
 * `uprobe:binary:function+offset`
 * `uprobe:binary:offset`
-
-**short names**
-* `u`
 
 `uprobe` s or user-space probes are the user-space equivalent of `kprobe` s.
 The same limitations that apply [kprobe and kretprobe](#kprobe-and-kretprobe) also apply to `uprobe` s and `uretprobe` s, namely: arguments are available via the `argN` builtins and can only be accessed with a uprobe.
@@ -737,27 +679,19 @@ stack: frame={sp:0xc00008cf60, fp:0xc00008cfd0} stack=[0xc00008c000,0xc00008d000
 fatal error: unknown caller pc
 ```
 
-### uretprobe
-User-space function return probe.
+### uretprobe [..]
+User-space function return probe. Short name `ur`.
 
 **variants**
 * `uretprobe:binary:function`
 
-**short name**
-
-* `ur`
-
-### usdt
-User-level staticlly defined tracecpoint.
+### usdt [..]
+User-space statically defined tracepoint. Short name `U`.
 
 **variants**
 
 * `usdt:binary_path[:probe_namespace]:probe_name`
 * `usdt:library_path[:probe_namespace]:probe_name`
-
-**short name**
-
-* `U`
 
 Where probe_namespace is optional if probe_name is unique within the binary.
 
@@ -793,32 +727,24 @@ Also note that --usdt-file-activation matches based on file path.
 This means that if bpftrace runs from the root host, things may not work as expected if there are processes execved from private mount namespaces or bind mounted directories.
 One workaround is to run bpftrace inside the appropriate namespaces (i.e. the container).
 
-### watchpoint
-Synchronous memory access watchpoint.
+### watchpoint [..]
+Synchronous memory access watchpoint. Short name `w`.
 
 **variants**
 * `watchpoint:absolute_address:length:mode`
 * `watchpoint:function+argN:length:mode`
-
-**short name**
-
-* `w`
 
 These are memory watchpoints provided by the kernel.
 Whenever a memory address is written to (`w`), read
 from (`r`), or executed (`x`), the kernel can generate an event.
 
 ### asyncwatchpoint [..0.24]
-Asynchronous memory access watchpoint.
+Asynchronous memory access watchpoint. Short name `aw`.
 
 **variants**
 
 * `asyncwatchpoint:absolute_address:length:mode`
 * `asyncwatchpoint:function+argN:length:mode`
-
-**short name**
-
-* `aw`
 
 This feature is experimental and may be subject to interface changes.
 Memory watchpoints are also architecture dependent.
