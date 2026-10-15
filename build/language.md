@@ -321,43 +321,28 @@ Kernel function entry probe using BTF. Short name `f`.
 * `fentry[:module]:function`
 * `fentry:bpf[:prog_id]:prog_name`
 
-``fentry``/``fexit`` probes attach to kernel functions similar to [kprobe and kretprobe](#kprobe-and-kretprobe).
-They make use of eBPF trampolines which allow kernel code to call into BPF programs with near zero overhead.
-`fentry` and `fexit` were introduced in bpftrace v0.20 as aliases for `kfunc`
-and `kretfunc`. They became the preferred names in v0.22. The original names
-remain supported as compatibility aliases.
+`fentry` attaches when a kernel function starts. It uses BTF and eBPF
+trampolines, and exposes typed function arguments through `args`.
 
-``fentry``/``fexit`` probes make use of BTF type information to derive the type of function arguments at compile time.
-This removes the need for manual type casting and makes the code more resilient against small signature changes in the kernel.
-The function arguments are available in the `args` struct which can be inspected by doing verbose listing (see [Listing Probes](../man/adoc/bpftrace.adoc#listing-probes)).
-These arguments are also available in the return probe (`fexit`), unlike `kretprobe`.
+The name `fentry` was introduced in bpftrace v0.20 as an alias for `kfunc` and
+became the preferred name in v0.22. `kfunc` remains supported as an alias.
 
-The bpf variants (e.g. `fentry:bpf[:prog_id]:prog_name`) allow attaching to running BPF programs and sub-programs.
-For example, if bpftrace was already running with a script like `uprobe:./testprogs/uprobe_test:uprobeFunction1 { print("hello"); }` then you could attach to this program with `fexit:bpf:uprobe___testprogs_uprobe_test_uprobeFunction1_1 { print("bye"); }` and this probe would execute after (because it's `fexit`) the `print("hello")` probe executes.
-You can specify just the program name, and in this case bpftrace will attach to all running programs and sub-programs with that name.
-You can differentiate between them using the `probe` builtin.
-You can also specify the program id (e.g. `fentry:bpf:123:*`) to attach to a specific running BPF program or sub-programs called in that running BPF program.
-To see a list of running, valid BPF programs and sub-programs use `bpftrace -l 'fentry:bpf:*'`.
-Note: only BPF programs with a BTF Id can be attached to.
-Also, the `args` builtin is not yet available for this variant.
+The `bpf` variants attach to running BPF programs and subprograms. A program
+name matches all programs and subprograms with that name. Add a program ID to
+restrict the match to that program and its subprograms. Use `probe` to identify
+the matched program. Run `bpftrace -l 'fentry:bpf:*'` to list attachable
+programs. Only programs with a BTF ID can be attached, and the `args` builtin is
+unavailable for these variants.
 
-#### Examples
+**Example**
 ```
-# bpftrace -lv 'fentry:tcp_reset'
-
-fentry:tcp_reset
-    struct sock * sk
-    struct sk_buff * skb
-```
-
-```
-fentry:x86_pmu_stop {
+fentry:vmlinux:x86_pmu_stop {
   printf("pmu %s stop\n", str(args.event.pmu.name));
 }
 ```
 
 **Availability**
-Since bpftrace v0.20; preferred names since v0.22
+Since bpftrace v0.20; preferred name since v0.22
 
 ### fexit [0.20..]
 Kernel function exit probe using BTF. Short name `fr`.
@@ -366,28 +351,33 @@ Kernel function exit probe using BTF. Short name `fr`.
 * `fexit[:module]:function`
 * `fexit:bpf[:prog_id]:prog_name`
 
-``fentry``/``fexit`` probes attach to kernel functions similar to [kprobe and kretprobe](#kprobe-and-kretprobe).
-They make use of eBPF trampolines which allow kernel code to call into BPF programs with near zero overhead.
-`fentry` and `fexit` were introduced in bpftrace v0.20 as aliases for `kfunc`
-and `kretfunc`. They became the preferred names in v0.22. The original names
-remain supported as compatibility aliases.
+`fexit` attaches when a kernel function returns. It uses BTF and eBPF
+trampolines. The function arguments are available through `args`, and the
+return value through `retval`.
 
-The fget function takes one argument as file descriptor and you can access it via args.fd and the return value is accessible via retval:
+The name `fexit` was introduced in bpftrace v0.20 as an alias for `kretfunc`
+and became the preferred name in v0.22. `kretfunc` remains supported as an
+alias.
 
+The `bpf` variant attaches to a running BPF program or its subprograms by name.
+An optional program ID restricts the match to a specific program. The `args`
+builtin is unavailable for this variant.
+
+**Example**
 ```
-fexit:fget {
+fexit:vmlinux:fget {
   printf("fd %d name %s\n", args.fd, str(retval.f_path.dentry.d_name.name));
 }
-
 /*
  * Sample output:
  * fd 3 name ld.so.cache
  * fd 3 name libselinux.so.1
  */
+
 ```
 
 **Availability**
-Since bpftrace v0.20; preferred names since v0.22
+Since bpftrace v0.20; preferred name since v0.22
 
 ### kfunc [..]
 Deprecated alias for `fentry`.
