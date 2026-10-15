@@ -196,7 +196,9 @@ Processor hardware performance event. Short name `h`.
 These are the pre-defined hardware events provided by the Linux kernel, as
 commonly traced by the perf utility. They are implemented using performance
 monitoring counters (PMCs): hardware resources on the processor. There are
-about ten of these, and they are documented in the perf_event_open(2) man page.
+about ten of these, and they are documented in the `perf_event_open(2)` man
+page.
+
 The event names are:
 
 * `cpu-cycles` or `cycles`
@@ -413,11 +415,11 @@ Kernel function entry or instruction probe. Short name `k`.
 selects a kernel module. The `+offset` suffix selects an instruction relative
 to the function start.
 
-Register arguments are available through `argN`. On x86_64, the first six
+Register arguments are available through `argN`. On `x86_64`, the first six
 function arguments are passed in registers, additional arguments are passed on
 the stack. Stack-passed arguments are accessed through the stack pointer. Their
-locations depend on the architecture and calling convention. At x86_64 function
-entry, the first stack-passed argument is at `sp + 8`, for example:
+locations depend on the architecture and calling convention. On `x86_64`, the
+first stack-passed argument is at `sp + 8` on function entry, for example:
 `$stack_arg0 = *(uint64*)(reg("sp") + 8)`.
 
 If kernel BTF is available, its types can be used without manually defining
@@ -454,10 +456,10 @@ Per-CPU sampling probe at a specified interval. Short name `p`.
 * `profile:hz:rate`
 
 Profile probes fire on each CPU on the specified interval. These operate using
-perf_events (a Linux kernel facility, which is also used by the perf command).
-If a unit of time is not specified in the second position, the number is
-interpreted as nanoseconds; e.g., `interval:1s`, `interval:1000000000`, and
-`interval:s:1` are all equivalent.
+`perf_events` (a Linux kernel facility, also used by the `perf` command). If a
+unit of time is not specified in the second position, the number is interpreted
+as nanoseconds; e.g., `interval:1s`, `interval:1000000000`, and `interval:s:1`
+are all equivalent.
 
 **Example**
 ```
@@ -576,20 +578,19 @@ User-space statically defined tracepoint. Short name `U`.
 * `usdt:binary_path[:probe_namespace]:probe_name`
 * `usdt:library_path[:probe_namespace]:probe_name`
 
-Where probe_namespace is optional if probe_name is unique within the binary.
+`probe_namespace` is optional when `probe_name` is unique within the binary.
 
 You can target the entire host (or an entire process’s address space by using
-the `-p` arg) by using a single wildcard in place of the
-binary_path/library_path:
+the `-p` option) by using a single wildcard in place of `binary_path` or
+`library_path`:
 
 ```
 usdt:*:loop { printf("hi\n"); }
 ```
 
-Please note that if you use wildcards for the probe_name or probe_namespace and
-end up targeting multiple USDTs for the same probe you might get errors if you
-also utilize the USDT argument builtin (e.g. arg0) as they could be of
-different types.
+If you use wildcards for `probe_name` or `probe_namespace` and end up targeting
+multiple USDTs for the same probe you might get errors if you also utilize the
+USDT argument builtin (e.g. arg0) as they could be of different types.
 
 Arguments are available via the `argN` builtins:
 
