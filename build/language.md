@@ -455,22 +455,17 @@ Kernel static tracepoint probe with raw arguments. Short name `rt`.
 **variants**
 * `rawtracepoint[:module]:event`
 
-Raw tracepoints are attached to the same tracepoints as normal tracepoint programs.
-The reason why you might want to use raw tracepoints over normal tracepoints is due to the performance improvement - [Read More](https://docs.ebpf.io/linux/program-type/BPF_PROG_TYPE_RAW_TRACEPOINT/).
+`rawtracepoint` attaches to the raw form of a kernel tracepoint and can have
+lower overhead. Raw arguments are available through `argN`; when BTF is
+available, typed arguments are also available through `args`.
 
-`rawtracepoint` arguments can be accessed via the `argN` builtins AND via the `args` builtin.
-
+**Example**
 ```
 rawtracepoint:vmlinux:kfree_skb {
   printf("%llx %llx\n", arg0, args.skb);
 }
 ```
-`arg0` and `args.skb` will print the same address.
-
-`rawtracepoint` probes make use of BTF type information to derive the type of function arguments at compile time.
-This removes the need for manual type casting and makes the code more resilient against small signature changes in the kernel.
-The arguments accessible by a `rawtracepoint` are different from the arguments you can access from the `tracepoint` of the same name.
-The function arguments are available in the `args` struct which can be inspected by doing verbose listing (see [Listing Probes](../man/adoc/bpftrace.adoc#listing-probes)).
+In this example, `arg0` and `args.skb` refer to the same argument.
 
 ### software [..]
 Kernel software performance event. Short name `s`.
@@ -509,39 +504,16 @@ Kernel static tracepoint probe. Short name `t`.
 
 * `tracepoint:subsys:event`
 
-Tracepoints are hooks into events in the kernel.
-Tracepoints are defined in the kernel source and compiled into the kernel binary which makes them a form of static tracing.
-Unlike `kprobe` s, new tracepoints cannot be added without modifying the kernel.
+`tracepoint` attaches to a statically defined kernel event. Event fields are
+available through the `args` struct. Tracepoints are defined in the kernel
+source and generally provide a stable interface.
 
-The advantage of tracepoints is that they generally provide a more stable interface than `kprobe` s do, they do not depend on the existence of a kernel function.
-
+**Example**
 ```
 tracepoint:syscalls:sys_enter_openat {
   printf("%s %s\n", comm, str(args.filename));
 }
 ```
-
-Tracepoint arguments are available in the `args` struct which can be inspected with verbose listing, see the [Listing Probes](../man/adoc/bpftrace.adoc#listing-probes) section for more details.
-
-```
-# bpftrace -lv "tracepoint:*"
-
-tracepoint:xhci-hcd:xhci_setup_device_slot
-  u32 info
-  u32 info2
-  u32 tt_info
-  u32 state
-...
-```
-
-Alternatively members for each tracepoint can be listed from their /format file in /sys.
-
-Apart from the filename member, we can also print flags, mode, and more.
-After the "common" members listed first, the members are specific to the tracepoint.
-
-**Additional information**
-
-* https://www.kernel.org/doc/html/latest/trace/tracepoints.html
 
 ### uprobe [..]
 User-space function entry probe. Short name `u`.
