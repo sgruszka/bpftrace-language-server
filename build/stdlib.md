@@ -274,6 +274,7 @@ value will be zero. This warning can be avoided by using `has_cpid` to check if
 
 ### cpu [..0.23]
 ID of the processor executing the BPF program.
+
 - `uint32 cpu`
 
 BPF program, in this case, is the probe body. This utilizes the BPF helper
@@ -1202,6 +1203,7 @@ Since bpftrace v0.12
 
 ### numaid [0.16..0.23]
 ID of the NUMA node executing the BPF program.
+
 - `uint32 numaid`
 
 BPF program, in this case, is the probe body.
@@ -1289,6 +1291,8 @@ kprobe:__x64_sys_getuid /comm == "id"/ {
 Since kernel v4.16
 
 ### path [0.12..]
+Returns the full filesystem path referenced by a `struct path` pointer.
+
 - `char * path(struct path * path [, int32 size])`
 
 This utilizes the BPF helper `bpf_d_path`.
@@ -1444,6 +1448,8 @@ called without arguments.
 Since bpftrace v0.24
 
 ### ppid [0.26..]
+Returns the process ID of the parent process.
+
 - `uint32 ppid()`
 - `uint32 ppid`
 - `uint32 ppid(struct task_struct * task)`
@@ -2371,6 +2377,7 @@ Thread ID of the current thread.
 
 ### tid [0.24..]
 Returns the thread ID of the current thread.
+
 - `uint32 tid([curr_ns|init])`
 - `uint32 tid`
 
