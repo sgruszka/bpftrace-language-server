@@ -458,7 +458,7 @@ Per-CPU sampling probe at a specified interval. Short name `p`.
 Profile probes fire on each CPU on the specified interval. These operate using
 `perf_events` (a Linux kernel facility, also used by the `perf` command). If a
 unit of time is not specified in the second position, the number is interpreted
-as nanoseconds; e.g., `interval:1s`, `interval:1000000000`, and `interval:s:1`
+as nanoseconds; e.g., `profile:1s`, `profile:1000000000`, and `profile:s:1`
 are all equivalent.
 
 **Example**
