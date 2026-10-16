@@ -555,7 +555,7 @@ Name of the current function being traced.
 * fexit
 
 ### getopt [0.24..0.24]
-Reads a named command-line option, using its default value to determine the type.
+Reads a named command-line option, inferring its type from the default value.
 
 - `bool getopt(string arg_name)`
 - `string getopt(string arg_name, string default_value)`
@@ -586,7 +586,7 @@ line, the default value is used.
 Since bpftrace v0.24
 
 ### getopt [0.25..]
-Reads a named command-line option, using its default value to determine the type.
+Reads a named command-line option, inferring its type from the default value.
 
 - `bool getopt(string arg_name)`
 - `bool getopt(string arg_name, bool default_value, [string description])`
@@ -710,7 +710,7 @@ Determine whether the given expression is an array.
 Since bpftrace v0.25
 
 ### is_err [0.26..]
-Returns true if the pointer is an `ERR_PTR`, i.e. it encodes a kernel error code.
+Returns `true` if a pointer encodes a kernel error code.
 
 - `bool is_err(void * ptr)`
 

@@ -80,8 +80,8 @@ Special built-in event provided by the bpftrace runtime.
 `END` is triggered after all other probes are detached.
 
 #### Notes
-Specifying an `END` probe doesn’t override the printing of 'non-empty' maps at exit.
-To prevent printing all used maps need be cleared in the `END` probe:
+Specifying an `END` probe doesn’t override the printing of 'non-empty' maps at
+exit. To prevent printing, clear all used maps in the `END` probe.
 
 #### Example
 ```

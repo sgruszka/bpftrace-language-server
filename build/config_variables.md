@@ -16,7 +16,8 @@ set with `BPFTRACE_STACK_MODE`.
 ### cache_user_symbols [..]
 Controls caching of user-space symbol lookups.
 
-Default: `PER_PROGRAM` if ASLR disabled or `-c` option given, `PER_PID` otherwise.
+Default: `PER_PROGRAM` if ASLR is disabled or `-c` is given; `PER_PID`
+otherwise.
 
 * `PER_PROGRAM` - each program has its own cache. If there are more processes
 with ASLR enabled for a single program, this might produce incorrect results.
