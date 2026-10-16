@@ -1311,14 +1311,14 @@ Since bpftrace v0.12
 Since kernel v5.10
 
 ### pcomm [0.25..0.25]
-Returns the name of the parent process.
+Returns the name of the thread group leader.
 
 - `string pcomm()`
 - `string pcomm`
 - `string pcomm(struct task_struct * task)`
 
-Get the name of the process for the passed task or the current task if called
-without arguments. This is an alias for `task->group_leader->comm`.
+Uses the supplied task, or the current task when called without arguments.
+This is an alias for `task.group_leader.comm`.
 
 **Availability**
 Since bpftrace v0.25
