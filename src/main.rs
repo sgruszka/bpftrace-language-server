@@ -660,18 +660,17 @@ fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue
 // stdin:6:60-69: ERROR: str() expects an integer or a pointer type as first argument (struct _tracepoint_syscalls_sys_exit_bpf provided)
 fn bpftrace_diag_single_line_error(
     text: &str,
-    mut line_nr: usize,
+    line_nr: usize,
     tokens: &[&str],
 ) -> Result<JsonValue, std::num::ParseIntError> {
     assert!(tokens.len() > 2);
 
-    if line_nr > 1 {
-        line_nr -= 1;
-    }
-
+    let line_nr = line_nr.saturating_sub(1);
     let chars: Vec<&str> = tokens[2].split("-").collect();
-    let start_char_nr: usize = chars[0].parse()?;
-    let end_char_nr: usize = chars[1].parse()?;
+
+    let start_char_nr = chars[0].parse::<usize>()?.saturating_sub(1);
+    let end_char_nr = chars[1].parse::<usize>()?.saturating_sub(1);
+
     let start = to_utf16_position(text, tree_sitter::Point::new(line_nr, start_char_nr));
     let end = to_utf16_position(text, tree_sitter::Point::new(line_nr, end_char_nr));
 
@@ -1441,6 +1440,24 @@ mod tests {
         assert_eq!(
             resp["error"]["message"].as_str(),
             Some("Method not found: unknown/method")
+        );
+    }
+
+    #[test]
+    fn test_bpftrace_diagnostic_on_first_line() {
+        let text = "BEGIN { @x = ; }";
+        let tokens: Vec<&str> = "stdin:1:14-15: ERROR: syntax error, unexpected ;"
+            .split(':')
+            .collect();
+
+        let diagnostic = bpftrace_diag_single_line_error(text, 1, &tokens).unwrap();
+
+        assert_eq!(
+            diagnostic["range"],
+            object! {
+                "start": { "line": 0, "character": 13 },
+                "end": { "line": 0, "character": 14 },
+            }
         );
     }
 
