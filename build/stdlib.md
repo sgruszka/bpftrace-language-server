@@ -1138,13 +1138,13 @@ kprobe:arp_create {
 Since bpftrace v0.12
 
 ### memcmp [0.25..]
-Compares a specified number of bytes.
+Compares two byte sequences.
 
 - `int memcmp(left, right, uint64 count)`
 
-Compares the first 'count' bytes of two expressions. 0 is returned if they are
-the same. negative value if the first differing byte in left is less than the
-corresponding byte in right.
+Compares the first `count` bytes of `left` and `right`. Returns zero if they
+match. Otherwise, returns a negative value if the first differing byte in
+`left` is smaller, or a positive value if it is larger.
 
 **Availability**
 Since bpftrace v0.25
