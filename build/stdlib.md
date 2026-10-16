@@ -210,7 +210,15 @@ Name of the current thread.
 
 This utilizes the BPF helper `get_current_comm`.
 
-### comm [0.24..]
+### comm [0.24..0.24]
+Returns the name of the current thread.
+
+- `string comm()`
+- `string comm`
+
+This utilizes the BPF helper `get_current_comm`.
+
+### comm [0.25..]
 Returns the name of the current thread or a specified process.
 
 - `string comm()`
