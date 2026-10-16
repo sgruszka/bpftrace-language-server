@@ -2991,6 +2991,18 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
     }
 
     #[test]
+    fn test_hover_for_u_provider() {
+        let text = r"u:/lib64/libc.so.6:__libc_calloc {}";
+        let json_content = document_content_setup(text, 0, 0);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains(r"uprobe:binary:function"));
+        assert!(hover.contains(r"User-space function entry probe"));
+        assert!(hover.contains(r"Short name `u`"));
+    }
+
+    #[test]
     fn test_hover_for_begin_provider() {
         let text = r"begin { }";
         let json_content = document_content_setup(text, 0, 2);
