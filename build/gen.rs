@@ -111,7 +111,9 @@ fn item_detail_and_kind(doc_item: &DocItem) -> (String, i32) {
     if doc_item.helper_flags & MAP_VALUE == MAP_VALUE {
         detail = format!("{} - map value function", label);
     } else if doc_item.helper_flags & (IS_ASYNC | IS_UNSAFE) == (IS_ASYNC | IS_UNSAFE) {
-        detail = format!("{} - unsafe asynchronous function", label)
+        detail = format!("{} - asynchronous *unsafe* function", label)
+    } else if doc_item.helper_flags & IS_UNSAFE == IS_UNSAFE {
+        detail = format!("{} - synchronous *unsafe* function", label)
     } else if doc_item.helper_flags & IS_ASYNC == IS_ASYNC {
         detail = format!("{} - asynchronous function", label)
     } else if doc_item.helper_flags & IS_COMPTIME == IS_COMPTIME {
