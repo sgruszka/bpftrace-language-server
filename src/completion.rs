@@ -2973,7 +2973,8 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
         let hover = result["result"]["contents"].as_str().unwrap();
         println!("{hover:?}");
         assert!(hover.contains(r"fentry[:module]:function"));
-        assert!(hover.contains(r"Kernel function entry (tracing with BTF support), short name `f`"));
+        assert!(hover.contains(r"Kernel function entry probe using BTF"));
+        assert!(hover.contains(r"Short name `f`"));
     }
 
     #[test]
@@ -2985,7 +2986,8 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
         let hover = result["result"]["contents"].as_str().unwrap();
         println!("{hover:?}");
         assert!(hover.contains(r"tracepoint:subsys:event"));
-        assert!(hover.contains(r"Kernel static tracepoints, short name `t`"));
+        assert!(hover.contains(r"Kernel static tracepoint probe"));
+        assert!(hover.contains(r"Short name `t`"));
     }
 
     #[test]
