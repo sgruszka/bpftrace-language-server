@@ -659,7 +659,11 @@ fn add_scratch_variables_for_block(
     char_nr: usize,
     results: &mut Vec<String>,
 ) {
-    assert!(main_node.kind() == "block" || main_node.kind() == "action");
+    assert!(
+        main_node.kind() == "block"
+            || main_node.kind() == "action"
+            || main_node.kind() == "predicate"
+    );
 
     let mut cursor = main_node.walk();
     for node in main_node.children(&mut cursor) {

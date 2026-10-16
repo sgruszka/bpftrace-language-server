@@ -2447,6 +2447,18 @@ mod tests {
     }
 
     #[test]
+    fn test_scratch_variable_completion_in_predicate() {
+        let text = "interval:s:1 / $x / { $x = 1; }";
+        let char_nr = text.find("$x").unwrap() + "$x".len();
+        let json_content = document_content_setup(text, 0, char_nr);
+
+        let result = encode_completion(json_content);
+
+        // Scratch variables from the action are not in scope in the predicate.
+        assert_eq!(result["result"]["items"], JsonValue::new_array());
+    }
+
+    #[test]
     fn test_action_completion_for_do_sys_open() {
         let text = "kprobe:do_sys_open { ";
         let json_content = document_content_setup(text, 0, text.len() - 1);
