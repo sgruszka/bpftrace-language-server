@@ -2965,6 +2965,15 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
     }
 
     #[test]
+    fn test_hover_on_comma_between_probes() {
+        let text = "kprobe:foo,kprobe:bar {}";
+        let json_content = document_content_setup(text, 0, text.find(',').unwrap());
+        let result = encode_hover(json_content);
+
+        assert_eq!(result["result"], JsonValue::Null);
+    }
+
+    #[test]
     fn test_hover_for_fentry_provider() {
         let text = r"fentry:vmlinux:posix_timer_fn {}";
         let json_content = document_content_setup(text, 0, 2);

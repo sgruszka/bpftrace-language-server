@@ -843,6 +843,7 @@ pub fn find_probe_in_probes_list<'t>(
     let mut cursor = probes_list.walk();
     let ret = probes_list
         .children(&mut cursor)
+        .filter(|probe| probe.kind() == "probe")
         .find(|&probe| postition_relative_to_node(&probe, line_nr, char_nr) == Position::Within);
     ret
 }
