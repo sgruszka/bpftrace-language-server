@@ -579,48 +579,48 @@ fn encode_references(content: JsonValue) -> JsonValue {
 }
 
 // TODO implement correct codeAction and enable codeActionProvider
-fn encode_code_action(content: JsonValue) -> JsonValue {
-    log_err!("Received codeAction with data {}", content);
-    let uri = &content["params"]["textDocument"]["uri"].to_string();
-
-    let range = &content["params"]["range"];
-    let start = &range["start"];
-    let end = &range["end"];
-
-    let (start_line, _start_char) = (
-        start["line"].as_u64().unwrap(),
-        start["character"].as_u64().unwrap(),
-    );
-
-    let (end_line, _end_char) = (
-        end["line"].as_u64().unwrap(),
-        end["character"].as_u64().unwrap(),
-    );
-
-    let text_edit = object! {
-        "range": {
-            "start": { "line": start_line, "character": 0,},
-            "end": { "line": end_line, "character": 0, }
-        },
-
-         "newText": format!("{}: ", start_line),
-    };
-
-    let code_action = object! {
-        "title": "Add line number at the beginning\r\n",
-        "edit": {
-            "changes": {
-                [uri]: [text_edit],
-            },
-        }
-    };
-
-    let data = object! {
-        "result": [code_action],
-    };
-
-    data
-}
+// fn encode_code_action(content: JsonValue) -> JsonValue {
+//     log_err!("Received codeAction with data {}", content);
+//     let uri = &content["params"]["textDocument"]["uri"].to_string();
+//
+//     let range = &content["params"]["range"];
+//     let start = &range["start"];
+//     let end = &range["end"];
+//
+//     let (start_line, _start_char) = (
+//         start["line"].as_u64().unrap_or_default(),
+//         start["character"].as_u64().unrap_or_default(),
+//     );
+//
+//     let (end_line, _end_char) = (
+//         end["line"].as_u64().unrap_or_default(),
+//         end["character"].as_u64().unrap_or_default(),
+//     );
+//
+//     let text_edit = object! {
+//         "range": {
+//             "start": { "line": start_line, "character": 0,},
+//             "end": { "line": end_line, "character": 0, }
+//         },
+//
+//          "newText": format!("{}: ", start_line),
+//     };
+//
+//     let code_action = object! {
+//         "title": "Add line number at the beginning\r\n",
+//         "edit": {
+//             "changes": {
+//                 [uri]: [text_edit],
+//             },
+//         }
+//     };
+//
+//     let data = object! {
+//         "result": [code_action],
+//     };
+//
+//     data
+// }
 
 fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue {
     let error_nodes = parser::find_errors(text, root_node);
@@ -916,7 +916,7 @@ fn encode_message(id: LspRequestId, method: &str, content: JsonValue) -> JsonVal
         "textDocument/hover" => completion::encode_hover(content),
         "textDocument/definition" => encode_definition(content),
         "textDocument/references" => encode_references(content),
-        "textDocument/codeAction" => encode_code_action(content),
+        // "textDocument/codeAction" => encode_code_action(content),
         "textDocument/completion" => completion::encode_completion(content),
         "textDocument/formatting" => formatting::encode_formatting(content),
         "completionItem/resolve" => completion::encode_completion_resolve(content),
