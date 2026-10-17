@@ -573,6 +573,7 @@ pub fn find_probes_for_node(node: &Node, text: &str) -> Vec<String> {
         return Vec::new();
     }
 
+    // action_block is 'node.parent()', so it has at least one child
     let probes_list = action_block.child(0).unwrap();
     if probes_list.kind() != "probes_list" {
         log_err!(
