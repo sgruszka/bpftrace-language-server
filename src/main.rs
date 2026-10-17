@@ -1174,12 +1174,10 @@ fn thread_diagnostics(
                     // TODO: check if 300ms is more or less good heuristics
                     thread::sleep(Duration::from_millis(300));
 
-                    let option = DOCUMENTS_STATE.get(&uri);
-                    if option.is_none() {
+                    let Some(text_doc) = DOCUMENTS_STATE.get(&uri) else {
                         log_err!("Can not find document for {uri}");
                         continue;
-                    }
-                    let text_doc = option.unwrap();
+                    };
 
                     if text_doc.version != diag_req.version {
                         log_dbg!(
