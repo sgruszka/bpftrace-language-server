@@ -662,14 +662,16 @@ fn bpftrace_diag_single_line_error(
     text: &str,
     line_nr: usize,
     tokens: &[&str],
-) -> Result<JsonValue, std::num::ParseIntError> {
-    assert!(tokens.len() > 2);
+) -> Option<JsonValue> {
+    if tokens.len() < 4 {
+        return None;
+    }
 
     let line_nr = line_nr.saturating_sub(1);
     let chars: Vec<&str> = tokens[2].split("-").collect();
 
-    let start_char_nr = chars[0].parse::<usize>()?.saturating_sub(1);
-    let end_char_nr = chars[1].parse::<usize>()?.saturating_sub(1);
+    let start_char_nr = chars.get(0)?.parse::<usize>().ok()?.saturating_sub(1);
+    let end_char_nr = chars.get(1)?.parse::<usize>().ok()?.saturating_sub(1);
 
     let start = to_utf16_position(text, tree_sitter::Point::new(line_nr, start_char_nr));
     let end = to_utf16_position(text, tree_sitter::Point::new(line_nr, end_char_nr));
@@ -694,25 +696,20 @@ fn bpftrace_diag_single_line_error(
         "message": format!("{}:{}", tokens[3], tail),
     };
 
-    Ok(diag)
+    Some(diag)
 }
 
 // Parse errors with lines range like this:
 // stdin:2-4: ERROR: Invalid probe type: kkprobe
-fn bpftrace_diag_multi_line_error(tokens: &[&str]) -> Result<JsonValue, std::num::ParseIntError> {
-    assert!(tokens.len() > 1);
+fn bpftrace_diag_multi_line_error(tokens: &[&str]) -> Option<JsonValue> {
+    if tokens.len() < 3 {
+        return None;
+    }
 
     let start_and_end: Vec<&str> = tokens[1].split("-").collect();
 
-    let mut line_nr: usize = start_and_end[1].parse()?;
-    if line_nr > 1 {
-        line_nr -= 1;
-    }
-
-    let mut end_line_nr: usize = start_and_end[1].parse()?;
-    if end_line_nr > 1 {
-        end_line_nr -= 1;
-    }
+    let line_nr = start_and_end.first()?.parse::<usize>().ok()?.saturating_sub(1);
+    let end_line_nr = start_and_end.get(1)?.parse::<usize>().ok()?.saturating_sub(1);
 
     let to_severity = |e: &str| -> u32 {
         match e.trim() {
@@ -734,20 +731,22 @@ fn bpftrace_diag_multi_line_error(tokens: &[&str]) -> Result<JsonValue, std::num
         "message": format!("{}:{}", tokens[2], tail),
     };
 
-    Ok(diag)
+    Some(diag)
 }
 
 // Parse definitions errors:
 // definitions.h:10:18: error: expected ';' at end of declaration list
-fn bpftrace_diag_definitions_error(tokens: &[&str]) -> Result<JsonValue, std::num::ParseIntError> {
-    assert!(tokens.len() > 2);
+fn bpftrace_diag_definitions_error(tokens: &[&str]) -> Option<JsonValue> {
+    if tokens.len() < 3 {
+        return None;
+    }
 
-    let mut line_nr = tokens[1].parse::<usize>()?;
+    let mut line_nr = tokens[1].parse::<usize>().ok()?;
     if line_nr > 1 {
         line_nr -= 1;
     }
 
-    let end_char_nr = tokens[2].parse::<usize>()?;
+    let end_char_nr = tokens[2].parse::<usize>().ok()?;
     let start_char_nr = if end_char_nr > 0 {
         end_char_nr - 1
     } else {
@@ -767,7 +766,7 @@ fn bpftrace_diag_definitions_error(tokens: &[&str]) -> Result<JsonValue, std::nu
         "message": format!("ERROR:{}", msg),
     };
 
-    Ok(diag)
+    Some(diag)
 }
 
 fn do_bpftrace_diagnostics(text: &str) -> JsonValue {
@@ -808,7 +807,7 @@ fn do_bpftrace_diagnostics(text: &str) -> JsonValue {
             continue;
         };
 
-        if let Ok(diag) = diag_res {
+        if let Some(diag) = diag_res {
             let _ = diagnostics.push(diag);
         }
     }
