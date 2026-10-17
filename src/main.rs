@@ -670,7 +670,7 @@ fn bpftrace_diag_single_line_error(
     let line_nr = line_nr.saturating_sub(1);
     let chars: Vec<&str> = tokens[2].split("-").collect();
 
-    let start_char_nr = chars.get(0)?.parse::<usize>().ok()?.saturating_sub(1);
+    let start_char_nr = chars.first()?.parse::<usize>().ok()?.saturating_sub(1);
     let end_char_nr = chars.get(1)?.parse::<usize>().ok()?.saturating_sub(1);
 
     let start = to_utf16_position(text, tree_sitter::Point::new(line_nr, start_char_nr));
@@ -708,8 +708,16 @@ fn bpftrace_diag_multi_line_error(tokens: &[&str]) -> Option<JsonValue> {
 
     let start_and_end: Vec<&str> = tokens[1].split("-").collect();
 
-    let line_nr = start_and_end.first()?.parse::<usize>().ok()?.saturating_sub(1);
-    let end_line_nr = start_and_end.get(1)?.parse::<usize>().ok()?.saturating_sub(1);
+    let line_nr = start_and_end
+        .first()?
+        .parse::<usize>()
+        .ok()?
+        .saturating_sub(1);
+    let end_line_nr = start_and_end
+        .get(1)?
+        .parse::<usize>()
+        .ok()?
+        .saturating_sub(1);
 
     let to_severity = |e: &str| -> u32 {
         match e.trim() {
@@ -770,23 +778,22 @@ fn bpftrace_diag_definitions_error(tokens: &[&str]) -> Option<JsonValue> {
 }
 
 fn do_bpftrace_diagnostics(text: &str) -> JsonValue {
+    let Ok(output) = cmd_mod::bpftrace_dry_run_command(text) else {
+        return JsonValue::new_array();
+    };
+    let Ok(stderr) = String::from_utf8(output.stderr) else {
+        return JsonValue::new_array();
+    };
+
+    parse_bpftrace_diagnostics(text, &stderr)
+}
+
+fn parse_bpftrace_diagnostics(text: &str, stderr: &str) -> JsonValue {
     let mut diagnostics = JsonValue::new_array();
-
-    let output = if let Ok(ok_output) = cmd_mod::bpftrace_dry_run_command(text) {
-        ok_output
-    } else {
-        return diagnostics;
-    };
-
-    let output = if let Ok(ok_output) = String::from_utf8(output.stderr) {
-        ok_output
-    } else {
-        return diagnostics;
-    };
 
     log_vdbg!(DIAGN, "Parsing bpftrace dry-run lines:");
 
-    for line in output.lines() {
+    for line in stderr.lines() {
         let tokens: Vec<&str> = line.split(":").collect();
         log_vdbg!(DIAGN, "{}", line);
 
@@ -1443,19 +1450,137 @@ mod tests {
     #[test]
     fn test_bpftrace_diagnostic_on_first_line() {
         let text = "BEGIN { @x = ; }";
-        let tokens: Vec<&str> = "stdin:1:14-15: ERROR: syntax error, unexpected ;"
-            .split(':')
-            .collect();
+        let stderr = "stdin:1:14-15: ERROR: syntax error, unexpected ;";
+        let diagnostics = parse_bpftrace_diagnostics(text, stderr);
 
-        let diagnostic = bpftrace_diag_single_line_error(text, 1, &tokens).unwrap();
-
+        assert_eq!(diagnostics.len(), 1);
         assert_eq!(
-            diagnostic["range"],
+            diagnostics[0]["range"],
             object! {
                 "start": { "line": 0, "character": 13 },
                 "end": { "line": 0, "character": 14 },
             }
         );
+    }
+
+    #[test]
+    fn test_bpftrace_diagnostic_rejects_truncated_output() {
+        for stderr in [
+            "",
+            "stdin",
+            "stdin:1",
+            "stdin:1:1-2",
+            "stdin:2-4",
+            "definitions.h",
+            "definitions.h:10",
+        ] {
+            assert!(
+                parse_bpftrace_diagnostics("x", stderr).is_empty(),
+                "accepted truncated stderr {stderr:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bpftrace_diagnostic_rejects_invalid_column_ranges() {
+        for stderr in [
+            "stdin:1:: ERROR: invalid expression",
+            "stdin:1:14: ERROR: invalid expression",
+            "stdin:1:-15: ERROR: invalid expression",
+            "stdin:1:14-: ERROR: invalid expression",
+            "stdin:1:bad-15: ERROR: invalid expression",
+            "stdin:1:14-bad: ERROR: invalid expression",
+            "stdin:1:999999999999999999999999999999-15: ERROR: invalid expression",
+            "stdin:1:14-999999999999999999999999999999: ERROR: invalid expression",
+        ] {
+            assert!(
+                parse_bpftrace_diagnostics("BEGIN { @x = ; }", stderr).is_empty(),
+                "accepted invalid column range in {stderr:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bpftrace_diagnostic_rejects_invalid_line_ranges() {
+        for stderr in [
+            "stdin:: ERROR: Invalid probe type",
+            "stdin:2: ERROR: Invalid probe type",
+            "stdin:-4: ERROR: Invalid probe type",
+            "stdin:2-: ERROR: Invalid probe type",
+            "stdin:bad-4: ERROR: Invalid probe type",
+            "stdin:2-bad: ERROR: Invalid probe type",
+            "stdin:999999999999999999999999999999-4: ERROR: Invalid probe type",
+            "stdin:2-999999999999999999999999999999: ERROR: Invalid probe type",
+        ] {
+            assert!(
+                parse_bpftrace_diagnostics("", stderr).is_empty(),
+                "accepted invalid line range in {stderr:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bpftrace_diagnostic_multiline_ranges() {
+        for (stderr, start_line, end_line) in [
+            ("stdin:2-4: ERROR: Invalid probe type: kkprobe", 1, 3),
+            ("stdin:1-4: ERROR: Invalid probe type: kkprobe", 0, 3),
+            ("stdin:1-1: ERROR: Invalid probe type: kkprobe", 0, 0),
+        ] {
+            let diagnostics = parse_bpftrace_diagnostics("", stderr);
+
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(
+                diagnostics[0],
+                object! {
+                    "range": {
+                        "start": { "line": start_line, "character": 0 },
+                        "end": { "line": end_line, "character": 0 },
+                    },
+                    "severity": 1,
+                    "message": " ERROR: Invalid probe type: kkprobe",
+                },
+                "incorrect diagnostic for {stderr:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bpftrace_diagnostic_rejects_invalid_definition_coordinates() {
+        for stderr in [
+            "definitions.h::18: error: invalid declaration",
+            "definitions.h:bad:18: error: invalid declaration",
+            "definitions.h:-1:18: error: invalid declaration",
+            "definitions.h:999999999999999999999999999999:18: error: invalid declaration",
+            "definitions.h:10:: error: invalid declaration",
+            "definitions.h:10:bad: error: invalid declaration",
+            "definitions.h:10:-1: error: invalid declaration",
+            "definitions.h:10:999999999999999999999999999999: error: invalid declaration",
+        ] {
+            assert!(
+                parse_bpftrace_diagnostics("", stderr).is_empty(),
+                "accepted invalid definition coordinates in {stderr:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bpftrace_diagnostic_warnings() {
+        for (stderr, message) in [
+            (
+                "stdin:1:1-6: WARNING: deprecated syntax: example",
+                " WARNING: deprecated syntax: example",
+            ),
+            (
+                "stdin:1-2: WARNING: deprecated syntax: example",
+                " WARNING: deprecated syntax: example",
+            ),
+        ] {
+            let diagnostics = parse_bpftrace_diagnostics("BEGIN {}\nEND {}", stderr);
+
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(diagnostics[0]["severity"], 2);
+            assert_eq!(diagnostics[0]["message"], message);
+        }
     }
 
     #[test]
