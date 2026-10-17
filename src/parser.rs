@@ -930,12 +930,12 @@ pub fn chain_str_to_tokens(names_chain: &str) -> Vec<&str> {
                 res.push("->");
                 start_idx = i + 1;
             }
-            _ => end_idx = i,
+            _ => end_idx = i + c.len_utf8(),
         };
     }
 
-    if end_idx != 0 && start_idx <= end_idx {
-        res.push(&names_chain[start_idx..=end_idx]);
+    if start_idx < end_idx {
+        res.push(&names_chain[start_idx..end_idx]);
     }
 
     res
@@ -955,6 +955,22 @@ mod tests {
         assert!(
             chain_str_to_tokens("args.f1.f2->f3") == vec!["args", ".", "f1", ".", "f2", "->", "f3"]
         );
+    }
+
+    #[test]
+    fn test_chain_str_to_tokens_with_unicode() {
+        let unicode_tests: &[(&str, &[&str])] = &[
+            ("args.é", &["args", ".", "é"]),
+            ("args.字段", &["args", ".", "字段"]),
+            ("args.𐐀", &["args", ".", "𐐀"]),
+            ("é.字段->𐐀", &["é", ".", "字段", "->", "𐐀"]),
+            ("é", &["é"]),
+            ("args.é.", &["args", ".", "é", "."]),
+        ];
+
+        for &(input, expected) in unicode_tests {
+            assert_eq!(chain_str_to_tokens(input), expected, "input: {input:?}");
+        }
     }
 
     fn setup_syntax_tree(source_code: &str) -> Tree {
