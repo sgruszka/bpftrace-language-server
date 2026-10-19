@@ -42,7 +42,7 @@ arm64 kernel returns `arm`.
 Since bpftrace v0.28
 
 ### assert [0.24..]
-Terminates the script if a condition is false.
+Terminates the script with an error code if a condition is false.
 
 - `void assert(bool condition, string message)`
 
@@ -50,7 +50,9 @@ Terminates the script if a condition is false.
 Since bpftrace v0.24
 
 ### assert_str [0.25..]
-Checks that a value is string-like.
+Checks that this value is string-like.
+
+- `void assert_str(any expression)`
 
 **Availability**
 Since bpftrace v0.25
@@ -63,8 +65,8 @@ Reverses the byte order of an integer.
 - `uint32 bswap(uint32 n)`
 - `uint64 bswap(uint64 n)`
 
-In case of 8 bit integers, `n` is returned without being modified.
-The return type is an unsigned integer of the same width as `n`.
+In case of 8 bit integers, `n` is returned without being modified. The return
+type is an unsigned integer of the same width as `n`.
 
 **Availability**
 Since bpftrace v0.15
@@ -84,11 +86,11 @@ address space associated with `data`.
 The `buffer` object returned by `buf` can safely be printed as a hex encoded
 string with the `%r` format specifier.
 
-Bytes with values >=32 and <=126 are printed using their ASCII character,
-other bytes are printed in hex form (e.g. `\x00`). The `%rx` format specifier
-can be used to print everything in hex form, including ASCII characters. The
-similar `%rh` format specifier prints everything in hex form without `\x` and
-with spaces between bytes (e.g. `0a fe`).
+Bytes with values >=32 and <=126 are printed using their ASCII character, other
+bytes are printed in hex form (e.g. `\x00`). The `%rx` format specifier can be
+used to print everything in hex form, including ASCII characters. The similar
+`%rh` format specifier prints everything in hex form without `\x` and with
+spaces between bytes (e.g. `0a fe`).
 
 **Example**
 ```
@@ -111,8 +113,8 @@ Prints the contents of a file to standard output.
 **async**
 
 Dump the contents of the named file to stdout. `cat` supports the same format
-string and arguments that `printf` does. If the file cannot be opened or read
-an error is printed to stderr.
+string and arguments that `printf` does. If the file cannot be opened or read an
+error is printed to stderr.
 
 **Example**
 ```
@@ -128,7 +130,7 @@ tracepoint:syscalls:sys_enter_execve {
 ```
 
 ### cgroup [..]
-Returns the current process’s cgroup ID.
+Returns the current process's cgroup ID.
 
 - `uint64 cgroup()`
 - `uint64 cgroup`
@@ -173,8 +175,6 @@ Returns the cgroup v2 ID for a cgroup path.
 
 **compile time**
 
-`cgroupid` retrieves the cgroupv2 ID of the cgroup available at `path`.
-
 ```
 BEGIN {
   print(cgroupid("/sys/fs/cgroup/system.slice"));
@@ -208,7 +208,7 @@ Name of the current thread.
 
 - `string comm`
 
-This utilizes the BPF helper `get_current_comm`.
+This utilizes the BPF helper `bpf_get_current_comm`.
 
 ### comm [0.24..0.24]
 Returns the name of the current thread.
@@ -216,7 +216,7 @@ Returns the name of the current thread.
 - `string comm()`
 - `string comm`
 
-This utilizes the BPF helper `get_current_comm`.
+This utilizes the BPF helper `bpf_get_current_comm`.
 
 ### comm [0.25..]
 Returns the name of the current thread or a specified process.
@@ -225,7 +225,8 @@ Returns the name of the current thread or a specified process.
 - `string comm`
 - `string comm(uint32 pid)`
 
-This utilizes the BPF helper `get_current_comm`.
+This uses the BPF helper `bpf_get_current_comm` for `comm()` or the kfunc
+`bpf_task_from_pid` for `comm(pid)`.
 
 ### config [0.27..]
 Returns the current bpftrace configuration.
@@ -234,10 +235,12 @@ Returns the current bpftrace configuration.
 - `Record config`
 
 Returns a `Record` containing the current `bpftrace` configuration settings.
-[List of config variables](https://bpftrace.org/docs/release_027/language#config-variables)
+[List of config variables][doc1]
+
+[doc1]: https://bpftrace.org/docs/release_027/language#config-variables
 
 **Example**
-```
+```bpftrace
 begin {
   printf("max_strlen: %d, stack_mode: %s\n", config.max_strlen, config.stack_mode);
 }
@@ -251,14 +254,11 @@ Finds the containing object from a pointer to one of its members.
 
 - `Container* container_of(Member* ptr, Type type, Identifier member)`
 
-Returns a pointer to an object of the passed `type` given a pointer to the
-`member` of that object.
-
 **Availability**
 Since bpftrace v0.27
 
 ### cpid [..0.23]
-Child process ID, if bpftrace is invoked with `-c`
+Child process ID when bpftrace was started with `-c`.
 
 - `uint32 cpid`
 
@@ -273,12 +273,12 @@ value will be zero. This warning can be avoided by using `has_cpid` to check if
 `cpid` has a value, prior to referencing `cpid`.
 
 ### cpu [..0.23]
-ID of the processor executing the BPF program.
+ID of the CPU running the current BPF program.
 
 - `uint32 cpu`
 
-BPF program, in this case, is the probe body. This utilizes the BPF helper
-`raw_smp_processor_id`.
+The BPF program corresponds to the probe's action body. This utilizes the BPF
+helper `bpf_get_smp_processor_id`.
 
 ### cpu [0.24..]
 Returns the ID of the CPU running the current BPF program.
@@ -286,11 +286,11 @@ Returns the ID of the CPU running the current BPF program.
 - `uint32 cpu()`
 - `uint32 cpu`
 
-BPF program, in this case, is the probe body. This utilizes the BPF helper
-`raw_smp_processor_id`.
+The BPF program corresponds to the probe's action body. This utilizes the BPF
+helper `bpf_get_smp_processor_id`.
 
 ### curtask [0.22..0.23]
-Pointer to `struct task_struct` of the current task.
+Pointer to the current task's `task_struct`.
 
 - `uint64 curtask`
 
@@ -300,7 +300,7 @@ This utilizes the BPF helper `get_current_task`.
 Since bpftrace v0.22
 
 ### curtask [0.24..0.27]
-Returns a pointer to the current task’s `task_struct`.
+Returns a pointer to the current task's `task_struct`.
 
 - `uint64 curtask()`
 - `uint64 curtask`
@@ -311,7 +311,7 @@ This utilizes the BPF helper `get_current_task`.
 Since bpftrace v0.22
 
 ### curtask [0.28..]
-Returns a pointer to the current task’s `task_struct`.
+Returns a pointer to the current task's `task_struct`.
 
 - `struct task_struct * curtask()`
 - `struct task_struct * curtask`
@@ -322,7 +322,7 @@ This utilizes the BPF helper `bpf_get_current_task_btf`.
 Since bpftrace v0.22
 
 ### cwd [0.28..]
-Returns the current working directory.
+Get the current working directory.
 
 - `string cwd()`
 - `string cwd`
@@ -332,7 +332,7 @@ Returns the current working directory.
 Since bpftrace v0.28
 
 ### default_str_length [0.25..]
-Returns the default unbounded string length.
+Returns the default unbounded length.
 
 - `uint64 default_str_length()`
 - `uint64 default_str_length`
@@ -348,22 +348,23 @@ Removes one key and its value from a map.
 
 For scalar maps (e.g. no explicit keys), the key is omitted and is equivalent to
 calling `clear`. For map keys that are composed of multiple values (e.g.
-`@mymap[3, "hello"] = 1` - remember these values are represented as a tuple)
-the syntax would be: `delete(@mymap, (3, "hello"));`
+`@mymap[3, "hello"] = 1` - remember these values are represented as a tuple) the
+syntax would be: `delete(@mymap, (3, "hello"));`.
 
 If deletion fails (e.g. the key doesn’t exist) the function returns false (0).
-Additionally, if the return value for `delete` is discarded, and deletion fails,
-you will get a warning.
+If the return value of `delete` isn't used, you will get a compile-time warning,
+whether or not the deletion succeeds. Use `_ = delete(...)` to discard it without
+a warning.
 
 **Examples**
 ```
 @a[1] = 1;
-delete(@a, 1); // no warning (the key exists)
+delete(@a, 1); // warning (return value is discarded)
 if (delete(@a, 2)) { // no warning (return value is used)
-  ...
+  // ...
 }
 $did_delete = delete(@a, 2); // no warning (return value is used)
-delete(@a, 2); // warning (return value is discarded and the key doesn’t exist)
+_ = delete(@a, 2); // no warning (return value is explicitly discarded)
 ```
 
 The, now deprecated, API (supported in version &lt;= 0.21.x) of passing map
@@ -380,9 +381,9 @@ kprobe:dummy {
   delete(@associative); // error
   delete(@associative, 1); // error
 
-    // deprecated but ok
-    delete(@single["hello"]);
-    delete(@associative[1, 2]);
+  // deprecated but ok
+  delete(@single["hello"]);
+  delete(@associative[1, 2]);
 }
 ```
 
@@ -407,14 +408,15 @@ unwind information for a process, a runtime warning is emitted.
 
 **Unstable feature**
 
-`dw_ustack` is an unstable feature. By default a warning is printed when it
-is used. Set the config flag to suppress the warning or to make it an error:
+`dw_ustack` is an unstable feature. By default a warning is printed when it is
+used. Set the config flag to suppress the warning or to make it an error:
 
 ```
 config = { unstable_dw_ustack=enable }
 ```
 
-For usage examples see [ustack](https://bpftrace.org/docs/release_026/stdlib#ustack).
+For usage examples see
+[ustack](https://bpftrace.org/docs/release_026/stdlib#ustack).
 
 **Availability**
 Since bpftrace v0.26
@@ -439,7 +441,7 @@ with the source location.
 ```
 BEGIN { errorf("Something bad with args: %d, %s", 10, "arg2"); }
 // Prints:
-// EXPECT stdin:1:9-62: ERROR: Something bad with args: 10, arg2
+// stdin:1:9-62: ERROR: Something bad with args: 10, arg2
 ```
 
 **Availability**
@@ -512,7 +514,7 @@ kprobe:dummy_probe {
 Since bpftrace v0.25
 
 ### func [..0.23]
-Name of the current function being traced.
+Name of the current function being traced (kprobes,uprobes,fentry).
 
 - `string func`
 
@@ -525,7 +527,7 @@ Name of the current function being traced.
 * fexit
 
 ### func [0.24..0.26]
-Name of the current function being traced.
+Name of the current function being traced (kprobes,uprobes,fentry).
 
 - `string func()`
 - `string func`
@@ -539,7 +541,7 @@ Name of the current function being traced.
 * fexit
 
 ### func [0.27..]
-Name of the current function being traced.
+Name of the current function being traced (kprobes,uprobes,fentry).
 
 - `ksym_t func()`
 - `ksym_t func`
@@ -555,7 +557,7 @@ Name of the current function being traced.
 * fexit
 
 ### getopt [0.24..0.24]
-Reads a named command-line option, inferring its type from the default value.
+Reads a named command-line option.
 
 - `bool getopt(string arg_name)`
 - `string getopt(string arg_name, string default_value)`
@@ -566,8 +568,8 @@ Get the named command line argument/option e.g.
 
 `getopt` defines the type of the argument by the default value’s type. If no
 default type is provided, the option is treated like a boolean arg e.g.
-`getopt("hello")` would evaluate to `false` if `--hello` is not specified on
-the command line or `true` if `--hello` is passed or set to one of the following
+`getopt("hello")` would evaluate to `false` if `--hello` is not specified on the
+command line or `true` if `--hello` is passed or set to one of the following
 values: `true`, `1`. Additionally, boolean args accept the following false
 values: `0`, `false` e.g. `--hello=false`. If the arg is not set on the command
 line, the default value is used.
@@ -586,7 +588,7 @@ line, the default value is used.
 Since bpftrace v0.24
 
 ### getopt [0.25..]
-Reads a named command-line option, inferring its type from the default value.
+Reads a named command-line option.
 
 - `bool getopt(string arg_name)`
 - `bool getopt(string arg_name, bool default_value, [string description])`
@@ -622,14 +624,14 @@ You can use `--help` to see all named arguments/options.
 Since bpftrace v0.24
 
 ### gid [..0.23]
-Group ID of the current thread, as seen from the init namespace.
+Group ID of the current thread in the initial namespace.
 
 - `uint64 gid`
 
 This utilizes the BPF helper `get_current_uid_gid`.
 
 ### gid [0.24..]
-Returns the current thread’s group ID in the initial namespace.
+Returns the current thread's group ID in the initial namespace.
 
 - `uint64 gid()`
 - `uint64 gid`
@@ -662,13 +664,13 @@ kprobe:dummy {
     print(("bye"));
   }
 
-    @scalar = 1;
-    if (has_key(@scalar)) { // error
-      print(("hello"));
-    }
+  @scalar = 1;
+  if (has_key(@scalar)) { // error
+    print(("hello"));
+  }
 
-    $a = has_key(@associative, (1,2)); // ok
-    @b[has_key(@associative, (1,2))] = has_key(@associative, (1,2)); // ok
+  $a = has_key(@associative, (1,2)); // ok
+  @b[has_key(@associative, (1,2))] = has_key(@associative, (1,2)); // ok
 }
 ```
 
@@ -691,10 +693,10 @@ kprobe:dummy {
     print(("bye"));
   }
 
-    @scalar = 1;
-    if (has_key(@scalar)) { // error
-      print(("hello"));
-    }
+  @scalar = 1;
+  if (has_key(@scalar)) { // error
+    print(("hello"));
+  }
 }
 ```
 
@@ -710,13 +712,15 @@ Determine whether the given expression is an array.
 Since bpftrace v0.25
 
 ### is_err [0.26..]
-Returns `true` if a pointer encodes a kernel error code.
+Checks whether a pointer encodes a kernel error.
 
 - `bool is_err(void * ptr)`
 
-In the Linux kernel, some functions return error codes encoded as pointers
-using the `ERR_PTR` macro. These are pointer values in the range `(unsigned
-long)(-4095)` to `(unsigned long)(-1)`.
+Returns true if the pointer is an `ERR_PTR`, i.e. it encodes a kernel error code.
+
+In the Linux kernel, some functions return error codes encoded as pointers using
+the `ERR_PTR` macro. These are pointer values in the range
+`(unsigned long)(-4095)` to `(unsigned long)(-1)`.
 
 This is equivalent to the kernel's `IS_ERR()` macro.
 
@@ -741,11 +745,9 @@ Determine whether the given expression is an integer.
 Since bpftrace v0.25
 
 ### is_literal [0.25..]
-Determine whether an expression is a literal.
+Returns true if the passed expression is a literal, e.g. `1`, `true`, `"hello"`.
 
 - `bool is_literal(Expression expr)`
-
-Returns true if the passed expression is a literal, e.g. 1, true, "hello"
 
 **Availability**
 Since bpftrace v0.25
@@ -775,12 +777,12 @@ Determine whether the given expression is an unsigned integer.
 Since bpftrace v0.25
 
 ### jiffies [0.20..0.23]
-Jiffies counter of the kernel.
+Kernel jiffies counter.
 
 - `uint64 jiffies`
 
 On 32-bit systems, using this builtin might be slower. This utilizes the BPF
-helper `get_jiffies_64`.
+helper `bpf_jiffies64`.
 
 **Availability**
 Since bpftrace v0.20
@@ -792,7 +794,7 @@ Returns the kernel jiffies counter.
 - `uint64 jiffies`
 
 On 32-bit systems, using this builtin might be slower. This utilizes the BPF
-helper `get_jiffies_64`.
+helper `bpf_jiffies64`.
 
 **Availability**
 Since bpftrace v0.20
@@ -804,8 +806,8 @@ Joins an array of strings with a separator and prints the result.
 
 **async**
 
-`join` joins a `arr` with `sep` as separator into one string. This string
-will be printed to stdout directly, it cannot be used as string value.
+`join` joins a `arr` with `sep` as separator into one string. This string will
+be printed to stdout directly, it cannot be used as string value.
 
 The concatenation of the array members is done in BPF and the printing happens
 in userspace.
@@ -861,7 +863,8 @@ Marks a pointer as pointing to kernel address space.
 
 The pointer type is left unchanged.
 
-For more information see [Address-spaces](https://bpftrace.org/docs/release_026/language#address-spaces).
+For more information see
+[Address Spaces](https://bpftrace.org/docs/release_026/language#address-spaces).
 
 **Availability**
 Since bpftrace v0.12
@@ -992,7 +995,9 @@ Returns a kernel stack trace.
 
 - `kstack_t kstack([StackMode mode, ][int limit])`
 
-There are several [formatting/StackMode options](https://bpftrace.org/docs/release_026/language#stack_mode).
+There are several [formatting/StackMode options][doc2].
+
+[doc2]: https://bpftrace.org/docs/release_026/language#stack_mode
 
 **Examples**
 ```
@@ -1077,10 +1082,10 @@ Returns the name of the thread group leader.
 - `string leader_comm`
 - `string leader_comm(struct task_struct * task)`
 
-Get the thread name of the thread group leader for the passed task or
-the current task if called without arguments. This is an alias for
-`task.group_leader.comm`, which is different than `task.real_parent.comm`,
-which you can get from calling `pcomm()`. See `pcomm()` for more details.
+Get the thread name of the thread group leader for the passed task or the
+current task if called without arguments. This is an alias for
+`task.group_leader.comm`, which is different than `task.real_parent.comm`, which
+you can get from calling `pcomm()`. See `pcomm()` for more details.
 
 **Availability**
 Since bpftrace v0.26
@@ -1138,13 +1143,13 @@ kprobe:arp_create {
 Since bpftrace v0.12
 
 ### memcmp [0.25..]
-Compares two byte sequences.
+Compares a specified number of bytes.
 
 - `int memcmp(left, right, uint64 count)`
 
 Compares the first `count` bytes of `left` and `right`. Returns zero if they
-match. Otherwise, returns a negative value if the first differing byte in
-`left` is smaller, or a positive value if it is larger.
+match. Otherwise, returns a negative value if the first differing byte in `left`
+is smaller, or a positive value if it is larger.
 
 **Availability**
 Since bpftrace v0.25
@@ -1202,12 +1207,11 @@ explicitly as the first parameter.
 Since bpftrace v0.12
 
 ### numaid [0.16..0.23]
-ID of the NUMA node executing the BPF program.
+ID of the NUMA node running the current BPF program.
 
 - `uint32 numaid`
 
-BPF program, in this case, is the probe body.
-This utilizes the BPF helper `numa_node_id`
+This utilizes the BPF helper `bpf_get_numa_node_id`.
 
 **Availability**
 Since bpftrace v0.16
@@ -1218,8 +1222,7 @@ Returns the ID of the NUMA node running the current BPF program.
 - `uint32 numaid()`
 - `uint32 numaid`
 
-BPF program, in this case, is the probe body. This utilizes the BPF helper
-`numa_node_id`.
+This utilizes the BPF helper `bpf_get_numa_node_id`.
 
 **Availability**
 Since bpftrace v0.16
@@ -1263,7 +1266,7 @@ Prevents a probed function from running and supplies its return value.
 **unsafe**
 
 When using `override` the probed function will not be executed and instead `rc`
-will be returned. This utilizes the BPF helper `bpf_override`.
+will be returned. This utilizes the BPF helper `bpf_override_return`.
 
 **Supported probes**
 * kprobe
@@ -1291,7 +1294,7 @@ kprobe:__x64_sys_getuid /comm == "id"/ {
 Since kernel v4.16
 
 ### path [0.12..]
-Returns the full filesystem path referenced by a `struct path` pointer.
+Resolves a kernel path to a string.
 
 - `char * path(struct path * path [, int32 size])`
 
@@ -1317,8 +1320,8 @@ Returns the name of the thread group leader.
 - `string pcomm`
 - `string pcomm(struct task_struct * task)`
 
-Uses the supplied task, or the current task when called without arguments.
-This is an alias for `task.group_leader.comm`.
+Uses the supplied task, or the current task when called without arguments. This
+is an alias for `task.group_leader.comm`.
 
 **Availability**
 Since bpftrace v0.25
@@ -1353,7 +1356,7 @@ omitted, the current CPU is used.
 ```
 interval:s:1 {
   $proc_cnt = percpu_kaddr("process_counts");
-  printf("% processes are running on CPU %d\n", *$proc_cnt, cpu);
+  printf("%d processes are running on CPU %d\n", *$proc_cnt, cpu);
 }
 ```
 
@@ -1389,7 +1392,7 @@ omitted, the current CPU is used.
 ```
 interval:s:1 {
   $proc_cnt = percpu_kaddr("process_counts");
-  printf("% processes are running on CPU %d\n", *$proc_cnt, cpu);
+  printf("%d processes are running on CPU %d\n", *$proc_cnt, cpu);
 }
 ```
 
@@ -1411,7 +1414,7 @@ interval:s:1 {
 Since bpftrace v0.22
 
 ### pid [..0.23]
-Returns the process ID of the current thread.
+Process ID of the current thread.
 
 - `uint32 pid`
 
@@ -1473,12 +1476,12 @@ Prints a value using its default formatting.
 Prints a value using its default formatting.
 
 - `void print(T val)`
-- `void print(@map, [uint64 top, [uint64 div]])`
+- `void print(@map [, uint64 top [, uint64 div]])`
 
 **async**
 
-`print` prints the value, which can be a map or a scalar value, with
-the default formatting for the type.
+`print` prints the value, which can be a map or a scalar value, with the default
+formatting for the type.
 
 Declared maps and histograms are automatically printed out on program
 termination.
@@ -1516,17 +1519,17 @@ interval:s:1 { print(@); exit(); }
 ```
 
 The printing of maps supports the optional `top` and `div` arguments. `top`
-limits the printing to the top N entries with the highest integer values
+limits the printing to the top N entries with the highest integer values.
 
 ```
 BEGIN {
   $i = 11;
   for $elem : 1..$i {
-    @[$elem] = $elem-1;
+    @[$elem] = $elem - 1;
   }
   print(@, 2);
   clear(@);
-  exit()
+  exit();
 }
 // Prints:
 // @[9]: 8
@@ -1540,7 +1543,7 @@ program:
 
 ```
 kprobe:f {
-  @[func] += arg0/10;
+  @[func] += arg0 / 10;
 }
 ```
 
@@ -1548,15 +1551,15 @@ With the following sequence as numbers for arg0: `134, 377, 111, 99`. The total
 is `721` which rounds to `72` when scaled by 10 but the program would print `70`
 due to the rounding of individual values.
 
-Changing the print call to `print(@, 5, 2)` will take the top 5 values and scale
-them by 2:
+Changing the earlier `print(@, 2)` call to `print(@, 5, 2)` will take the top 5
+values and scale them by 2:
 
 ```
-@[6]: 3
+@[6]: 2
 @[7]: 3
-@[8]: 4
+@[8]: 3
 @[9]: 4
-@[10]: 5
+@[10]: 4
 ```
 
 ### printf [..0.25]
@@ -1573,11 +1576,12 @@ The format string has to be a constant, it cannot be modified at runtime. The
 formatting of the string happens in user space. Values are copied and passed by
 value.
 
-bpftrace supports all the typical format specifiers like `%llx` and `%hhu`.
-The non-standard ones for `buf` function output can be found below:
+bpftrace supports all the typical format specifiers like `%llx` and `%hhu`. The
+non-standard ones for `buf` function output can be found below:
 
 - `r` Hex-formatted string with `\x`
-- `rh` Hex-formatted string without `\x` and with spaces between bytes (e.g. `0a fe`)
+- `rh` Hex-formatted string without `\x` and with spaces between bytes (e.g.
+  `0a fe`)
 
 `printf()` can also symbolize enums as strings. User defined enums as well as
 enums defined in the kernel are supported. For example:
@@ -1613,24 +1617,21 @@ Prints arguments using a format string.
 `printf()` formats and prints data. It behaves similar to `printf()` found in
 `C` and many other languages.
 
-The format string has to be a constant, it cannot be modified at runtime.
-The formatting of the string happens in user space. Values are copied and
-passed by value.
+The format string has to be a constant, it cannot be modified at runtime. The
+formatting of the string happens in user space. Values are copied and passed by
+value.
 
-bpftrace supports all the typical format specifiers like `%llx` and `%hhu`.
-The non-standard ones can be found below:
+bpftrace supports all the typical format specifiers like `%llx` and `%hhu`. The
+non-standard ones can be found below:
 
-* `r` - Normal hex for a buffer.
-Hex-formatted string to print arbitrary binary content returned by the `buf`.
-* `rh` - Formatted hex.
-Prints in hex-formatted string without `\x` and with spaces between bytes
-(e.g. `0a fe`).
-* `rx` - Escaped hex.
-Prints in hex-formatted string with `\x` without spaces between bytes (e.g.
-`\x0a\xfe`).
-* `gr` - Human-readable GFP flags.
-Formats GFP (Get Free Pages) flags into human-readable strings, similar to
-the Linux kernel's `%pGg` format.
+* `r` - Normal hex for a buffer. Hex-formatted string to print arbitrary binary
+  content returned by the `buf`.
+* `rh` - Formatted hex. Prints in hex-formatted string without `\x` and with
+  spaces between bytes (e.g. `0a fe`).
+* `rx` - Escaped hex. Prints in hex-formatted string with `\x` without spaces
+  between bytes (e.g. `\x0a\xfe`).
+* `gr` - Human-readable GFP flags. Formats GFP (Get Free Pages) flags into
+  human-readable strings, similar to the Linux kernel's `%pGg` format.
 
 `printf()` can also symbolize enums as strings. User defined enums as well as
 enums defined in the kernel are supported.
@@ -1675,7 +1676,7 @@ Returns the fully expanded name of the current probe.
 - `string probe()`
 - `string probe`
 
-For example: `kprobe:do_nanosleep`
+For example: `kprobe:do_nanosleep`.
 
 **Availability**
 Since bpftrace v0.24
@@ -1686,10 +1687,9 @@ Returns the type of the current probe.
 - `string probetype()`
 - `string probetype`
 
-Name of the probe type.
 Note: `begin` and `end` probes are of type `special`.
 
-For example: `kprobe`, `special`, `tracepoint`
+For example: `kprobe`, `special`, `tracepoint`.
 
 **Availability**
 Since bpftrace v0.25
@@ -1727,24 +1727,24 @@ endianness. The byte array returned by `pton()` is stored in network byte order
 (big-endian), and when cast to an integer, it is interpreted according to the
 system's native byte order:
 
-*Little-endian systems*: The bytes are reversed when interpreted as an
-integer. For example, `(uint32)pton("127.0.0.1")` yields `0x100007f` (bytes:
+*Little-endian systems*: The bytes are reversed when interpreted as an integer.
+For example, `(uint32)pton("127.0.0.1")` yields `0x100007f` (bytes:
 `[0x7f, 0x00, 0x00, 0x01]` interpreted as little-endian).
 
-*Big-endian systems*: The bytes maintain their network byte order. For
-example, `(uint32)pton("127.0.0.1")` yields `0x7f000001` (bytes: `[0x7f, 0x00,
-0x00, 0x01]` interpreted as big-endian). This behavior is consistent with how
-the underlying `inet_pton()` function works.
+*Big-endian systems*: The bytes maintain their network byte order. For example,
+`(uint32)pton("127.0.0.1")` yields `0x7f000001` (bytes:
+`[0x7f, 0x00, 0x00, 0x01]` interpreted as big-endian). This behavior is
+consistent with how the underlying `inet_pton()` function works.
 
 **Availability**
 Since bpftrace v0.16
 
 ### rand [..0.23]
-Get a pseudo random number.
+Pseudo-random number.
 
 - `uint32 rand`
 
-This utilizes the BPF helper `get_prandom_u32`
+This utilizes the BPF helper `get_prandom_u32`.
 
 ### rand [0.24..]
 Returns a pseudo-random number.
@@ -1752,7 +1752,7 @@ Returns a pseudo-random number.
 - `uint32 rand()`
 - `uint32 rand`
 
-This utilizes the BPF helper `get_prandom_u32`
+This utilizes the BPF helper `get_prandom_u32`.
 
 ### reg [..]
 Returns the value of a named CPU register.
@@ -1764,8 +1764,8 @@ Returns the value of a named CPU register.
 * kprobe
 * uprobe
 
-Get the contents of the register identified by `name`.
-Valid names depend on the CPU architecture.
+Get the contents of the register identified by `name`. Valid names depend on the
+CPU architecture.
 
 ### signal [..0.24]
 Sends a signal to the process being traced.
@@ -1819,9 +1819,8 @@ This utilizes the BPF helper `bpf_send_signal`.
 * usdt
 * profile
 
-Use `signal_thread` to send to the thread being traced. The signal can either
-be identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill
--l`.
+Use `signal_thread` to send to the thread being traced. The signal can either be
+identified by name, e.g. `SIGSTOP` or by ID, e.g. `19` as found in `kill -l`.
 
 **Example**
 ```
@@ -1885,8 +1884,8 @@ Returns the size of a type or expression in bytes.
 
 **compile time**
 
-Returns size of the argument in bytes. Similar to C/C++ `sizeof` operator. Note
-that the expression does not get evaluated.
+Similar to C/C++ `sizeof` operator. Note that the expression does not get
+evaluated.
 
 **Availability**
 Since bpftrace v0.11
@@ -1898,8 +1897,8 @@ Writes packet data from a socket buffer to a PCAP file.
 
 This utilizes the BPF helper `bpf_skb_output`.
 
-Write `skb` 's data section to a PCAP file in the `path`, starting from
-`offset` to `offset` + `length`.
+Write the data section of `skb` to a PCAP file in `path`, starting from `offset`
+to `offset` + `length`.
 
 The PCAP file is encapsulated in RAW IP, so no ethernet header is included. The
 `data` section in the struct `skb` may contain ethernet header in some kernel
@@ -1949,8 +1948,8 @@ Writes packet data from a socket buffer to a PCAP file.
 
 This utilizes the BPF helper `bpf_skb_output`.
 
-Write `skb` 's data section to a PCAP file in the `path`, starting from
-`offset` to `offset` + `length`.
+Write the data section of `skb` to a PCAP file in `path`, starting from `offset`
+to `offset` + `length`.
 
 The PCAP file is encapsulated in RAW IP, so no ethernet header is included. The
 `data` section in the struct `skb` may contain ethernet header in some kernel
@@ -2072,7 +2071,7 @@ fentry:tcp_rcv_established
 Since bpftrace v0.24
 
 ### static_assert [0.25..]
-Fails compilation if a condition is false.
+Assert something is true or fail the build.
 
 - `void static_assert(bool condition, string msg)`
 
@@ -2084,7 +2083,7 @@ Since bpftrace v0.25
 ### str [..0.24]
 Reads a null-terminated string from an address.
 
-- `string str(char * data [, uint32 length)`
+- `string str(char * data [, uint32 length])`
 
 This utilizes the BPF helpers `probe_read_str, probe_read_{kernel,user}_str`.
 
@@ -2097,7 +2096,8 @@ at the end.
 When available (starting from kernel 5.5, see the `--info` flag) bpftrace will
 automatically use the `kernel` or `user` variant of
 `probe_read_{kernel,user}_str` based on the address space of `data`. For more
-information see: [Address-spaces](https://bpftrace.org/docs/release_024/language#address-spaces).
+information see:
+[Address-spaces](https://bpftrace.org/docs/release_024/language#address-spaces).
 
 ### str [0.25..]
 Reads a null-terminated string from an address.
@@ -2114,7 +2114,8 @@ at the end.
 
 bpftrace will automatically use the `kernel` or `user` variant of
 `probe_read_{kernel,user}_str` based on the address space of `data`. For more
-information see: [Address-spaces](https://bpftrace.org/docs/release_025/language#address-spaces).
+information see:
+[Address-spaces](https://bpftrace.org/docs/release_025/language#address-spaces).
 
 ### str_concat [0.27..]
 Concatenates two strings into a new string.
@@ -2166,9 +2167,8 @@ Converts an error number to its description.
 
 - `strerror_t strerror(int error)`
 
-Convert errno code to string. This is done asynchronously in userspace when the
-strerror value is printed, hence the returned value can only be used for
-printing.
+This is done asynchronously in userspace when the strerror value is printed,
+hence the returned value can only be used for printing.
 
 **Example**
 ```
@@ -2206,7 +2206,7 @@ Formats a timestamp according to a time format string.
 
 Format the nanoseconds since boot timestamp `timestamp_ns` according to the
 format specified by `fmt`. The time conversion and formatting happens in user
-space, therefore  the `timestamp` value returned can only be used for printing
+space, therefore the `timestamp` value returned can only be used for printing
 using the `%s` format specifier.
 
 bpftrace uses the `strftime(3)` function for formatting time and supports the
@@ -2234,7 +2234,7 @@ Formats a timestamp according to a time format string.
 
 Format the nanoseconds since boot timestamp `timestamp_ns` according to the
 format specified by `fmt`. The time conversion and formatting happens in user
-space, therefore  the `timestamp` value returned can only be used for printing
+space, therefore the `timestamp` value returned can only be used for printing
 using the `%s` format specifier. **Note:** `timestamp_ns` must be non-negative.
 Negative timestamp literals are rejected.
 
@@ -2281,12 +2281,10 @@ directly.
 Since bpftrace v0.24
 
 ### strstr [0.25..]
-Returns the index of the first occurrence of one string in another.
+Returns the index of the first occurrence of one string in another, or -1 if not
+found.
 
 - `int64 strstr(string haystack, string needle)`
-
-Returns the index of the first occurrence of the string needle in the string
-haystack. If needle is not in haystack then -1 is returned.
 
 **Availability**
 Since bpftrace v0.25
@@ -2316,8 +2314,8 @@ Runs a command in a child process and prints its output.
 **async**
 
 `system` lets bpftrace run the specified command (`fork` and `exec`) until it
-completes and print its stdout. The `command` is run with the same privileges
-as bpftrace and it blocks execution of the processing threads which can lead to
+completes and print its stdout. The `command` is run with the same privileges as
+bpftrace and it blocks execution of the processing threads which can lead to
 missed events and delays processing of async events.
 
 **Examples**
@@ -2366,7 +2364,7 @@ Attached 3 probes
 
 ```
 tracepoint:syscalls:sys_enter_execve {
-  system("/bin/grep %s /proc/%d/status", "vmswap", pid);
+  system("/bin/grep %s /proc/%d/status", "VmSwap", pid);
 }
 ```
 
@@ -2409,7 +2407,8 @@ Returns the static type of a parsed type or expression.
 This is a special builtin that can only be used in the following contexts:
 * variable declarations e.g. `let $a: typeof($b);`
 * cast expressions e.g. `$a = (typeof($b))2;`
-* macro expansion calls to pass a type parameter e.g. `my_macro(typeof(uint64 *));`
+* macro expansion calls to pass a type parameter e.g.
+  `my_macro(typeof(uint64 *));`
 * type accepting builtins: `sizeof`, `offsetof`, `typeinfo`
 
 This builtin evaluates to the static type of either the parsed TYPE or the raw
@@ -2429,15 +2428,16 @@ Returns the address of a user-space symbol.
 * uretprobes
 * usdt
 
-***Does not work with ASLR, see issue [#75](https://github.com/bpftrace/bpftrace/issues/75)***
+***Does not work with ASLR, see issue
+[#75](https://github.com/bpftrace/bpftrace/issues/75)***
 
 The `uaddr` function returns the address of the specified symbol. This lookup
 happens during program compilation and cannot be used dynamically.
 
 The default return type is `uint64*`. If the ELF object size matches a known
-integer size (1, 2, 4 or 8 bytes) the return type is modified to match the
-width (`uint8*`, `uint16*`, `uint32*` or `uint64*` resp.). As ELF does not
-contain type info the type is always assumed to be unsigned.
+integer size (1, 2, 4 or 8 bytes) the return type is modified to match the width
+(`uint8*`, `uint16*`, `uint32*` or `uint64*` resp.). As ELF does not contain
+type info the type is always assumed to be unsigned.
 
 
 **Example**
@@ -2457,18 +2457,18 @@ Returns the address of a user-space symbol.
 * uretprobe
 * usdt
 
-If kernel supports `task_vma` open-coded iterator kfuncs (linux >= 6.7), `uaddr()`
-will correct the symbol addresses of PIE and dynamic libraries instead of
-directly using the symbol addresses in the ELF file, see
+If kernel supports `task_vma` open-coded iterator kfuncs (linux >= 6.7),
+`uaddr()` will correct the symbol addresses of PIE and dynamic libraries instead
+of directly using the symbol addresses in the ELF file, see
 [linux commit](https://github.com/torvalds/linux/commit/4ac454682158).
 
 The `uaddr` function returns the address of the specified symbol. This lookup
 happens during program compilation and cannot be used dynamically.
 
 The default return type is `uint64*`. If the ELF object size matches a known
-integer size (1, 2, 4 or 8 bytes) the return type is modified to match the
-width (`uint8*`, `uint16*`, `uint32*` or `uint64*` resp.). As ELF does not
-contain type info the type is always assumed to be unsigned.
+integer size (1, 2, 4 or 8 bytes) the return type is modified to match the width
+(`uint8*`, `uint16*`, `uint32*` or `uint64*` resp.). As ELF does not contain
+type info the type is always assumed to be unsigned.
 
 **Example**
 ```
@@ -2504,14 +2504,16 @@ Marks a pointer as pointing to user address space.
 
 - `T * uptr(T * ptr)`
 
-See the address-spaces section for more information on address-spaces.
 The pointer type is left unchanged.
+
+For more information see
+[Address Spaces](https://bpftrace.org/docs/release_026/language#address-spaces).
 
 **Availability**
 Since bpftrace v0.12
 
 ### usermode [0.24..]
-Returns whether execution is currently in user mode.
+Returns whether execution is currently in user mode (1 or 0).
 
 - `uint8 usermode()`
 - `uint8 usermode`
@@ -2522,7 +2524,7 @@ Currently only available on `x86_64`.
 Since bpftrace v0.24
 
 ### username [0.24..]
-Returns the current user’s name.
+Returns the current user's name.
 
 - `string username()`
 - `string username`
@@ -2590,8 +2592,8 @@ kprobe:ip_output { @[ustack(3)] = count(); }
  */
 ```
 
-You can also choose a different output format. Available formats are
-`bpftrace`, `perf`, and `raw` (no symbolication):
+You can also choose a different output format. Available formats are `bpftrace`,
+`perf`, and `raw` (no symbolication):
 
 ```
 kprobe:ip_output { @[ustack(perf, 3)] = count(); }
@@ -2670,8 +2672,8 @@ Note: If a limit is used and `show_debug_info` is enabled then the number of
 symbolized frames might exceed that limit in the output as `limit` refers to
 instruction pointers, which can translate to multiple inlined symbols.
 
-You can also choose a different output format. Available formats are
-`bpftrace`, `perf`, and `raw` (no symbolication):
+You can also choose a different output format. Available formats are `bpftrace`,
+`perf`, and `raw` (no symbolication):
 
 ```
 kprobe:ip_output { @[ustack(perf, 3)] = count(); }
@@ -2693,7 +2695,9 @@ Returns a user-space stack trace.
 
 - `ustack_t ustack([StackMode mode, ][int limit])`
 
-There are several [formatting/StackMode options](https://bpftrace.org/docs/release_027/language#stack_mode).
+There are several [formatting/StackMode options][doc3].
+
+[doc3]: https://bpftrace.org/docs/release_027/language#stack_mode
 
 **Examples**
 ```
@@ -2802,14 +2806,15 @@ Formats and prints a warning message with its source location.
 
 **async**
 
-`warnf()` formats and prints data similar to `printf` as a warning message
-with the source location. This respects the "--no-warnings" flag and will be
-silent if that is used.
+`warnf()` formats and prints data similar to `printf` as a warning message with
+the source location. This respects the "--no-warnings" flag and will be silent
+if that is used.
 
 **Example**
 ```
 BEGIN { warnf("Something kinda bad with args: %d, %s", 10, "arg2"); }
-// Prints: EXPECT stdin:1:9-62: WARNING: Something kinda bad with args: 10, arg2
+// Prints:
+// stdin:1:9-67: WARNING: Something kinda bad with args: 10, arg2
 ```
 
 **Availability**
@@ -2870,8 +2875,8 @@ interval:s:1 {
 }
 ```
 
-Internally this keeps two values in the map: value count and running total.
-The average is computed in userspace when printing by dividing the total by the
+Internally this keeps two values in the map: value count and running total. The
+average is computed in userspace when printing by dividing the total by the
 count. You can also get the average in kernel space in expressions like
 `if (@y == 5)`, but this is expensive because bpftrace must iterate over all
 CPUs to collect and sum both the count and total.
@@ -2884,8 +2889,8 @@ Counts how many times the function is called.
 Using `@=count()` is conceptually similar to `@++`. The difference is that the
 `count()` function uses a map type optimized for performance and correctness
 using cheap, thread-safe writes. However, sync reads can be expensive as
-bpftrace needs to iterate over all the CPUs to collect and sum these values.
-See [PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
+bpftrace needs to iterate over all the CPUs to collect and sum these values. See
+[PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
 
 Note: This differs from "raw" writes (e.g. `@++`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any atomic
@@ -2930,7 +2935,7 @@ Create a log2 histogram of `n` using $2^k$ buckets per power of 2, where
 kretprobe:vfs_read {
   @bytes = hist(retval);
   // Sample output:
-  // @:
+  // @bytes:
   // [1M, 2M)               3 |                                                    |
   // [2M, 4M)               2 |                                                    |
   // [4M, 8M)               2 |                                                    |
@@ -2958,7 +2963,7 @@ buckets.
 **Example**
 ```
 interval:ms:1 {
-  @ = lhist(rand %10, 0, 10, 1);
+  @ = lhist(rand % 10, 0, 10, 1);
 }
 
 interval:s:5 {
@@ -2985,7 +2990,8 @@ Tracks the largest value passed to the function.
 
 Update the map with `n` if `n` is bigger than the current value held.
 
-This function uses a [PERCPU map](https://bpftrace.org/docs/release_027/language#percpu-types).
+This function uses a
+[PERCPU map](https://bpftrace.org/docs/release_027/language#percpu-types).
 Writes are fast and thread-safe, but reads are slow.
 
 Note: Unlike the typical userspace `max()`, bpftrace's `max()` takes only one
@@ -3006,18 +3012,18 @@ In bpftrace:
 ```
 
 Also note that bpftrace takes care to handle the unset case. In other words,
-there is no default value. The first value you pass to `max()` will always
-be returned.
+there is no default value. The first value you pass to `max()` will always be
+returned.
 
 ### min [..]
-
 Tracks the smallest value passed to the function.
 
 * `min_t min(int64 n)`
 
 Update the map with `n` if `n` is smaller than the current value held.
 
-This function uses a [PERCPU map](https://bpftrace.org/docs/release_027/language#percpu-types).
+This function uses a
+[PERCPU map](https://bpftrace.org/docs/release_027/language#percpu-types).
 Writes are fast and thread-safe, but reads are slow.
 
 See `max()` above for how this differs from the typical userspace `min()`.
@@ -3079,13 +3085,11 @@ Calculates the sum of values passed to the function.
 
 * `sum_t sum(int64 n)`
 
-Calculate the sum of all `n` passed.
-
 Using `@=sum(5)` is conceptually similar to `@+=5`. The difference is that the
-`sum()` function uses a map type optimized for performance and correctness
-using cheap, thread-safe writes. However, sync reads can be expensive as
-bpftrace needs to iterate over all CPUs to collect and sum these values.
-See [PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
+`sum()` function uses a map type optimized for performance and correctness using
+cheap, thread-safe writes. However, sync reads can be expensive as bpftrace
+needs to iterate over all CPUs to collect and sum these values. See
+[PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
 
 Note: This differs from "raw" writes (e.g. `@+=5`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any implicit
@@ -3123,13 +3127,11 @@ Calculates the sum of values passed to the function.
 
 * `sum_t sum(int64 n)`
 
-Calculate the sum of all `n` passed.
-
 Using `@=sum(5)` is conceptually similar to `@+=5`. The difference is that the
-`sum()` function uses a map type optimized for performance and correctness
-using cheap, thread-safe writes. However, sync reads can be expensive as
-bpftrace needs to iterate over all CPUs to collect and sum these values.
-See [PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
+`sum()` function uses a map type optimized for performance and correctness using
+cheap, thread-safe writes. However, sync reads can be expensive as bpftrace
+needs to iterate over all CPUs to collect and sum these values. See
+[PERCPU types](https://bpftrace.org/docs/release_027/language#percpu-types).
 
 Note: This differs from "raw" writes (e.g. `@+=5`) where multiple writers to a
 shared location might lose updates, as bpftrace does not generate any implicit
@@ -3166,8 +3168,7 @@ interval:s:10 {
 Records integer values over a series of time intervals.
 
 * `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals)`
-* `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals,`
-  `const string agg)`
+* `tseries_t tseries(int64 n, int64 interval_ns, int64 num_intervals, const string agg)`
 
 Create a time series that tracks an integer value. `tseries` records up to
 `num_intervals` intervals representing `interval_ns` nanoseconds.
@@ -3192,12 +3193,12 @@ are aggregated.
 
 - `avg`: `@ = tseries(@v, 1s, 5, "avg")` — calculates the running average of
   values in each interval.
-- `max`: `@ = tseries(@v, 1s, 5, "max")` — calculates the maximum value in
-  each interval.
-- `min`: `@ = tseries(@v, 1s, 5, "min")` — calculates the minimum value in
-  each interval.
-- `sum`: `@ = tseries(@v, 1s, 5, "sum")` — calculates the sum of values in
-  each interval.
+- `max`: `@ = tseries(@v, 1s, 5, "max")` — calculates the maximum value in each
+  interval.
+- `min`: `@ = tseries(@v, 1s, 5, "min")` — calculates the minimum value in each
+  interval.
+- `sum`: `@ = tseries(@v, 1s, 5, "sum")` — calculates the sum of values in each
+  interval.
 
 **Examples**
 ```
@@ -3205,7 +3206,7 @@ are aggregated.
 i:ms:10 {
   @ = tseries(rand % 10, 100ms, 20, "min");
   // Sample output:
-  // Attached 2 probes
+  // Attached 1 probe
   //
   // @:
   //              0                                                   2

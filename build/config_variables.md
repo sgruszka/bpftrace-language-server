@@ -7,8 +7,7 @@ https://www.apache.org/licenses/LICENSE-2.0
 ## Config Variables
 
 Some behavior can only be controlled through config variables, which are listed
-here.
-These can be set in a [Config Block](#config-block) directly in a script,
+here. These can be set in a [Config Block](#config-block) directly in a script,
 before any probes, or through the equivalent environment variable. The variable
 name is uppercase and prefixed with `BPFTRACE_`; for example, `stack_mode` is
 set with `BPFTRACE_STACK_MODE`.
@@ -20,13 +19,13 @@ Default: `PER_PROGRAM` if ASLR is disabled or `-c` is given; `PER_PID`
 otherwise.
 
 * `PER_PROGRAM` - each program has its own cache. If there are more processes
-with ASLR enabled for a single program, this might produce incorrect results.
+  with ASLR enabled for a single program, this might produce incorrect results.
 * `PER_PID` - each process has its own cache. This is accurate for processes
-with ASLR enabled, and enables bpftrace to preload caches for processes running
-at probe attachment time. If many processes are running, this can consume a lot
-of memory.
+  with ASLR enabled, and enables bpftrace to preload caches for processes
+  running at probe attachment time. If many processes are running, this can
+  consume a lot of memory.
 * `NONE` - caching disabled. This saves the most memory, but at the cost of
-speed.
+  speed.
 
 ### cpp_demangle [..]
 Enables or disables C++ symbol demangling in user-space stack traces.
@@ -53,6 +52,7 @@ Default: "GPL"
 
 The license bpftrace will use to load BPF programs into the Linux kernel. Here
 is the list of accepted license strings:
+
 - GPL
 - GPL v2
 - GPL and additional rights
@@ -119,7 +119,7 @@ This limit is necessary because BPF requires the size of all dynamically-read
 strings (and similar) to be declared up front. This is the size for all strings
 (and similar) in bpftrace unless specified at the call site. There is no
 artificial limit on what you can tune this to. But you may be wasting resources
-(memory and cpu) if you make this too high.
+(memory and CPU) if you make this too high.
 
 ### missing_probes [..]
 Controls how bpftrace handles probes that cannot be attached.
@@ -130,6 +130,7 @@ Controls handling of probes which cannot be attached because they do not exist
 (in the kernel or in the traced binary) or there was an issue during attachment.
 
 The possible options are:
+
 - `error` - always fail on missing probes
 - `warn` - print a warning but continue execution
 - `ignore` - silently ignore missing probes
@@ -174,9 +175,9 @@ Controls whether stack traces include source and inline function details.
 
 Default: `true`. Available only when bpftrace is built with `Blazesym`.
 
-When enabled and debug information is available, bpftrace adds source file
-and line details to `bpftrace` stack traces. It also labels inlined functions
-in `bpftrace` and `perf` modes. Symbolication may affect performance.
+When enabled and debug information is available, bpftrace adds source file and
+line details to `bpftrace` stack traces. It also labels inlined functions in
+`bpftrace` and `perf` modes. Symbolication may affect performance.
 
 **Availability**
 Since bpftrace v0.24
@@ -193,7 +194,7 @@ Output format for ustack and kstack builtins. Available modes/formats:
 * `raw`: no symbolication (print instruction pointer)
 * `build_id`: no symbolication (print build ID and file offset) (ustack only)
 
-This can be overwritten at the call site.
+This can be overridden at the call site.
 
 When `show_debug_info` is enabled and debug information is available, bpftrace
 appends the file and line in `bpftrace` or `perf` stack mode, for example:
@@ -226,6 +227,7 @@ Default: `warn`
 Feature flag for time series map type.
 
 The possible options are:
+
 - `error` - fail if this feature is used
 - `warn` - enable feature but print a warning
 - `enable` - enable feature
@@ -241,6 +243,7 @@ Default: `warn`
 Feature flag for DWARF-based user-space stack unwinding
 
 The possible options are:
+
 - `error` - fail if this feature is used
 - `warn` - enable feature but print a warning
 - `enable` - enable feature
