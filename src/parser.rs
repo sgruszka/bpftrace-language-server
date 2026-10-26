@@ -606,8 +606,8 @@ fn add_scratch_variables_for_node(
     }
 }
 
-fn add_source_file_map_variables(action: &Node, text: &str, results: &mut Vec<String>) {
-    let nodes = find_all_map_variable_assignments(text, action);
+fn add_source_file_map_variables(node: &Node, text: &str, results: &mut Vec<String>) {
+    let nodes = find_all_map_variable_assignments(text, node);
 
     for map_node in nodes {
         assert_eq!(map_node.kind(), "map_variable");
@@ -645,38 +645,20 @@ fn add_source_file_map_variables(action: &Node, text: &str, results: &mut Vec<St
     }
 }
 
-fn node_with_block<'t>(node: &Node<'t>) -> Option<Node<'t>> {
-    let mut cursor = node.walk();
-    let block = node
-        .children(&mut cursor)
-        .find(|&child| child.kind() == "block");
-    block
-}
-
 fn add_scratch_variables_for_block(
-    main_node: &Node,
+    node: &Node,
     text: &str,
     line_nr: usize,
     char_nr: usize,
     results: &mut Vec<String>,
 ) {
-    assert!(
-        main_node.kind() == "block"
-            || main_node.kind() == "action"
-            || main_node.kind() == "predicate"
-    );
+    assert!(node.kind() == "action" || node.kind() == "block" || node.kind() == "predicate");
 
-    let mut cursor = main_node.walk();
-    for node in main_node.children(&mut cursor) {
+    let mut cursor = node.walk();
+    for node in node.children(&mut cursor) {
         let pos = postition_relative_to_node(&node, line_nr, char_nr);
         if pos == Position::Before {
             break;
-        }
-
-        if let Some(block) = node_with_block(&node) {
-            if postition_relative_to_node(&block, line_nr, char_nr) == Position::Within {
-                add_scratch_variables_for_block(&block, text, line_nr, char_nr, results);
-            }
         }
 
         let child_idx = match node.kind() {
@@ -690,27 +672,53 @@ fn add_scratch_variables_for_block(
     }
 }
 
-pub fn find_scratch_variables_for_block(
-    node: &Node,
+fn find_scratch_variables(
+    var_node: &Node,
     text: &str,
     line_nr: usize,
     char_nr: usize,
 ) -> Vec<String> {
-    assert!(node.kind() == "action" || node.kind() == "block" || node.kind() == "predicate");
+    let mut node = *var_node;
 
     let mut results = Vec::new();
-    add_scratch_variables_for_block(node, text, line_nr, char_nr, &mut results);
+
+    loop {
+        let Some(parent) = node.parent() else {
+            break;
+        };
+
+        if parent.kind() == "source_file" {
+            break;
+        }
+
+        node = parent;
+        if node.kind() == "block" || node.kind() == "action" || node.kind() == "predicate" {
+            add_scratch_variables_for_block(&node, text, line_nr, char_nr, &mut results);
+        }
+    }
 
     results
 }
 
-pub fn find_map_variables_for_block(node: &Node, text: &str) -> Vec<String> {
-    assert!(node.kind() == "action" || node.kind() == "block" || node.kind() == "predicate");
-
+fn find_map_variables(node: &Node, text: &str) -> Vec<String> {
     let mut results = Vec::new();
     add_source_file_map_variables(node, text, &mut results);
-
     results
+}
+
+pub fn find_variables(
+    var_node: &Node,
+    text: &str,
+    line_nr: usize,
+    char_nr: usize,
+    var_type: VariableType,
+) -> Vec<String> {
+    let variables = match var_type {
+        VariableType::Map => find_map_variables(var_node, text),
+        VariableType::Scratch => find_scratch_variables(var_node, text, line_nr, char_nr),
+    };
+
+    variables
 }
 
 fn node_to_source_file(n: Node) -> Option<Node> {
@@ -1213,7 +1221,8 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_scratch_variables_for_block(&action, text, 4, 8);
+        let mut variables = Vec::new();
+        add_scratch_variables_for_block(&action, text, 4, 8, &mut variables);
         assert_eq!(variables.len(), 3);
         assert_eq!(variables[0], "$d");
         assert_eq!(variables[1], "$x");
@@ -1231,7 +1240,7 @@ begin {
   }
   while ($y > 0) {
     $u = 8;
-    $y--
+    $
 
   }
 }
@@ -1242,11 +1251,12 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_scratch_variables_for_block(&action, text, 10, 0);
+        let (var_type, var_node) = is_location_variable(text, &action, 9, 4).unwrap();
+        let variables = find_variables(&var_node, text, 9, 4, var_type);
         assert_eq!(variables.len(), 3);
-        assert_eq!(variables[0], "$x");
-        assert_eq!(variables[1], "$y");
-        assert_eq!(variables[2], "$u");
+        assert_eq!(variables[0], "$u");
+        assert_eq!(variables[1], "$x");
+        assert_eq!(variables[2], "$y");
     }
 
     #[test]
@@ -1264,7 +1274,8 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_scratch_variables_for_block(&action, text, 3, 10);
+        let mut variables = Vec::new();
+        add_scratch_variables_for_block(&action, text, 3, 10, &mut variables);
         assert_eq!(variables.len(), 1);
         assert_eq!(variables[0], "$i");
     }
@@ -1288,7 +1299,7 @@ begin {
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_map_variables_for_block(&action, text);
+        let variables = find_map_variables(&action, text);
         assert_eq!(variables.len(), 4);
         assert_eq!(variables[0], "@a[,]");
         assert_eq!(variables[1], "@b[]");
@@ -1315,7 +1326,7 @@ tracepoint:syscalls:sys_exit_wait4
         assert_eq!(loc, SyntaxLocation::Action);
         assert_eq!(action.kind(), "action");
 
-        let variables = find_map_variables_for_block(&action, text);
+        let variables = find_map_variables(&action, text);
         assert_eq!(variables.len(), 2);
         assert_eq!(variables[0], "@out[]");
         assert_eq!(variables[1], "@stamp[]");

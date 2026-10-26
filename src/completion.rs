@@ -484,20 +484,14 @@ fn add_block_keywords(items: &mut JsonValue) {
 }
 
 fn add_block_variables(
-    node: &Node,
+    var_node: &Node,
     text: &str,
     line_nr: usize,
     char_nr: usize,
     items: &mut JsonValue,
     var_type: parser::VariableType,
 ) {
-    // TODO do match in parser
-    let variables = match var_type {
-        parser::VariableType::Map => parser::find_map_variables_for_block(node, text),
-        parser::VariableType::Scratch => {
-            parser::find_scratch_variables_for_block(node, text, line_nr, char_nr)
-        }
-    };
+    let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_type);
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
     for var in variables {
@@ -647,8 +641,8 @@ fn add_completion_items_for_block(
     probes_opt: Option<Probes>,
     items: &mut JsonValue,
 ) {
-    if let Some((var_type, _n)) = parser::is_location_variable(text, node, line_nr, char_nr) {
-        add_block_variables(node, text, line_nr, char_nr, items, var_type)
+    if let Some((var_type, var_node)) = parser::is_location_variable(text, node, line_nr, char_nr) {
+        add_block_variables(&var_node, text, line_nr, char_nr, items, var_type)
     } else {
         if let Some(probes) = probes_opt {
             add_args_and_retval_keywords(&probes, items);
