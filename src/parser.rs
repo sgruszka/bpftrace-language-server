@@ -1262,6 +1262,69 @@ begin {
     }
 
     #[test]
+    fn test_find_scoped_variables_in_else_if() {
+        let text = r#"
+begin {
+  $f = 2;
+  $x = 10;
+  if (rand() > 10) {
+    $y = 8;
+  } else if (rand() > 1) {
+    let $branch: int64 = 8;
+    $x = 8;
+    $x = 9;
+    $
+  } else {
+    $other = 3;
+  }
+  $later = 4;
+}
+    "#;
+        let tree = setup_syntax_tree(text);
+
+        let (loc, action) = find_syntax_location(text, &tree, 10, 4);
+        assert_eq!(loc, SyntaxLocation::Action);
+        assert_eq!(action.kind(), "action");
+
+        let (var_type, var_node) = is_location_variable(text, &action, 10, 4).unwrap();
+        let variables = find_variables(&var_node, text, 10, 4, var_type);
+        assert_eq!(variables, vec!["$branch", "$x", "$f"]);
+    }
+
+    #[test]
+    fn test_find_scoped_variables_in_else() {
+        let text = r#"
+begin {
+  $f = 2;
+  $x = 10;
+  if (rand() > 10) {
+    $y = 8;
+  } else if (rand() > 1) {
+    $x = 8;
+    if ($x > 8) {
+      $ax = 8;
+    } else {
+      let $bx: int64 = 3;
+      $x = 3;
+      $b = 3;
+      $
+    }
+  }
+  $later = 4;
+}
+    "#;
+        let tree = setup_syntax_tree(text);
+
+        let (loc, action) = find_syntax_location(text, &tree, 14, 6);
+        assert_eq!(loc, SyntaxLocation::Action);
+        assert_eq!(action.kind(), "action");
+
+        let (var_type, var_node) = is_location_variable(text, &action, 14, 6).unwrap();
+        let variables = find_variables(&var_node, text, 14, 6, var_type);
+        assert_eq!(variables, vec!["$bx", "$x", "$b", "$f"]);
+    }
+
+    #[test]
     fn test_find_range_variable() {
         let text = r#"
 begin {
