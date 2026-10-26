@@ -135,7 +135,8 @@ Returns the current process's cgroup ID.
 - `uint64 cgroup()`
 - `uint64 cgroup`
 
-Only works with cgroupv2. This utilizes the BPF helper `get_current_cgroup_id`.
+Only works with cgroupv2. This utilizes the BPF helper
+`bpf_get_current_cgroup_id`.
 
 ### cgroup_path [0.15..]
 Converts a cgroup ID to its path.
@@ -628,7 +629,7 @@ Group ID of the current thread in the initial namespace.
 
 - `uint64 gid`
 
-This utilizes the BPF helper `get_current_uid_gid`.
+This utilizes the BPF helper `bpf_get_current_uid_gid`.
 
 ### gid [0.24..]
 Returns the current thread's group ID in the initial namespace.
@@ -636,7 +637,7 @@ Returns the current thread's group ID in the initial namespace.
 - `uint64 gid()`
 - `uint64 gid`
 
-This utilizes the BPF helper `get_current_uid_gid`.
+This utilizes the BPF helper `bpf_get_current_uid_gid`.
 
 ### has_cpid [0.25..]
 Returns whether a child process ID is available.
@@ -1744,7 +1745,7 @@ Pseudo-random number.
 
 - `uint32 rand`
 
-This utilizes the BPF helper `get_prandom_u32`.
+This utilizes the BPF helper `bpf_get_prandom_u32`.
 
 ### rand [0.24..]
 Returns a pseudo-random number.
@@ -1752,7 +1753,7 @@ Returns a pseudo-random number.
 - `uint32 rand()`
 - `uint32 rand`
 
-This utilizes the BPF helper `get_prandom_u32`.
+This utilizes the BPF helper `bpf_get_prandom_u32`.
 
 ### reg [..]
 Returns the value of a named CPU register.
@@ -2085,7 +2086,8 @@ Reads a null-terminated string from an address.
 
 - `string str(char * data [, uint32 length])`
 
-This utilizes the BPF helpers `probe_read_str, probe_read_{kernel,user}_str`.
+This utilizes the BPF helpers `bpf_probe_read_str`,
+`bpf_probe_read_{kernel,user}_str`.
 
 `str` reads a NULL terminated (`\0`) string from `data`. The maximum string
 length is limited by the `BPFTRACE_MAX_STRLEN` env variable, unless `length` is
@@ -2095,7 +2097,7 @@ at the end.
 
 When available (starting from kernel 5.5, see the `--info` flag) bpftrace will
 automatically use the `kernel` or `user` variant of
-`probe_read_{kernel,user}_str` based on the address space of `data`. For more
+`bpf_probe_read_{kernel,user}_str` based on the address space of `data`. For more
 information see:
 [Address-spaces](https://bpftrace.org/docs/release_024/language#address-spaces).
 
@@ -2104,7 +2106,8 @@ Reads a null-terminated string from an address.
 
 - `string str(char * data [, uint32 length])`
 
-This utilizes the BPF helpers `probe_read_str, probe_read_{kernel,user}_str`.
+This utilizes the BPF helpers `bpf_probe_read_str`,
+`bpf_probe_read_{kernel,user}_str`.
 
 `str` reads a NULL terminated (`\0`) string from `data`. The maximum string
 length is limited by the `BPFTRACE_MAX_STRLEN` env variable, unless `length` is
@@ -2113,7 +2116,7 @@ specified length only `length - 1` bytes are copied and a NULL byte is appended
 at the end.
 
 bpftrace will automatically use the `kernel` or `user` variant of
-`probe_read_{kernel,user}_str` based on the address space of `data`. For more
+`bpf_probe_read_{kernel,user}_str` based on the address space of `data`. For more
 information see:
 [Address-spaces](https://bpftrace.org/docs/release_025/language#address-spaces).
 
@@ -2482,7 +2485,7 @@ User ID of the current thread in the initial namespace.
 
 - `uint64 uid`
 
-This utilizes the BPF helper `get_current_uid_gid`.
+This utilizes the BPF helper `bpf_get_current_uid_gid`.
 
 ### uid [0.24..]
 Returns the user ID of the current thread in the initial namespace.
@@ -2490,7 +2493,7 @@ Returns the user ID of the current thread in the initial namespace.
 - `uint64 uid()`
 - `uint64 uid`
 
-This utilizes the BPF helper `get_current_uid_gid`.
+This utilizes the BPF helper `bpf_get_current_uid_gid`.
 
 ### unwatch [..]
 Removes a watchpoint.
