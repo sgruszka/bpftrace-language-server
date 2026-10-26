@@ -601,7 +601,9 @@ fn add_scratch_variables_for_node(
         }
     }) {
         if let Ok(variable_name) = var.utf8_text(text.as_bytes()) {
-            results.push(variable_name.to_owned());
+            if !results.iter().any(|name| name == variable_name) {
+                results.push(variable_name.to_owned());
+            }
         }
     }
 }
