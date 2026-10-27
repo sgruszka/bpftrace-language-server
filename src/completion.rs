@@ -2032,7 +2032,7 @@ fn get_details_and_docs_by_cmd(
 fn hover_from_completion_items(items: &JsonValue, item_name: &str) -> Option<JsonValue> {
     let item = items.members().find(|item| item["label"] == item_name)?;
 
-    log_dbg!(HOVER, "Hover for function '{}'", item_name);
+    log_dbg!(HOVER, "Hover for '{}'", item_name);
 
     let details = item["detail"].to_string();
     let docs = &item["documentation"]["value"];
@@ -2058,6 +2058,23 @@ fn encode_hover_for_function(node: &Node, text: &str) -> JsonValue {
     bpftrace_stdlib_helpers(&mut items, bpftrace_major_minor_version());
 
     let Some(hover) = hover_from_completion_items(&items, func) else {
+        return empty_data;
+    };
+
+    hover
+}
+
+fn encode_hover_for_config_variable(node: &Node, text: &str) -> JsonValue {
+    let empty_data = object! { "result": JsonValue::Null };
+
+    let Ok(variable) = node.utf8_text(text.as_bytes()) else {
+        return empty_data;
+    };
+
+    let mut items = JsonValue::new_array();
+    bpftrace_config_variables(&mut items, bpftrace_major_minor_version());
+
+    let Some(hover) = hover_from_completion_items(&items, variable) else {
         return empty_data;
     };
 
@@ -2267,7 +2284,9 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
             }
         }
     } else if loc == SyntaxLocation::ConfigBlock {
-        todo!() // data = encode_hover_for_config_variable();
+        if let Some(variable) = parser::is_location_expression_identifier(&node, line_nr, char_nr) {
+            data = encode_hover_for_config_variable(&variable, text);
+        }
     }
 
     data
@@ -3168,6 +3187,30 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
                 "hover on {field:?} in {text:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_hover_for_config_variable_word() {
+        let text = r"config = { print_maps_on_exit }";
+        let json_content = document_content_setup(text, 0, text.len() - 5);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        println!("{hover:?}");
+        assert!(hover.contains(r"config variable"));
+        assert!(hover.contains(r"Controls whether bpftrace automatically prints maps on exit"));
+    }
+
+    #[test]
+    fn test_hover_for_config_variable() {
+        let text = r"config = { print_maps_on_exit = false }";
+        let json_content = document_content_setup(text, 0, text.len() - 20);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        println!("{hover:?}");
+        assert!(hover.contains(r"config variable"));
+        assert!(hover.contains(r"Controls whether bpftrace automatically prints maps on exit"));
     }
 
     #[test]
