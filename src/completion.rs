@@ -2071,6 +2071,9 @@ fn encode_hover_for_config_variable(node: &Node, text: &str) -> JsonValue {
         return empty_data;
     };
 
+    let variable = variable.to_ascii_lowercase();
+    let variable = variable.strip_prefix("bpftrace_").unwrap_or(&variable);
+
     let mut items = JsonValue::new_array();
     bpftrace_config_variables(&mut items, bpftrace_major_minor_version());
 
@@ -3199,6 +3202,29 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
         println!("{hover:?}");
         assert!(hover.contains(r"config variable"));
         assert!(hover.contains(r"Controls whether bpftrace automatically prints maps on exit"));
+    }
+
+    #[test]
+    fn test_hover_for_config_variable_aliases() {
+        let aliases = [
+            "stack_mode",
+            "STACK_MODE",
+            "BPFTRACE_STACK_MODE",
+            "bpftrace_stack_mode",
+            "bPfTrAcE_StAcK_MoDe",
+        ];
+
+        for alias in aliases {
+            for assignment in [" = raw", ""] {
+                let text = format!("config = {{ {alias}{assignment} }}");
+                let json_content = document_content_setup(&text, 0, text.find(alias).unwrap());
+                let result = encode_hover(json_content);
+                let hover = result["result"]["contents"].as_str().unwrap();
+
+                assert!(hover.starts_with("stack_mode - config variable\n"));
+                assert!(hover.contains("Sets the output format for `ustack` and `kstack`"));
+            }
+        }
     }
 
     #[test]
