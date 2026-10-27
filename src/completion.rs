@@ -2064,6 +2064,18 @@ fn encode_hover_for_function(node: &Node, text: &str) -> JsonValue {
     hover
 }
 
+fn encode_hover_for_syntax(node: &Node, text: &str) -> JsonValue {
+    let Ok(source) = node.utf8_text(text.as_bytes()) else {
+        return object! { "result": JsonValue::Null };
+    };
+
+    object! {
+        "result": {
+            "contents": format!("```c\n{source}\n```"),
+        },
+    }
+}
+
 fn encode_hover_for_probe_provider(node: &Node, text: &str) -> JsonValue {
     let empty_data = object! { "result": JsonValue::Null };
 
@@ -2217,9 +2229,19 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
                 };
             }
         }
-    } else if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
+    } else if loc == SyntaxLocation::Action
+        || loc == SyntaxLocation::Predicate
+        || loc == SyntaxLocation::MacroDefinition
+    {
         // TODO handle probes with wildcard
-        if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr) {
+        if let Some(type_node) = parser::is_location_type(&node, line_nr, char_nr) {
+            // TODO
+            data = encode_hover_for_syntax(&type_node, text);
+        } else if let Some(record) = parser::is_location_record_field(&node, line_nr, char_nr) {
+            // TOOD
+            data = encode_hover_for_syntax(&record, text);
+        } else if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr)
+        {
             data = encode_hover_for_function(&func, text);
         } else if let Some(args) = parser::is_location_args_keyword(&node, line_nr, char_nr)
             .and_then(|node| node.utf8_text(text.as_bytes()).ok())
@@ -2229,6 +2251,13 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
             .and_then(|node| node.utf8_text(text.as_bytes()).ok())
         {
             data = encode_hover_for_field_expression(&node, text, vec![retval]);
+        } else if let Some(hover) =
+            parser::is_location_expression_identifier(&node, line_nr, char_nr)
+                .map(|ident| encode_hover_for_function(&ident, text))
+                .filter(|hover| !hover["result"].is_null())
+        {
+            // TODO: identifier can also be a #define name.
+            data = hover;
         } else if let Some((field_expr, last_field)) =
             parser::is_location_field_expression(&node, line_nr, char_nr)
         {
@@ -2237,6 +2266,8 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
                 data = encode_hover_for_field_expression(&node, text, vec);
             }
         }
+    } else if loc == SyntaxLocation::ConfigBlock {
+        todo!() // data = encode_hover_for_config_variable();
     }
 
     data
@@ -2955,6 +2986,188 @@ fentry:mac80211:ieee80211_check_fast_xmit_iface {
         let json_content = document_content_setup(text, 2, 15);
         let result = encode_completion(json_content);
         assert_eq!(result["result"]["items"].len(), 0);
+    }
+
+    #[test]
+    fn test_hover_for_type_expressions() {
+        let cases = [
+            ("begin { $p = (struct path *)0; }", "path", "struct path *"),
+            (
+                "begin { $p = (struct path *)0; }",
+                "struct",
+                "struct path *",
+            ),
+            ("begin { $p = (struct path *)0; }", "*", "struct path *"),
+            ("begin { $n = (uint64)0; }", "uint64", "uint64"),
+            ("begin { $p = (path)0; }", "path", "path"),
+            ("begin { $n = sizeof(struct path); }", "path", "struct path"),
+            (
+                "begin { let $p: struct path **; }",
+                "path",
+                "struct path **",
+            ),
+            (
+                "begin { let $p: struct path[2]; }",
+                "path",
+                "struct path[2]",
+            ),
+            ("begin { $p = (enum path)0; }", "path", "enum path"),
+            (
+                "begin { $n = offsetof(struct path, comm); }",
+                "path",
+                "struct path",
+            ),
+            ("begin { $n = offsetof(path, comm); }", "path", "path"),
+            (
+                "begin { print(typeof(struct path *)); }",
+                "path",
+                "struct path *",
+            ),
+            ("begin /sizeof(struct path) > 0/ {}", "path", "struct path"),
+            (
+                "macro example() { let $p: struct path *; }",
+                "path",
+                "struct path *",
+            ),
+            (
+                "begin { $p = (struct unresolved_hover_type *)0; }",
+                "unresolved_hover_type",
+                "struct unresolved_hover_type *",
+            ),
+        ];
+
+        for (text, token, expected_type) in cases {
+            let json_content = document_content_setup(text, 0, text.find(token).unwrap());
+            let result = encode_hover(json_content);
+
+            assert_eq!(
+                result["result"]["contents"].as_str(),
+                Some(format!("```c\n{expected_type}\n```").as_str()),
+                "hover on {token:?} in {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hover_excludes_offsetof_members() {
+        let cases = [
+            ("begin { $n = offsetof(struct task_struct, comm); }", "comm"),
+            (
+                "begin { $n = offsetof(struct task_struct, comm.cpu); }",
+                "comm",
+            ),
+            (
+                "begin { $n = offsetof(struct task_struct, comm.cpu); }",
+                "cpu",
+            ),
+        ];
+
+        for (text, token) in cases {
+            let json_content = document_content_setup(text, 0, text.find(token).unwrap());
+            let result = encode_hover(json_content);
+
+            assert_eq!(
+                result["result"],
+                JsonValue::Null,
+                "hover on {token:?} in {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hover_for_record_fields() {
+        let cases = [
+            ("begin { $r = (comm = 1, cpu = 2); }", "comm", "comm = 1"),
+            ("begin { $r = (comm = 1, cpu = 2); }", "cpu", "cpu = 2"),
+            (
+                "begin { $r = (comm = cpu, other = 1); }",
+                "comm",
+                "comm = cpu",
+            ),
+            (
+                "begin { $r = (comm = (struct path *)0, other = 1); }",
+                "comm",
+                "comm = (struct path *)0",
+            ),
+            (
+                "macro example() { $r = (comm = 1, cpu = 2); }",
+                "comm",
+                "comm = 1",
+            ),
+        ];
+
+        for (text, token, expected_field) in cases {
+            let json_content = document_content_setup(text, 0, text.find(token).unwrap());
+            let result = encode_hover(json_content);
+
+            assert_eq!(
+                result["result"]["contents"].as_str(),
+                Some(format!("```c\n{expected_field}\n```").as_str()),
+                "hover on {token:?} in {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hover_for_builtin_expression_identifiers() {
+        let cases = [
+            "begin { print(comm); }",
+            "begin { print((uint64)comm); }",
+            "begin { print(typeof(comm)); }",
+            "begin { $r = (field = comm, other = 1); }",
+        ];
+
+        for text in cases {
+            let json_content = document_content_setup(text, 0, text.find("comm").unwrap());
+            let result = encode_hover(json_content);
+            let hover = result["result"]["contents"].as_str().unwrap();
+
+            assert!(
+                hover.contains("bpf_get_current_comm"),
+                "hover in {text:?}: {hover:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hover_for_builtin_field_receivers() {
+        let cases = [
+            ("begin { print(config.max_strlen); }", "config"),
+            ("begin { print(curtask->pid); }", "curtask"),
+            ("begin { print(curtask->group_leader->pid); }", "curtask"),
+        ];
+
+        for (text, builtin) in cases {
+            let plain_text = format!("begin {{ print({builtin}); }}");
+            let plain_content =
+                document_content_setup(&plain_text, 0, plain_text.find(builtin).unwrap());
+            let expected = encode_hover(plain_content);
+            assert!(!expected["result"].is_null(), "missing hover for {builtin}");
+
+            let json_content = document_content_setup(text, 0, text.find(builtin).unwrap());
+            let result = encode_hover(json_content);
+
+            assert_eq!(result, expected, "hover on {builtin:?} in {text:?}");
+        }
+    }
+
+    #[test]
+    fn test_hover_excludes_builtin_names_in_fields() {
+        let cases = [
+            ("begin { print(curtask->pid); }", "pid"),
+            ("begin { print(curtask->comm); }", "comm"),
+        ];
+
+        for (text, field) in cases {
+            let json_content = document_content_setup(text, 0, text.find(field).unwrap());
+            let result = encode_hover(json_content);
+
+            assert_eq!(
+                result["result"],
+                JsonValue::Null,
+                "hover on {field:?} in {text:?}"
+            );
+        }
     }
 
     #[test]

@@ -198,6 +198,82 @@ pub fn is_location_function_call<'t>(
     location_within_query_match(text, main_node, &query, line_nr, char_nr)
 }
 
+fn is_type_node(node: &Node) -> bool {
+    matches!(
+        node.kind(),
+        "type_specifier"
+            | "struct_type"
+            | "enum_type"
+            | "pointer_type"
+            | "array_type"
+            | "integer_type"
+            | "string_type"
+    )
+}
+
+pub fn is_location_type<'t>(
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let mut node = position_to_node(main_node, line_nr, char_nr)?;
+    if node.is_extra() {
+        return None;
+    }
+
+    let mut type_node = is_type_node(&node).then_some(node);
+    while let Some(parent) = node.parent() {
+        if is_type_node(&parent) {
+            type_node = Some(parent);
+            node = parent;
+        } else {
+            if parent.child_by_field_name("type") == Some(node) {
+                type_node = Some(node);
+            }
+            break;
+        }
+    }
+
+    type_node
+}
+
+pub fn is_location_expression_identifier<'t>(
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let node = position_to_node(main_node, line_nr, char_nr)?;
+    if node.kind() != "identifier" {
+        return None;
+    }
+
+    // TODO: handle hover for offsetof_expression
+    let parent = node.parent()?;
+    if parent.kind() == "offsetof_expression" || parent.child_by_field_name("field") == Some(node) {
+        return None;
+    }
+
+    Some(node)
+}
+
+pub fn is_location_record_field<'t>(
+    main_node: &'t Node,
+    line_nr: usize,
+    char_nr: usize,
+) -> Option<Node<'t>> {
+    let node = position_to_node(main_node, line_nr, char_nr)?;
+    let record = node.parent()?;
+    if node.kind() != "identifier" || record.kind() != "record" {
+        return None;
+    }
+
+    let mut cursor = record.walk();
+    let field = record
+        .named_children(&mut cursor)
+        .find(|child| !child.is_extra());
+    (field == Some(node)).then_some(record)
+}
+
 pub fn is_location_map_variable<'t>(
     text: &str,
     main_node: &'t Node,
