@@ -498,7 +498,7 @@ pub fn is_location_retval_identifier<'t>(
     }
 }
 
-pub enum VariableType {
+pub enum VariableKind {
     Scratch,
     Map,
 }
@@ -508,21 +508,21 @@ pub fn is_location_variable<'t>(
     main_node: &'t Node,
     line_nr: usize,
     char_nr: usize,
-) -> Option<(VariableType, Node<'t>)> {
+) -> Option<(VariableKind, Node<'t>)> {
     let node = position_to_node(main_node, line_nr, char_nr)?;
 
     if node.kind() == "map_variable" {
-        return Some((VariableType::Map, node));
+        return Some((VariableKind::Map, node));
     } else if node.kind() == "scratch_variable" {
-        return Some((VariableType::Scratch, node));
+        return Some((VariableKind::Scratch, node));
     }
 
     if node.is_error() {
         if let Ok(s) = node.utf8_text(text.as_bytes()) {
             if s.starts_with('@') {
-                return Some((VariableType::Map, node));
+                return Some((VariableKind::Map, node));
             } else if s.starts_with('$') {
-                return Some((VariableType::Scratch, node));
+                return Some((VariableKind::Scratch, node));
             }
         }
     }
@@ -794,11 +794,11 @@ pub fn find_variables<'t>(
     text: &str,
     line_nr: usize,
     char_nr: usize,
-    var_type: VariableType,
+    var_type: VariableKind,
 ) -> Vec<(String, Node<'t>)> {
     let variables = match var_type {
-        VariableType::Map => find_map_variables(var_node, text),
-        VariableType::Scratch => find_scratch_variables(var_node, text, line_nr, char_nr),
+        VariableKind::Map => find_map_variables(var_node, text),
+        VariableKind::Scratch => find_scratch_variables(var_node, text, line_nr, char_nr),
     };
 
     variables
