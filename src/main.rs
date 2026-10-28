@@ -16,8 +16,10 @@ mod cmd_mod;
 mod completion;
 mod formatting;
 pub mod gen;
+mod hover;
 pub mod modules;
 pub mod parser;
+mod utils;
 
 #[macro_use]
 pub mod log_mod;
@@ -919,7 +921,7 @@ fn encode_message(id: LspRequestId, method: &str, content: JsonValue) -> JsonVal
     let mut data = match method {
         "initialize" => encode_initalize_result(),
         "shutdown" => encode_shutdown(),
-        "textDocument/hover" => completion::encode_hover(content),
+        "textDocument/hover" => hover::encode_hover(content),
         "textDocument/definition" => encode_definition(content),
         "textDocument/references" => encode_references(content),
         // "textDocument/codeAction" => encode_code_action(content),
@@ -1257,7 +1259,7 @@ fn main() {
                 }
             });
 
-            thread::spawn(completion::init_available_traces);
+            thread::spawn(utils::init_available_traces);
 
             let diag_output_tx = output_tx.clone();
             diag_handle = Some(thread::spawn(move || {
@@ -1267,8 +1269,8 @@ fn main() {
             thread::spawn(move || {
                 let _ = perms_handle.join();
 
-                thread::spawn(completion::init_rawtracepoints_args);
-                completion::init_tracepoints_args();
+                thread::spawn(utils::init_rawtracepoints_args);
+                utils::init_tracepoints_args();
             });
         }
         Err(e) => WARNINGS_TO_CLIENT.push(WarningType::NoBpftrace, e),
