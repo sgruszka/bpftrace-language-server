@@ -11,15 +11,17 @@ use crate::btf_rd::{Btf, BtfResolvedType, BtfVariable};
 use crate::cmd_mod::{
     bpftrace_has_property, bpftrace_list_probes, bpftrace_major_minor_version, BpftraceProperty,
 };
+use crate::docs::{
+    args_to_block, args_to_func_proto, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
+};
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
 };
 use crate::log_mod::{self, COMPL};
 use crate::parser::{self, SyntaxLocation};
-use crate::utils::{
-    args_to_block, args_to_func_proto, available_traces, find_common_args_by_cmd,
-    find_kfunc_args_by_btf, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
-    is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, probe_sim_btf, probe_use_btf, Probes,
+use crate::probes::{
+    available_traces, find_common_args_by_cmd, find_kfunc_args_by_btf, is_rawtracepoint_probe,
+    is_tracepoint_probe, is_uprobe, is_usdt, probe_sim_btf, probe_use_btf, Probes,
 };
 use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_err, log_vdbg};
@@ -61,10 +63,6 @@ impl From<CompletionItemKind> for JsonValue {
 }
 
 static FENTRY_KFUNC_NAME: OnceLock<&'static str> = OnceLock::new();
-
-fn is_usdt(probe: &str) -> bool {
-    probe.starts_with("usdt") || probe.starts_with("U:")
-}
 
 fn add_items_from_btf_member(btf: Arc<Btf>, member: &BtfVariable, items: &mut JsonValue) {
     if let Some(member_type) = btf_resolve_variable(&btf, member) {
@@ -1087,7 +1085,8 @@ mod tests {
         bpftrace_command, bpftrace_list_probes_verbose, init_bpftrace,
         setup_bpftrace_root_permissions,
     };
-    use crate::utils::{kprobe_to_kfunc, test_support::document_content_setup};
+    use crate::probes::kprobe_to_kfunc;
+    use crate::test_support::document_content_setup;
     use std::process::Command;
     use std::sync::{LazyLock, Mutex};
 

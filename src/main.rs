@@ -14,12 +14,13 @@ use std::{
 mod btf_rd;
 mod cmd_mod;
 mod completion;
+mod docs;
 mod formatting;
 pub mod gen;
 mod hover;
 pub mod modules;
 pub mod parser;
-mod utils;
+mod probes;
 
 #[macro_use]
 pub mod log_mod;
@@ -1259,7 +1260,7 @@ fn main() {
                 }
             });
 
-            thread::spawn(utils::init_available_traces);
+            thread::spawn(probes::init_available_traces);
 
             let diag_output_tx = output_tx.clone();
             diag_handle = Some(thread::spawn(move || {
@@ -1269,8 +1270,8 @@ fn main() {
             thread::spawn(move || {
                 let _ = perms_handle.join();
 
-                thread::spawn(utils::init_rawtracepoints_args);
-                utils::init_tracepoints_args();
+                thread::spawn(probes::init_rawtracepoints_args);
+                probes::init_tracepoints_args();
             });
         }
         Err(e) => WARNINGS_TO_CLIENT.push(WarningType::NoBpftrace, e),
@@ -1378,6 +1379,37 @@ fn main() {
     drop(output_tx);
     if let Err(err) = output_handle.join() {
         log_err!("Output thread join error: {:?}", err);
+    }
+}
+
+#[cfg(test)]
+pub mod test_support {
+    use json::{object, JsonValue};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::DOCUMENTS_STATE;
+
+    static URI_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    pub fn document_content_setup(text: &str, line_nr: usize, char_nr: usize) -> JsonValue {
+        let uri = format!(
+            "file:///completion_test{}.bt",
+            URI_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+
+        DOCUMENTS_STATE.set(uri.to_string(), text.to_string(), 1);
+
+        object! {
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                },
+                "position": {
+                    "line": line_nr,
+                    "character": char_nr,
+                }
+            }
+        }
     }
 }
 

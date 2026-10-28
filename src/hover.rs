@@ -2,36 +2,21 @@ use json::{object, JsonValue};
 use tree_sitter::Node;
 
 use crate::cmd_mod::bpftrace_major_minor_version;
+use crate::docs::{
+    args_to_block, args_to_func_proto, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
+};
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
 };
 use crate::log_mod::{self, HOVER};
 use crate::parser::{self, SyntaxLocation};
-use crate::utils::{
-    args_to_block, args_to_func_proto, expand_probes, find_common_args_by_cmd,
-    find_kfunc_args_by_btf, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
-    is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, kprobe_to_kfunc, probe_sim_btf,
-    probe_use_btf, Probes,
+use crate::probes::{
+    expand_probes, find_common_args_by_cmd, find_kfunc_args_by_btf, is_rawtracepoint_probe,
+    is_tracepoint_probe, is_uprobe, kprobe_to_kfunc, probe_sim_btf, probe_use_btf,
+    provider_doc_name, Probes,
 };
 use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_vdbg};
-
-fn provider_doc_name(name: &str) -> &str {
-    match name {
-        "k" => "kprobe",
-        "kr" => "kretprobe",
-        "f" => "fentry",
-        "fr" => "fexit",
-        "t" => "tracepoint",
-        "rt" => "rawtracepoint",
-        "u" => "uprobe",
-        "ur" => "uretprobe",
-        "U" => "usdt",
-        "begin" => "BEGIN",
-        "end" => "END",
-        _ => name,
-    }
-}
 
 fn hover_from_completion_items(items: &JsonValue, item_name: &str) -> Option<JsonValue> {
     let item = items.members().find(|item| item["label"] == item_name)?;
@@ -305,7 +290,7 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
 mod tests {
     use super::*;
     use crate::cmd_mod::{init_bpftrace, setup_bpftrace_root_permissions};
-    use crate::utils::test_support::document_content_setup;
+    use crate::test_support::document_content_setup;
 
     #[test]
     fn test_hover_for_type_expressions() {
