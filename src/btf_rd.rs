@@ -919,7 +919,7 @@ impl BtfSplit {
     ) -> binrw::BinResult<Self> {
         let (start_id, start_str_off, data, base_split) = match base {
             None => {
-                let file = File::open(&path)?;
+                let file = File::open(path)?;
 
                 let data =
                     // copy_read_only do PROT_READ, MAP_PRIVATE mmap
