@@ -225,17 +225,19 @@ fn add_block_variables(
     let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_kind);
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
-    for (var, _node) in variables {
+    for (var, node) in variables {
         // Drop [..] for map
-        let (var_name, _) = var.split_once("[").unwrap_or((&var, ""));
-        let detail = format!("{} - {} variable", var_name, kind);
+        // let (var_name, _) = var.split_once("[").unwrap_or((&var, ""));
+        let detail = format!("{} variable", kind);
 
-        let item = object! {
+        let mut item = object! {
             "label": var.to_owned(),
             "kind": CompletionItemKind::Variable,
             "detail": detail,
-            // "documentation": "need better documentation",
         };
+        if let Some(definition) = parser::node_to_variable_definition(&node, text) {
+            item["documentation"] = format!("```\n{definition}\n```").into();
+        }
 
         let _ = items.push(item);
     }
@@ -1262,6 +1264,46 @@ mod tests {
         for p in probes_vec {
             compare_btf_and_cmd(p);
         }
+    }
+
+    #[test]
+    fn test_variable_completion_definitions() {
+        for (body, label, definition) in [
+            ("$x = 1", "$x", "$x = 1"),
+            (
+                "$skb = (struct skb *) arg0",
+                "$skb",
+                "$skb = (struct skb *) arg0",
+            ),
+            ("let $x: uint8 = 222", "$x", "let $x: uint8 = 222"),
+            ("$x = $y + $z", "$x", "$x = $y + $z"),
+            ("@map[pid] = true", "@map[]", "@map[pid] = true"),
+            ("$x = 1; $x = 2", "$x", "$x = 1"),
+        ] {
+            let marker = if label.starts_with('$') {
+                "$cursor"
+            } else {
+                "@cursor"
+            };
+            let text = format!("begin {{ {body}; {marker}; }}");
+            let column = text.find(marker).unwrap() + 1;
+            let content = document_content_setup(&text, 0, column);
+            let result = encode_completion(content);
+            let item = result["result"]["items"]
+                .members()
+                .find(|item| item["label"] == label)
+                .unwrap();
+            assert!(item["documentation"].as_str().unwrap().contains(definition));
+        }
+
+        let text = "begin { for $i : 0..10 { $cursor; } }";
+        let content = document_content_setup(text, 0, text.find("$cursor").unwrap() + 1);
+        let result = encode_completion(content);
+        let item = result["result"]["items"]
+            .members()
+            .find(|item| item["label"] == "$i")
+            .unwrap();
+        assert!(item["documentation"].is_null());
     }
 
     #[test]

@@ -503,6 +503,24 @@ pub enum VariableKind {
     Map,
 }
 
+/// Return the full assignment or declaration containing a variable definition.
+pub fn node_to_variable_definition(node: &Node, text: &str) -> Option<String> {
+    if !matches!(node.kind(), "scratch_variable" | "map_variable") {
+        return None;
+    }
+    let parent = node.parent()?;
+    let is_definition = match parent.kind() {
+        "assignment_statement" => parent.child_by_field_name("left") == Some(*node),
+        "declaration_statement" => parent.child_by_field_name("name") == Some(*node),
+        "map_declaration" => true,
+        _ => false,
+    };
+    if !is_definition {
+        return None;
+    }
+    parent.utf8_text(text.as_bytes()).ok().map(str::to_owned)
+}
+
 pub fn is_location_variable<'t>(
     text: &str,
     main_node: &'t Node,
@@ -1286,6 +1304,47 @@ begin {
         assert_eq!(variables.len(), 5);
         for v in variables {
             assert_eq!(v.kind(), "map_variable");
+        }
+    }
+
+    #[test]
+    fn test_node_to_variable_definition() {
+        let cases = [
+            ("$x = 1", "$x"),
+            ("$skb = (struct skb *) arg0", "$skb"),
+            ("$x = $y + $z", "$x"),
+            ("$x += 1", "$x"),
+            ("let $x: uint8 = 222", "$x"),
+            ("let $x: uint8", "$x"),
+            ("let $x", "$x"),
+            ("$skb = (struct skb *)\n  arg0", "$skb"),
+            ("@map[pid] = (struct skb *) arg0", "@map"),
+            ("@ = true", "@"),
+        ];
+        for (statement, name) in cases {
+            let text = format!("begin {{ {statement}; }}");
+            let tree = setup_syntax_tree(&text);
+            let root = tree.root_node();
+            assert!(!root.has_error(), "{statement}: {}", root.to_sexp());
+            let column = text.find(name).unwrap();
+            let (_, node) = is_location_variable(&text, &root, 0, column).unwrap();
+            assert_eq!(
+                node_to_variable_definition(&node, &text).as_deref(),
+                Some(statement)
+            );
+        }
+
+        for (text, name) in [
+            ("begin { $x = $y; }", "$y"),
+            ("macro foo($x) { $x }", "$x"),
+            ("begin { for $i : 0..10 { $i; } }", "$i"),
+        ] {
+            let tree = setup_syntax_tree(text);
+            let root = tree.root_node();
+            assert!(!root.has_error(), "{text}");
+            let (_, node) = is_location_variable(text, &root, 0, text.find(name).unwrap()).unwrap();
+            assert_eq!(node_to_variable_definition(&node, text), None);
+            assert_eq!(node_to_variable_definition(&root, text), None);
         }
     }
 
