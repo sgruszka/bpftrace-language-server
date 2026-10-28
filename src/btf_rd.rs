@@ -1654,7 +1654,7 @@ fn iterate_over_names_chain(
                 return None;
             }
         } else if *op == "." {
-            if !bpftrace_has_property(BpftraceProperty::HasDotDeref) && is_pointer {
+            if !bpftrace_has_property(BpftraceProperty::DotDeref) && is_pointer {
                 return None;
             }
         } else {
@@ -2241,7 +2241,7 @@ mod tests {
         assert_eq!(actual_type.members[0].name, "i_mode");
 
         let opt = btf_iterate_function_args_str(&btf, &base, "args.path.dentry");
-        if bpftrace_has_property(BpftraceProperty::HasDotDeref) {
+        if bpftrace_has_property(BpftraceProperty::DotDeref) {
             let (resolved_var, resolved_type) = opt.unwrap();
             assert_eq!(resolved_var.name, "dentry");
             assert_eq!(resolved_type.type_prefix, "struct dentry *");

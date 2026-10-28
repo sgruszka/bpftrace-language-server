@@ -797,7 +797,7 @@ fn encode_completion_for_new_line(line_str: &str) -> JsonValue {
         bpftrace_probe_providers(&mut items, bpftrace_major_minor_version());
         add_empty_line_keywords(&mut items);
 
-        if bpftrace_has_property(BpftraceProperty::HasCaseInsensitive) {
+        if bpftrace_has_property(BpftraceProperty::CaseInsensitive) {
             add_small_case_builtins(&mut items);
         }
     }
@@ -881,7 +881,7 @@ fn encode_completion_for_line(line_str: &str) -> JsonValue {
         ("kretfunc", None),
     ];
 
-    if bpftrace_has_property(BpftraceProperty::HasFentryFexit) {
+    if bpftrace_has_property(BpftraceProperty::FentryFexit) {
         let fentry = ("fentry", Some("f"));
         let fexit = ("fexit", Some("fr"));
 
