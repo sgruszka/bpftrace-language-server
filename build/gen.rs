@@ -79,6 +79,16 @@ fn parse_version(input: &str) -> Result<Version, ParseVersionError> {
     })
 }
 
+fn version_condition(version: &Version) -> Option<String> {
+    match (version.min_ver, version.max_ver) {
+        (Some(min), Some(max)) if min == max => Some(format!("this_version == {min:?}")),
+        (Some(min), Some(max)) => Some(format!("({min:?}..={max:?}).contains(&this_version)")),
+        (Some(min), None) => Some(format!("this_version >= {min:?}")),
+        (None, Some(max)) => Some(format!("this_version <= {max:?}")),
+        (None, None) => None,
+    }
+}
+
 fn add_json_obj(text: &mut String, doc_item: &DocItem, kind: usize) {
     let label = &doc_item.label;
     let detail = &doc_item.detail;
@@ -142,23 +152,9 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem) {
     let mut docs = String::new();
     docs.push_str(&doc_item.full_info);
 
-    let mut cond_min_end = "";
-    let mut cond_max_end = "";
-
-    if let Some(min_ver) = doc_item.version.min_ver {
-        text.push_str(&format!(
-            "if this_version >= ({},{}) {{",
-            min_ver.0, min_ver.1
-        ));
-        cond_min_end = "}"
-    }
-
-    if let Some(max_ver) = doc_item.version.max_ver {
-        text.push_str(&format!(
-            "if this_version <= ({},{}) {{",
-            max_ver.0, max_ver.1
-        ));
-        cond_max_end = "}"
+    let condition = version_condition(&doc_item.version);
+    if let Some(condition) = &condition {
+        text.push_str(&format!("if {condition} {{\n"));
     }
 
     let obj = format!(
@@ -177,8 +173,9 @@ fn stdlib_add_json_obj(text: &mut String, doc_item: &DocItem) {
     );
     text.push_str(&obj);
 
-    text.push_str(cond_max_end);
-    text.push_str(cond_min_end);
+    if condition.is_some() {
+        text.push_str("}\n");
+    }
 }
 
 fn gen_completion_probes(language_md: &str) -> String {
@@ -401,53 +398,27 @@ pub fn bpftrace_config_variables(items: &mut json::JsonValue, this_version: (u16
 }
 
 fn probe_add_json_obj(text: &mut String, doc_item: &mut DocItem) {
-    let mut cond_min_end = "";
-    let mut cond_max_end = "";
-
-    if let Some(min_ver) = doc_item.version.min_ver {
-        text.push_str(&format!(
-            "if this_version >= ({},{}) {{",
-            min_ver.0, min_ver.1
-        ));
-        cond_min_end = "}";
-    }
-
-    if let Some(max_ver) = doc_item.version.max_ver {
-        text.push_str(&format!(
-            "if this_version <= ({},{}) {{",
-            max_ver.0, max_ver.1
-        ));
-        cond_max_end = "}";
+    let condition = version_condition(&doc_item.version);
+    if let Some(condition) = &condition {
+        text.push_str(&format!("if {condition} {{\n"));
     }
 
     add_json_obj(text, doc_item, 8);
 
-    text.push_str(cond_max_end);
-    text.push_str(cond_min_end);
+    if condition.is_some() {
+        text.push_str("}\n");
+    }
 }
 
 fn config_add_json_obj(text: &mut String, doc_item: &DocItem) {
-    let mut cond_min_end = "";
-    let mut cond_max_end = "";
-
-    if let Some(min_ver) = doc_item.version.min_ver {
-        text.push_str(&format!(
-            "if this_version >= ({},{}) {{",
-            min_ver.0, min_ver.1
-        ));
-        cond_min_end = "}";
-    }
-
-    if let Some(max_ver) = doc_item.version.max_ver {
-        text.push_str(&format!(
-            "if this_version <= ({},{}) {{",
-            max_ver.0, max_ver.1
-        ));
-        cond_max_end = "}";
+    let condition = version_condition(&doc_item.version);
+    if let Some(condition) = &condition {
+        text.push_str(&format!("if {condition} {{\n"));
     }
 
     add_json_obj(text, doc_item, 6);
 
-    text.push_str(cond_max_end);
-    text.push_str(cond_min_end);
+    if condition.is_some() {
+        text.push_str("}\n");
+    }
 }
