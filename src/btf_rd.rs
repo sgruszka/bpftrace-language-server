@@ -1585,6 +1585,25 @@ pub fn btf_variable_name(btf: &Btf, var: &BtfVariable) -> Option<BtfName> {
     })
 }
 
+pub fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) -> String {
+    let mut s = res_type.type_prefix.clone();
+
+    if !s.ends_with("*") {
+        s.push_str(" ");
+    }
+
+    if let Some(var) = res_var {
+        s.push_str(&var.name);
+        if let Some(bits) = var.bits {
+            s.push_str(&format!(":{}", bits));
+        }
+    }
+
+    // TODO: For bitfield this should be empty, need to add check ?
+    s.push_str(&res_type.type_suffix);
+    s
+}
+
 fn is_pointer_variable(btf: &Btf, variable: &BtfVariable) -> bool {
     let owner = variable.owner.as_deref().unwrap_or(btf);
     matches!(owner.type_from_id(variable.type_id), Ok(BtfType::Ptr(_)))
@@ -1659,6 +1678,71 @@ fn iterate_over_names_chain(
     }
 
     Some(cur_var)
+}
+
+pub fn btf_resolve_container_members(
+    probe_args_iter: impl Iterator<Item = String>,
+    field_expr: Vec<&str>,
+) -> Option<(Arc<Btf>, BtfVariable, BtfResolvedType)> {
+    let btf = btf_module_get("vmlinux")?;
+
+    log_dbg!(BTFRD, "Looking for struct/union for {:?}", field_expr);
+
+    for arg in probe_args_iter {
+        let mut tokens = arg.split_whitespace();
+        let mut res_type = None;
+
+        while let Some(tk) = tokens.next() {
+            if tk == "struct" {
+                let Some(struct_name) = tokens.next() else {
+                    continue;
+                };
+
+                let Some(st) =
+                    btf_resolve_struct(&btf, struct_name).and_then(|res_type| res_type.actual_type)
+                else {
+                    continue;
+                };
+
+                res_type = Some(st);
+                break;
+            }
+
+            if tk == "union" {
+                let Some(union_name) = tokens.next() else {
+                    continue;
+                };
+
+                let Some(un) =
+                    btf_resolve_union(&btf, union_name).and_then(|res_type| res_type.actual_type)
+                else {
+                    continue;
+                };
+                res_type = Some(un);
+                break;
+            }
+        }
+
+        let Some(actual_type) = res_type else {
+            continue;
+        };
+
+        let Some(var_name) = tokens.last() else {
+            continue;
+        };
+
+        let (res_var, res_type) = btf_iterate_members(&btf, var_name, &actual_type, field_expr)?;
+        log_dbg!(
+            BTFRD,
+            "Found field {} with type {}{}",
+            res_var.name,
+            res_type.type_prefix,
+            res_type.type_suffix
+        );
+        return Some((btf, res_var, res_type));
+    }
+
+    None
 }
 
 pub fn btf_iterate_members(

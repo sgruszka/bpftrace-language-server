@@ -4,7 +4,9 @@ use std::fs;
 use std::sync::{Arc, OnceLock};
 use tree_sitter::Node;
 
-use crate::btf_rd::{btf_iterate_function_args, btf_resolve_variable};
+use crate::btf_rd::{
+    btf_item_to_str, btf_iterate_function_args, btf_resolve_container_members, btf_resolve_variable,
+};
 use crate::btf_rd::{Btf, BtfResolvedType, BtfVariable};
 use crate::cmd_mod::{
     bpftrace_has_property, bpftrace_list_probes, bpftrace_major_minor_version, BpftraceProperty,
@@ -15,10 +17,9 @@ use crate::gen::completion::{
 use crate::log_mod::{self, COMPL};
 use crate::parser::{self, SyntaxLocation};
 use crate::utils::{
-    args_to_block, args_to_func_proto, available_traces, btf_item_to_str, find_common_args_by_cmd,
+    args_to_block, args_to_func_proto, available_traces, find_common_args_by_cmd,
     find_kfunc_args_by_btf, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
-    is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, probe_sim_btf, probe_use_btf,
-    resolve_container_members, Probes,
+    is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, probe_sim_btf, probe_use_btf, Probes,
 };
 use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_err, log_vdbg};
@@ -167,7 +168,7 @@ fn encode_completion_for_field_expression(
         if (field_expr.len() == 1 || field_expr.len() == 2) && field_expr[0] == "args" {
             items = items_from_probe_args(probe_args_iter)
         } else if let Some((btf, res_var, res_type)) =
-            resolve_container_members(probe_args_iter, field_expr)
+            btf_resolve_container_members(probe_args_iter, field_expr)
         {
             items = items_from_resolved_btf(btf, &(res_var, res_type))
         }

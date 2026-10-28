@@ -4,8 +4,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use crate::btf_rd::{
-    btf_iterate_function_args, btf_iterate_members, btf_module_get, btf_resolve_func,
-    btf_resolve_struct, btf_resolve_union, btf_resolve_variable,
+    btf_item_to_str, btf_iterate_function_args, btf_module_get, btf_resolve_container_members,
+    btf_resolve_func, btf_resolve_variable,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfFunction, BtfResolvedType, BtfVariable};
 use crate::cmd_mod::{bpftrace_command, bpftrace_list_probes_verbose};
@@ -17,90 +17,6 @@ static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
 static TRACEPOINT_ARGS_MAP: OnceLock<Option<HashMap<String, Vec<String>>>> = OnceLock::new();
 
 static RAWTRACEPOINT_ARGS_MAP: OnceLock<Option<HashMap<String, Vec<String>>>> = OnceLock::new();
-
-pub(crate) fn btf_item_to_str(res_type: &BtfResolvedType, res_var: Option<&BtfVariable>) -> String {
-    let mut s = res_type.type_prefix.clone();
-
-    if !s.ends_with("*") {
-        s.push_str(" ");
-    }
-
-    if let Some(var) = res_var {
-        s.push_str(&var.name);
-        if let Some(bits) = var.bits {
-            s.push_str(&format!(":{}", bits));
-        }
-    }
-
-    // TODO: For bitfield this should be empty, need to add check ?
-    s.push_str(&res_type.type_suffix);
-    s
-}
-
-pub(crate) fn resolve_container_members(
-    probe_args_iter: impl Iterator<Item = String>,
-    field_expr: Vec<&str>,
-) -> Option<(Arc<Btf>, BtfVariable, BtfResolvedType)> {
-    let btf = btf_module_get("vmlinux")?;
-
-    log_dbg!(COMPL, "Looking for struct/union for {:?}", field_expr);
-
-    for arg in probe_args_iter {
-        let mut tokens = arg.split_whitespace();
-        let mut res_type = None;
-
-        while let Some(tk) = tokens.next() {
-            if tk == "struct" {
-                let Some(struct_name) = tokens.next() else {
-                    continue;
-                };
-
-                let Some(st) =
-                    btf_resolve_struct(&btf, struct_name).and_then(|res_type| res_type.actual_type)
-                else {
-                    continue;
-                };
-
-                res_type = Some(st);
-                break;
-            }
-
-            if tk == "union" {
-                let Some(union_name) = tokens.next() else {
-                    continue;
-                };
-
-                let Some(un) =
-                    btf_resolve_union(&btf, union_name).and_then(|res_type| res_type.actual_type)
-                else {
-                    continue;
-                };
-                res_type = Some(un);
-                break;
-            }
-        }
-
-        let Some(actual_type) = res_type else {
-            continue;
-        };
-
-        let Some(var_name) = tokens.last() else {
-            continue;
-        };
-
-        let (res_var, res_type) = btf_iterate_members(&btf, var_name, &actual_type, field_expr)?;
-        log_dbg!(
-            COMPL,
-            "Found field {} with type {}{}",
-            res_var.name,
-            res_type.type_prefix,
-            res_type.type_suffix
-        );
-        return Some((btf, res_var, res_type));
-    }
-
-    None
-}
 
 fn is_fentry_probe(probe: &str) -> bool {
     probe.starts_with("fentry") || probe.starts_with("kfunc") || probe.starts_with("f:")
@@ -934,7 +850,7 @@ pub(crate) fn get_details_and_docs_by_cmd(
         }
         docs.push_str(&format!("}} args;{}", c_close));
     } else if let Some((btf, res_var, res_type)) =
-        resolve_container_members(probe_args.into_iter(), field_expr)
+        btf_resolve_container_members(probe_args.into_iter(), field_expr)
     {
         if let Some(actual_type) = res_type.actual_type {
             let s = &format!("{}{}\n{{\n", c_open, actual_type.type_name);
