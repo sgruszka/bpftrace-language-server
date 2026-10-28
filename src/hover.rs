@@ -1,6 +1,7 @@
 use json::{object, JsonValue};
 use tree_sitter::Node;
 
+use crate::args::{find_common_args_by_cmd, find_kfunc_args_by_btf};
 use crate::cmd_mod::bpftrace_major_minor_version;
 use crate::docs::{
     args_to_block, args_to_func_proto, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
@@ -11,9 +12,8 @@ use crate::gen::completion::{
 use crate::log_mod::{self, HOVER};
 use crate::parser::{self, SyntaxLocation};
 use crate::probes::{
-    expand_probes, find_common_args_by_cmd, find_kfunc_args_by_btf, is_rawtracepoint_probe,
-    is_tracepoint_probe, is_uprobe, kprobe_to_kfunc, probe_sim_btf, probe_use_btf,
-    provider_doc_name, Probes,
+    expand_probes, is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, kprobe_to_kfunc,
+    probe_sim_btf, probe_use_btf, provider_doc_name, Probes,
 };
 use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_vdbg};

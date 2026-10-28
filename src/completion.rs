@@ -4,6 +4,7 @@ use std::fs;
 use std::sync::{Arc, OnceLock};
 use tree_sitter::Node;
 
+use crate::args::{find_common_args_by_cmd, find_kfunc_args_by_btf};
 use crate::btf_rd::{
     btf_item_to_str, btf_iterate_function_args, btf_resolve_container_members, btf_resolve_variable,
 };
@@ -20,8 +21,8 @@ use crate::gen::completion::{
 use crate::log_mod::{self, COMPL};
 use crate::parser::{self, SyntaxLocation};
 use crate::probes::{
-    available_traces, find_common_args_by_cmd, find_kfunc_args_by_btf, is_rawtracepoint_probe,
-    is_tracepoint_probe, is_uprobe, is_usdt, probe_sim_btf, probe_use_btf, Probes,
+    available_traces, is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, is_usdt,
+    probe_sim_btf, probe_use_btf, Probes,
 };
 use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_err, log_vdbg};

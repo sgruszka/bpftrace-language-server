@@ -11,6 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod args;
 mod btf_rd;
 mod cmd_mod;
 mod completion;
@@ -1270,8 +1271,8 @@ fn main() {
             thread::spawn(move || {
                 let _ = perms_handle.join();
 
-                thread::spawn(probes::init_rawtracepoints_args);
-                probes::init_tracepoints_args();
+                thread::spawn(args::init_rawtracepoints_args);
+                args::init_tracepoints_args();
             });
         }
         Err(e) => WARNINGS_TO_CLIENT.push(WarningType::NoBpftrace, e),

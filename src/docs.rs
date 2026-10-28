@@ -1,9 +1,10 @@
+use crate::args::find_common_args_by_cmd;
 use crate::btf_rd::{
     btf_item_to_str, btf_iterate_function_args, btf_resolve_container_members, btf_resolve_variable,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfResolvedType};
 use crate::log_mod::{self, COMPL, HOVER};
-use crate::probes::{find_common_args_by_cmd, Probes};
+use crate::probes::Probes;
 use crate::{log_dbg, log_err};
 
 fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
