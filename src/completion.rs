@@ -220,7 +220,7 @@ fn add_block_variables(
     let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_type);
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
-    for var in variables {
+    for (var, _node) in variables {
         let item = object! {
             "label": var.to_owned(),
             "kind": CompletionItemKind::Variable,

@@ -663,10 +663,10 @@ pub fn find_probes_for_node(node: &Node, text: &str) -> Vec<String> {
     probes_list_to_vec(&probes_list, text)
 }
 
-fn add_scratch_variables_for_node(
-    node: &Node,
+fn add_scratch_variables_for_node<'t>(
+    node: &Node<'t>,
     text: &str,
-    results: &mut Vec<String>,
+    results: &mut Vec<(String, Node<'t>)>,
     child_nr: u32,
 ) {
     if let Some(var) = node.child(child_nr).and_then(|var| {
@@ -677,14 +677,18 @@ fn add_scratch_variables_for_node(
         }
     }) {
         if let Ok(variable_name) = var.utf8_text(text.as_bytes()) {
-            if !results.iter().any(|name| name == variable_name) {
-                results.push(variable_name.to_owned());
+            if !results.iter().any(|(name, _)| name == variable_name) {
+                results.push((variable_name.to_owned(), var));
             }
         }
     }
 }
 
-fn add_source_file_map_variables(node: &Node, text: &str, results: &mut Vec<String>) {
+fn add_source_file_map_variables<'t>(
+    node: &Node<'t>,
+    text: &str,
+    results: &mut Vec<(String, Node<'t>)>,
+) {
     let nodes = find_all_map_variable_assignments(text, node);
 
     for map_node in nodes {
@@ -717,18 +721,18 @@ fn add_source_file_map_variables(node: &Node, text: &str, results: &mut Vec<Stri
             }
         }
 
-        if !results.contains(&map_var) {
-            results.push(map_var);
+        if !results.iter().any(|(name, _)| name == &map_var) {
+            results.push((map_var, map_node));
         }
     }
 }
 
-fn add_scratch_variables_for_block(
-    node: &Node,
+fn add_scratch_variables_for_block<'t>(
+    node: &Node<'t>,
     text: &str,
     line_nr: usize,
     char_nr: usize,
-    results: &mut Vec<String>,
+    results: &mut Vec<(String, Node<'t>)>,
 ) {
     assert!(node.kind() == "action" || node.kind() == "block" || node.kind() == "predicate");
 
@@ -750,12 +754,12 @@ fn add_scratch_variables_for_block(
     }
 }
 
-fn find_scratch_variables(
-    var_node: &Node,
+fn find_scratch_variables<'t>(
+    var_node: &Node<'t>,
     text: &str,
     line_nr: usize,
     char_nr: usize,
-) -> Vec<String> {
+) -> Vec<(String, Node<'t>)> {
     let mut node = *var_node;
 
     let mut results = Vec::new();
@@ -778,19 +782,20 @@ fn find_scratch_variables(
     results
 }
 
-fn find_map_variables(node: &Node, text: &str) -> Vec<String> {
+fn find_map_variables<'t>(node: &Node<'t>, text: &str) -> Vec<(String, Node<'t>)> {
     let mut results = Vec::new();
     add_source_file_map_variables(node, text, &mut results);
     results
 }
 
-pub fn find_variables(
-    var_node: &Node,
+/// Return names paired with variable nodes at their selected declarations or assignments.
+pub fn find_variables<'t>(
+    var_node: &Node<'t>,
     text: &str,
     line_nr: usize,
     char_nr: usize,
     var_type: VariableType,
-) -> Vec<String> {
+) -> Vec<(String, Node<'t>)> {
     let variables = match var_type {
         VariableType::Map => find_map_variables(var_node, text),
         VariableType::Scratch => find_scratch_variables(var_node, text, line_nr, char_nr),
@@ -1302,9 +1307,42 @@ begin {
         let mut variables = Vec::new();
         add_scratch_variables_for_block(&action, text, 4, 8, &mut variables);
         assert_eq!(variables.len(), 3);
-        assert_eq!(variables[0], "$d");
-        assert_eq!(variables[1], "$x");
-        assert_eq!(variables[2], "$y");
+        assert_eq!(variables[0].0, "$d");
+        assert_eq!(variables[1].0, "$x");
+        assert_eq!(variables[2].0, "$y");
+
+        for (name, node) in &variables {
+            assert_eq!(node.kind(), "scratch_variable");
+            assert_eq!(node.utf8_text(text.as_bytes()).unwrap(), name);
+        }
+        let declaration = variables[0].1.parent().unwrap();
+        assert_eq!(declaration.kind(), "declaration_statement");
+        assert_eq!(
+            declaration
+                .child_by_field_name("type")
+                .unwrap()
+                .utf8_text(text.as_bytes())
+                .unwrap(),
+            "uint8"
+        );
+        assert_eq!(
+            declaration
+                .child_by_field_name("value")
+                .unwrap()
+                .utf8_text(text.as_bytes())
+                .unwrap(),
+            "222"
+        );
+        let assignment = variables[1].1.parent().unwrap();
+        assert_eq!(assignment.kind(), "assignment_statement");
+        assert_eq!(
+            assignment
+                .child_by_field_name("right")
+                .unwrap()
+                .utf8_text(text.as_bytes())
+                .unwrap(),
+            "10"
+        );
     }
 
     #[test]
@@ -1332,9 +1370,9 @@ begin {
         let (var_type, var_node) = is_location_variable(text, &action, 9, 4).unwrap();
         let variables = find_variables(&var_node, text, 9, 4, var_type);
         assert_eq!(variables.len(), 3);
-        assert_eq!(variables[0], "$u");
-        assert_eq!(variables[1], "$x");
-        assert_eq!(variables[2], "$y");
+        assert_eq!(variables[0].0, "$u");
+        assert_eq!(variables[1].0, "$x");
+        assert_eq!(variables[2].0, "$y");
     }
 
     #[test]
@@ -1364,7 +1402,13 @@ begin {
 
         let (var_type, var_node) = is_location_variable(text, &action, 10, 4).unwrap();
         let variables = find_variables(&var_node, text, 10, 4, var_type);
-        assert_eq!(variables, vec!["$branch", "$x", "$f"]);
+        assert_eq!(
+            variables
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["$branch", "$x", "$f"]
+        );
     }
 
     #[test]
@@ -1397,7 +1441,13 @@ begin {
 
         let (var_type, var_node) = is_location_variable(text, &action, 14, 6).unwrap();
         let variables = find_variables(&var_node, text, 14, 6, var_type);
-        assert_eq!(variables, vec!["$bx", "$x", "$b", "$f"]);
+        assert_eq!(
+            variables
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["$bx", "$x", "$b", "$f"]
+        );
     }
 
     #[test]
@@ -1418,7 +1468,9 @@ begin {
         let mut variables = Vec::new();
         add_scratch_variables_for_block(&action, text, 3, 10, &mut variables);
         assert_eq!(variables.len(), 1);
-        assert_eq!(variables[0], "$i");
+        assert_eq!(variables[0].0, "$i");
+        assert_eq!(variables[0].1.kind(), "scratch_variable");
+        assert_eq!(variables[0].1.utf8_text(text.as_bytes()).unwrap(), "$i");
     }
 
     #[test]
@@ -1442,10 +1494,28 @@ begin {
 
         let variables = find_map_variables(&action, text);
         assert_eq!(variables.len(), 4);
-        assert_eq!(variables[0], "@a[,]");
-        assert_eq!(variables[1], "@b[]");
-        assert_eq!(variables[2], "@c");
-        assert_eq!(variables[3], "@d[,,]");
+        assert_eq!(variables[0].0, "@a[,]");
+        assert_eq!(variables[1].0, "@b[]");
+        assert_eq!(variables[2].0, "@c");
+        assert_eq!(variables[3].0, "@d[,,]");
+
+        for (_, node) in &variables {
+            assert_eq!(node.kind(), "map_variable");
+        }
+        assert_eq!(
+            variables[0].1.utf8_text(text.as_bytes()).unwrap(),
+            "@a[1,1]"
+        );
+        let assignment = variables[0].1.parent().unwrap();
+        assert_eq!(assignment.kind(), "assignment_statement");
+        assert_eq!(
+            assignment
+                .child_by_field_name("right")
+                .unwrap()
+                .utf8_text(text.as_bytes())
+                .unwrap(),
+            "1"
+        );
     }
 
     #[test]
@@ -1469,8 +1539,8 @@ tracepoint:syscalls:sys_exit_wait4
 
         let variables = find_map_variables(&action, text);
         assert_eq!(variables.len(), 2);
-        assert_eq!(variables[0], "@out[]");
-        assert_eq!(variables[1], "@stamp[]");
+        assert_eq!(variables[0].0, "@out[]");
+        assert_eq!(variables[1].0, "@stamp[]");
     }
 
     #[test]
