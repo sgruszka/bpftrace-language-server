@@ -1,11 +1,9 @@
 use json::{object, JsonValue};
 use tree_sitter::Node;
 
-use crate::args::{find_common_args_by_cmd, find_kfunc_args_by_btf};
+use crate::args;
 use crate::cmd_mod::bpftrace_major_minor_version;
-use crate::docs::{
-    args_to_block, args_to_func_proto, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
-};
+use crate::docs;
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
 };
@@ -122,13 +120,15 @@ fn encode_hover_for_field_expression(
     let probes = Probes::new(probes_vec);
 
     let hover = if probes.btf_probe_args.is_some() {
-        let Some((details, docs)) = get_details_and_docs_by_btf(&probes, field_expr, true) else {
+        let Some((details, docs)) = docs::get_details_and_docs_by_btf(&probes, field_expr, true)
+        else {
             return empty_data;
         };
 
         details + &docs
     } else if !field_expr.is_empty() && field_expr[0] == "args" {
-        let Some((details, docs)) = get_details_and_docs_by_cmd(&probes, field_expr, true) else {
+        let Some((details, docs)) = docs::get_details_and_docs_by_cmd(&probes, field_expr, true)
+        else {
             return empty_data;
         };
 
@@ -203,9 +203,9 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
         } else if probe_use_btf(probe) || probe_sim_btf(probe) {
             log_dbg!(HOVER, "Probe is BTF");
             let args_by_btf = if probe_sim_btf(probe) {
-                find_kfunc_args_by_btf(&kprobe_to_kfunc(probe))
+                args::find_kfunc_args_by_btf(&kprobe_to_kfunc(probe))
             } else {
-                find_kfunc_args_by_btf(probe)
+                args::find_kfunc_args_by_btf(probe)
             };
             if let Some((_btf, resolved_func)) = args_by_btf {
                 data = object! {
@@ -216,8 +216,8 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
             }
         } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
             log_dbg!(HOVER, "Probe is tracepoint");
-            let args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
-            let docs = args_to_block(&args, true);
+            let args = args::find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
+            let docs = docs::args_to_block(&args, true);
 
             data = object! {
                   "result": {
@@ -227,9 +227,9 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
         } else if is_uprobe(probe)
         /* TODO || is_uretprobe(probe) */
         {
-            if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
+            if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
                 let (_, func_name) = probe.rsplit_once(":").unwrap_or_default();
-                let proto = args_to_func_proto(func_name, &args);
+                let proto = docs::args_to_func_proto(func_name, &args);
 
                 data = object! {
                       "result": {

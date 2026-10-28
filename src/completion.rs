@@ -4,7 +4,7 @@ use std::fs;
 use std::sync::{Arc, OnceLock};
 use tree_sitter::Node;
 
-use crate::args::{find_common_args_by_cmd, find_kfunc_args_by_btf};
+use crate::args;
 use crate::btf_rd::{
     btf_item_to_str, btf_iterate_function_args, btf_resolve_container_members, btf_resolve_variable,
 };
@@ -12,9 +12,7 @@ use crate::btf_rd::{Btf, BtfResolvedType, BtfVariable};
 use crate::cmd_mod::{
     bpftrace_has_property, bpftrace_list_probes, bpftrace_major_minor_version, BpftraceProperty,
 };
-use crate::docs::{
-    args_to_block, args_to_func_proto, get_details_and_docs_by_btf, get_details_and_docs_by_cmd,
-};
+use crate::docs;
 use crate::gen::completion::{
     bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
 };
@@ -161,7 +159,7 @@ fn encode_completion_for_field_expression(
     }
 
     if probes.btf_probe_args.is_none() {
-        let probe_args = find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
+        let probe_args = args::find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
         let probe_args_iter = probe_args.into_iter();
 
         if (field_expr.len() == 1 || field_expr.len() == 2) && field_expr[0] == "args" {
@@ -253,7 +251,7 @@ fn add_source_file_macros(node: &Node, text: &str, items: &mut JsonValue) {
 
 fn add_retval(probes: &Probes, items: &mut JsonValue) {
     let (details, docs) =
-        get_details_and_docs_by_btf(probes, vec!["retval"], false).unwrap_or_default();
+        docs::get_details_and_docs_by_btf(probes, vec!["retval"], false).unwrap_or_default();
 
     let retval_item = object! {
         "label": r#"retval"#,
@@ -274,14 +272,14 @@ fn add_args(probes: &Probes, items: &mut JsonValue) {
 
     if probes.properties.use_btf {
         if let Some((btf_details, btf_docs)) =
-            get_details_and_docs_by_btf(probes, vec!["args"], false)
+            docs::get_details_and_docs_by_btf(probes, vec!["args"], false)
         {
             details = btf_details;
             docs = btf_docs;
         }
     } else {
         if let Some((cmd_details, cmd_docs)) =
-            get_details_and_docs_by_cmd(probes, vec!["args"], false)
+            docs::get_details_and_docs_by_cmd(probes, vec!["args"], false)
         {
             details = cmd_details;
             docs = cmd_docs;
@@ -1047,13 +1045,13 @@ pub fn encode_completion_resolve(content: JsonValue) -> JsonValue {
     if !params.is_null() {
         if let Some(probe) = params["data"].as_str() {
             if probe_use_btf(probe) || probe_sim_btf(probe) {
-                if let Some((_btf, resolved_func)) = find_kfunc_args_by_btf(probe) {
+                if let Some((_btf, resolved_func)) = args::find_kfunc_args_by_btf(probe) {
                     params["detail"] = resolved_func.full_name.into();
                 }
             } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) || is_usdt(probe)
             {
-                if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
-                    let docs = args_to_block(&args, false);
+                if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
+                    let docs = docs::args_to_block(&args, false);
                     params["detail"] = probe.into();
                     params["documentation"] = docs.into();
                 }
@@ -1061,8 +1059,8 @@ pub fn encode_completion_resolve(content: JsonValue) -> JsonValue {
             /* TODO || is_uretprobe(probe) */
             {
                 if let Some(func_name) = params["label"].as_str() {
-                    if let Some(args) = find_common_args_by_cmd(&[probe.to_string()]) {
-                        let proto = args_to_func_proto(func_name, &args);
+                    if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
+                        let proto = docs::args_to_func_proto(func_name, &args);
                         params["detail"] = proto.into();
                     }
                 }
@@ -1175,7 +1173,7 @@ mod tests {
 
     fn compare_btf_and_cmd(s: &str) {
         let args_by_cmd = find_probe_args_by_command(s);
-        let args_by_btf = find_kfunc_args_by_btf(s);
+        let args_by_btf = args::find_kfunc_args_by_btf(s);
 
         let Some((btf, resolved_btf)) = args_by_btf else {
             println!("{s}");
