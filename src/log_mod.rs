@@ -16,6 +16,9 @@ pub const DEFIN: u32 = 1 << 7;
 pub const REFER: u32 = 1 << 8;
 pub const CMAND: u32 = 1 << 9;
 pub const FRMAT: u32 = 1 << 10;
+pub const PROBE: u32 = 1 << 11;
+pub const ARGUM: u32 = 1 << 12;
+pub const DOCUM: u32 = 1 << 13;
 
 #[macro_export]
 macro_rules! log_err {
@@ -116,6 +119,10 @@ pub fn create_logger(filename_opt: Option<String>) -> Result<(), std::io::Error>
                         "REFER" => mask |= REFER,
                         "CMAND" => mask |= CMAND,
                         "FRMAT" => mask |= FRMAT,
+                        "PROBE" => mask |= PROBE,
+                        "ARGUM" => mask |= ARGUM,
+                        "DOCUM" => mask |= DOCUM,
+
                         _ => {} // ignore unknown components
                     }
                 }

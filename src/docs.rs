@@ -3,7 +3,7 @@ use crate::btf_rd::{
     btf_item_to_str, btf_iterate_function_args, btf_resolve_container_members, btf_resolve_variable,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfResolvedType};
-use crate::log_mod::{self, COMPL, HOVER};
+use crate::log_mod::{self, DOCUM};
 use crate::probes::Probes;
 use crate::{log_dbg, log_err};
 
@@ -198,7 +198,7 @@ pub fn get_details_and_docs_by_btf(
     hover: bool,
 ) -> Option<(String, String)> {
     log_dbg!(
-        COMPL | HOVER,
+        DOCUM,
         "Looking for details of field expression '{:?}' with probes '{:?}' using BTF",
         field_expr,
         probes.probes_vec
@@ -230,11 +230,7 @@ pub fn get_details_and_docs_by_btf(
 
     let (res_var, res_type) = btf_iterate_function_args(btf, resolved_func, field_expr)?;
     let declaration = btf_item_to_str(&res_type, Some(&res_var));
-    log_dbg!(
-        COMPL | HOVER,
-        "Found BTF variable declaration {}",
-        declaration
-    );
+    log_dbg!(DOCUM, "Found BTF variable declaration {}", declaration);
 
     let mut details = String::new();
     let mut docs = String::new();
@@ -285,7 +281,7 @@ pub fn get_details_and_docs_by_cmd(
     hover: bool,
 ) -> Option<(String, String)> {
     log_dbg!(
-        COMPL | HOVER,
+        DOCUM,
         "Looking for details of field expression '{:?}' with probes '{:?}' using command line",
         field_expr,
         probes.probes_vec
@@ -304,11 +300,7 @@ pub fn get_details_and_docs_by_cmd(
 
     let probe_args = find_common_args_by_cmd(&probes.probes_vec)?;
 
-    log_dbg!(
-        COMPL | HOVER,
-        "Found probe args by command: {:?}\n",
-        probe_args
-    );
+    log_dbg!(DOCUM, "Found probe args by command: {:?}\n", probe_args);
 
     let c_open;
     let c_close;

@@ -5,7 +5,7 @@ use std::time::Instant;
 use crate::args::find_common_args_by_btf;
 use crate::btf_rd::{Btf, BtfFunction};
 use crate::cmd_mod::bpftrace_command;
-use crate::log_mod::{self, COMPL};
+use crate::log_mod::{self, PROBE};
 use crate::{log_dbg, log_err, log_vdbg};
 
 static AVAILABE_TRACES: OnceLock<Option<String>> = OnceLock::new();
@@ -185,12 +185,12 @@ fn bpftrace_get_traces_list() -> Option<String> {
     };
 
     log_dbg!(
-        COMPL,
+        PROBE,
         "Got list of available traces after {:?}",
         start.elapsed()
     );
 
-    log_vdbg!(COMPL, "List of available traces: \n{traces}\n");
+    log_vdbg!(PROBE, "List of available traces: \n{traces}\n");
     Some(traces)
 }
 

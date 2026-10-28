@@ -5,7 +5,7 @@ use std::time::Instant;
 use crate::btf_rd::{btf_module_get, btf_resolve_func};
 use crate::btf_rd::{Btf, BtfFunction, BtfVariable};
 use crate::cmd_mod::bpftrace_list_probes_verbose;
-use crate::log_mod::{self, COMPL, HOVER};
+use crate::log_mod::{self, ARGUM};
 use crate::probes::{is_rawtracepoint_probe, is_tracepoint_probe};
 use crate::{log_dbg, log_err, WarningType, WARNINGS_TO_CLIENT};
 
@@ -15,7 +15,7 @@ static RAWTRACEPOINT_ARGS_MAP: OnceLock<Option<HashMap<String, Vec<String>>>> = 
 
 pub fn find_kfunc_args_by_btf(kfunc: &str) -> Option<(Arc<Btf>, BtfFunction)> {
     let kfunc_vec: Vec<&str> = kfunc.split(":").collect();
-    log_dbg!(COMPL, "kfunc_vec {:?}", kfunc_vec);
+    log_dbg!(ARGUM, "kfunc_vec {:?}", kfunc_vec);
 
     if kfunc_vec.len() != 3 {
         return None;
@@ -71,7 +71,7 @@ fn bpftrace_init_pattern_args(pattern: &str) -> Option<HashMap<String, Vec<Strin
     }
 
     log_dbg!(
-        COMPL,
+        ARGUM,
         "Got list of {} args after {:?}",
         pattern,
         start.elapsed()
@@ -119,7 +119,7 @@ fn find_preloaded_cmd_args(probe_str: &str) -> Option<Vec<String>> {
         if let Some(map) = TRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_tracepoint_args) {
             let args = map.get(&probe).cloned();
             log_dbg!(
-                COMPL,
+                ARGUM,
                 "Found arguments using TRACEPOINT_ARGS_MAP: {:?}",
                 args
             );
@@ -136,7 +136,7 @@ fn find_preloaded_cmd_args(probe_str: &str) -> Option<Vec<String>> {
         if let Some(map) = RAWTRACEPOINT_ARGS_MAP.get_or_init(bpftrace_init_rawtracepoint_args) {
             let args = map.get(&probe).cloned();
             log_dbg!(
-                COMPL,
+                ARGUM,
                 "Found arguments using RAWTRACEPOINT_ARGS_MAP: {:?}",
                 args
             );
@@ -151,11 +151,7 @@ fn find_preloaded_cmd_args(probe_str: &str) -> Option<Vec<String>> {
 // but need having matching type and name.
 pub fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
     let all_probes = probes_vec.join(",");
-    log_dbg!(
-        COMPL | HOVER,
-        "Looking for arguments for probes {:?}",
-        all_probes
-    );
+    log_dbg!(ARGUM, "Looking for arguments for probes {:?}", all_probes);
 
     // TODO: use for expanded multi probe
     // For single tracepoint, rawtracepoint, try preloaded hash map first
@@ -167,7 +163,7 @@ pub fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
 
     let all_probes_args = bpftrace_list_probes_verbose(&all_probes)?;
     log_dbg!(
-        COMPL | HOVER,
+        ARGUM,
         "Found arguments using command line:\n{}",
         all_probes_args
     );
@@ -185,7 +181,7 @@ pub fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
 
         // uprobe no DWARF warning
         if line.contains("WARNING: No DWARF") {
-            log_dbg!(COMPL | HOVER, "No DWARF for {}", all_probes);
+            log_dbg!(ARGUM, "No DWARF for {}", all_probes);
             WARNINGS_TO_CLIENT.push(WarningType::NoDwarf, line.to_string());
 
             return None;
@@ -215,7 +211,7 @@ pub fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
         common_args.retain(|arg| new_args.contains(arg));
     }
 
-    log_dbg!(COMPL | HOVER, "Common arguments:\n{:?}", common_args);
+    log_dbg!(ARGUM, "Common arguments:\n{:?}", common_args);
 
     Some(
         common_args
