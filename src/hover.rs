@@ -332,6 +332,28 @@ mod tests {
     use crate::test_support::document_content_setup;
 
     #[test]
+    fn test_hover_for_scratch_variable() {
+        let text = "begin { $skb = (struct skb *) arg0; print($skb); }";
+        let content = document_content_setup(text, 0, text.rfind("$skb").unwrap());
+
+        let result = encode_hover(content);
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains("scratch variable"));
+        assert!(hover.contains("$skb = (struct skb *) arg0"));
+    }
+
+    #[test]
+    fn test_hover_for_map_variable() {
+        let text = "begin { @values[1, 2] = 7; print(@values[3, 4]); }";
+        let content = document_content_setup(text, 0, text.rfind("@values").unwrap());
+
+        let result = encode_hover(content);
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains("map variable"));
+        assert!(hover.contains("@values[1, 2] = 7"));
+    }
+
+    #[test]
     fn test_hover_for_type_expressions() {
         let cases = [
             ("begin { $p = (struct path *)0; }", "path", "struct path *"),
