@@ -1,11 +1,27 @@
+use tree_sitter::Node;
+
 use crate::args::find_common_args_by_cmd;
 use crate::btf_rd::{
     btf_item_to_str, btf_iterate_function_args, btf_resolve_container_members, btf_resolve_variable,
 };
 use crate::btf_rd::{Btf, BtfComposite, BtfResolvedType};
 use crate::log_mod::{self, DOCUM};
+use crate::parser;
 use crate::probes::Probes;
 use crate::{log_dbg, log_err};
+
+pub fn get_details_and_docs_for_variable(node: &Node, text: &str) -> Option<(String, String)> {
+    let kind = match node.kind() {
+        "map_variable" => "map",
+        "scratch_variable" => "scratch",
+        _ => return None,
+    };
+    let detail = format!("{kind} variable");
+    let documentation = parser::node_to_variable_definition(node, text)
+        .map(|definition| format!("```\n{definition}\n```"))
+        .unwrap_or_default();
+    Some((detail, documentation))
+}
 
 fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
     res_type.type_prefix == "struct " || res_type.type_prefix == "union "

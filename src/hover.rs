@@ -102,6 +102,41 @@ fn encode_hover_for_probe_provider(node: &Node, text: &str) -> JsonValue {
     hover
 }
 
+fn encode_hover_for_variable(
+    var_node: &Node,
+    text: &str,
+    line_nr: usize,
+    char_nr: usize,
+    var_kind: parser::VariableKind,
+) -> JsonValue {
+    let empty_data = object! { "result": JsonValue::Null };
+    let Ok(name) = var_node.utf8_text(text.as_bytes()) else {
+        return empty_data;
+    };
+    let name = name.split('[').next().unwrap_or_default().trim();
+    let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_kind);
+    let Some((_, definition)) = variables
+        .into_iter()
+        .find(|(label, _)| label.split('[').next().unwrap_or_default().trim() == name)
+    else {
+        return empty_data;
+    };
+    let Some((detail, documentation)) = docs::get_details_and_docs_for_variable(&definition, text)
+    else {
+        return empty_data;
+    };
+    let contents = if documentation.is_empty() {
+        detail
+    } else {
+        format!("{detail}\n{documentation}")
+    };
+    object! {
+        "result": {
+            "contents": contents,
+        },
+    }
+}
+
 fn encode_hover_for_field_expression(
     main_node: &Node,
     text: &str,
@@ -249,6 +284,10 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
         } else if let Some(record) = parser::is_location_record_field(&node, line_nr, char_nr) {
             // TOOD
             data = encode_hover_for_syntax(&record, text);
+        } else if let Some((var_kind, var_node)) =
+            parser::is_location_variable(text, &node, line_nr, char_nr)
+        {
+            data = encode_hover_for_variable(&var_node, text, line_nr, char_nr, var_kind);
         } else if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr)
         {
             data = encode_hover_for_function(&func, text);

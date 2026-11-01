@@ -217,26 +217,22 @@ fn add_block_variables(
     items: &mut JsonValue,
     var_kind: parser::VariableKind,
 ) {
-    let kind = match var_kind {
-        parser::VariableKind::Map => "map",
-        parser::VariableKind::Scratch => "scratch",
-    };
-
     let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_kind);
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
     for (var, node) in variables {
-        // Drop [..] for map
-        // let (var_name, _) = var.split_once("[").unwrap_or((&var, ""));
-        let detail = format!("{} variable", kind);
+        let Some((detail, documentation)) = docs::get_details_and_docs_for_variable(&node, text)
+        else {
+            continue;
+        };
 
         let mut item = object! {
             "label": var.to_owned(),
             "kind": CompletionItemKind::Variable,
             "detail": detail,
         };
-        if let Some(definition) = parser::node_to_variable_definition(&node, text) {
-            item["documentation"] = format!("```\n{definition}\n```").into();
+        if !documentation.is_empty() {
+            item["documentation"] = documentation.into();
         }
 
         let _ = items.push(item);
