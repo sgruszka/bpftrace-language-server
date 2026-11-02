@@ -98,7 +98,7 @@ fn encode_hover_for_variable(
     let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_kind);
     let Some((_, var_node)) = variables
         .into_iter()
-        .find(|(label, _)| label.split('[').next().unwrap_or_default().trim() == name)
+        .find(|(label, _)| label.split('[').next().unwrap_or_default().trim() == var_name)
     else {
         return empty_data;
     };
@@ -406,6 +406,42 @@ mod tests {
         let hover = result["result"]["contents"].as_str().unwrap();
         assert!(hover.contains("map variable"));
         assert!(hover.contains("@values[1, 2] = 7"));
+    }
+
+    #[test]
+    fn test_hover_for_scratch_variable_definition_location() {
+        let text = r#"
+begin {
+  $value = 1;
+  print($value);
+}"#;
+        let json_content = document_content_setup(text, 3, 8);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains(r"$value - scratch variable"));
+        println!("{hover:?}");
+        assert!(hover.contains(r"Definition at completion_test"));
+        assert!(hover.contains(r".bt:3"));
+        assert!(hover.contains(r"$value = 1"));
+    }
+
+    #[test]
+    fn test_hover_for_map_variable_definition_location() {
+        let text = r#"
+begin {
+  @values[1] = 7;
+  print(@values[2]);
+}"#;
+        let json_content = document_content_setup(text, 3, 8);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains(r"@values - map variable"));
+        println!("{hover:?}");
+        assert!(hover.contains(r"Definition at completion_test"));
+        assert!(hover.contains(r".bt:3"));
+        assert!(hover.contains(r"@values[1] = 7"));
     }
 
     #[test]

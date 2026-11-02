@@ -1315,13 +1315,13 @@ mod tests {
         let content = document_content_setup(text, 0, text.find("$cursor").unwrap() + 1);
         let uri = content["params"]["textDocument"]["uri"].as_str().unwrap();
         let file_name = uri.rsplit('/').next().unwrap();
-        let expected = format!("Defined at {file_name}:1:");
+        let expected = format!("Definition at {file_name}:1");
         let result = encode_completion(content);
         let item = result["result"]["items"]
             .members()
             .find(|item| item["label"] == "$i")
             .unwrap();
-        assert_eq!(item["documentation"].as_str(), Some(expected.as_str()));
+        assert!(item["documentation"].as_str().unwrap().contains(&expected));
     }
 
     #[test]
