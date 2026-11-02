@@ -241,17 +241,22 @@ fn add_block_variables(
     }
 }
 
-fn add_source_file_macros(node: &Node, text: &str, items: &mut JsonValue) {
+fn add_source_file_macros(node: &Node, text: &str, file_name: &str, items: &mut JsonValue) {
     let macros = parser::find_source_file_macros(node, text);
     log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
-    // TODO add parameters
-    for m in macros {
+    for (name, node) in macros {
+        let Some((detail, documentation)) =
+            docs::get_details_and_docs_for_macro(&node, text, file_name)
+        else {
+            continue;
+        };
+
         let item = object! {
-            "label": m.0.to_owned(),
+            "label": name,
             "kind": CompletionItemKind::Function,
-            // "detail": "TODO",
-            // "documentation": "need better documentation",
+            "detail": detail,
+            "documentation": documentation,
         };
 
         let _ = items.push(item);
@@ -387,7 +392,7 @@ fn add_completion_items_for_block(
         }
         bpftrace_stdlib_helpers(items, bpftrace_major_minor_version());
         add_block_keywords(items);
-        add_source_file_macros(node, text, items);
+        add_source_file_macros(node, text, file_name, items);
     }
 }
 
@@ -1279,6 +1284,32 @@ mod tests {
         for p in probes_vec {
             compare_btf_and_cmd(p);
         }
+    }
+
+    #[test]
+    fn test_macro_completion_definition() {
+        let text = r#"
+macro foo(@x) {
+  print(@x);
+}
+begin {
+  fo;
+}"#;
+        let json_content = document_content_setup(text, 5, 4);
+        let result = encode_completion(json_content);
+
+        let item = result["result"]["items"]
+            .members()
+            .find(|item| item["label"] == "foo")
+            .unwrap();
+        let detail = item["detail"].as_str().unwrap();
+        let documentation = item["documentation"].as_str().unwrap();
+        assert!(detail.contains(r"foo - bpftrace macro"));
+        println!("{documentation:?}");
+        assert!(documentation.contains(r"Definition at completion_test"));
+        assert!(documentation.contains(r".bt:2"));
+        assert!(documentation.contains(r"macro foo(@x)"));
+        assert!(!documentation.contains(r"print(@x)"));
     }
 
     #[test]

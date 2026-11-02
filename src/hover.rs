@@ -51,6 +51,34 @@ fn encode_hover_for_function(node: &Node, text: &str) -> JsonValue {
     hover
 }
 
+fn encode_hover_for_macro_definition(node: &Node, text: &str, file_name: &str) -> JsonValue {
+    let Some((detail, documentation)) = docs::get_details_and_docs_for_macro(node, text, file_name)
+    else {
+        return object! { "result": JsonValue::Null };
+    };
+
+    object! {
+        "result": {
+            "contents": format!("{detail}\n{documentation}"),
+        },
+    }
+}
+
+fn encode_hover_for_call(node: &Node, text: &str, file_name: &str) -> JsonValue {
+    let Ok(name) = node.utf8_text(text.as_bytes()) else {
+        return object! { "result": JsonValue::Null };
+    };
+
+    if let Some((_, definition)) = parser::find_source_file_macros(node, text)
+        .into_iter()
+        .find(|(macro_name, _)| macro_name == name)
+    {
+        return encode_hover_for_macro_definition(&definition, text, file_name);
+    }
+
+    encode_hover_for_function(node, text)
+}
+
 fn encode_hover_for_syntax(node: &Node, text: &str) -> JsonValue {
     let Ok(source) = node.utf8_text(text.as_bytes()) else {
         return object! { "result": JsonValue::Null };
@@ -269,7 +297,7 @@ fn encode_hover_for_action_block(
     {
         data = encode_hover_for_variable(&var_node, text, file_name, line_nr, char_nr, var_kind);
     } else if let Some(func) = parser::is_location_function_call(text, node, line_nr, char_nr) {
-        data = encode_hover_for_function(&func, text);
+        data = encode_hover_for_call(&func, text, file_name);
     } else if let Some(args) = parser::is_location_args_keyword(node, line_nr, char_nr)
         .and_then(|node| node.utf8_text(text.as_bytes()).ok())
     {
@@ -303,6 +331,10 @@ fn encode_hover_for_macro(
     line_nr: usize,
     char_nr: usize,
 ) -> JsonValue {
+    if parser::is_location_macro_name(node, line_nr, char_nr).is_some() {
+        return encode_hover_for_macro_definition(node, text, file_name);
+    }
+
     let mut data = object! { "result": JsonValue::Null };
 
     // TODO handle probes with wildcard
@@ -317,7 +349,7 @@ fn encode_hover_for_macro(
     {
         data = encode_hover_for_variable(&var_node, text, file_name, line_nr, char_nr, var_kind);
     } else if let Some(func) = parser::is_location_function_call(text, node, line_nr, char_nr) {
-        data = encode_hover_for_function(&func, text);
+        data = encode_hover_for_call(&func, text, file_name);
     } else if let Some(hover) = parser::is_location_expression_identifier(node, line_nr, char_nr)
         .map(|ident| encode_hover_for_function(&ident, text))
         .filter(|hover| !hover["result"].is_null())
@@ -442,6 +474,69 @@ begin {
         assert!(hover.contains(r"Definition at completion_test"));
         assert!(hover.contains(r".bt:3"));
         assert!(hover.contains(r"@values[1] = 7"));
+    }
+
+    #[test]
+    fn test_hover_for_macro_call() {
+        let text = r#"
+macro foo(@x) {
+  print(@x);
+}
+begin {
+  foo(@values);
+}"#;
+        let json_content = document_content_setup(text, 5, 3);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains(r"foo - bpftrace macro"));
+        println!("{hover:?}");
+        assert!(hover.contains(r"Definition at completion_test"));
+        assert!(hover.contains(r".bt:2"));
+        assert!(hover.contains(r"macro foo(@x)"));
+        assert!(!hover.contains(r"print(@x)"));
+    }
+
+    #[test]
+    fn test_hover_for_macro_name() {
+        let text = r#"
+macro foo(
+  @x,
+  $y
+) {
+  print($y);
+}"#;
+        let json_content = document_content_setup(text, 1, 7);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains(r"foo - bpftrace macro"));
+        println!("{hover:?}");
+        assert!(hover.contains(r"Definition at completion_test"));
+        assert!(hover.contains(r".bt:2"));
+        assert!(hover.contains(r"macro foo(@x, $y)"));
+        assert!(!hover.contains(r"print($y)"));
+    }
+
+    #[test]
+    fn test_hover_for_macro_call_in_macro() {
+        let text = r#"
+macro foo(@x) {
+  print(@x);
+}
+macro bar(@y) {
+  foo(@y);
+}"#;
+        let json_content = document_content_setup(text, 5, 3);
+        let result = encode_hover(json_content);
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains(r"foo - bpftrace macro"));
+        println!("{hover:?}");
+        assert!(hover.contains(r"Definition at completion_test"));
+        assert!(hover.contains(r".bt:2"));
+        assert!(hover.contains(r"macro foo(@x)"));
+        assert!(!hover.contains(r"print(@x)"));
     }
 
     #[test]

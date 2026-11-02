@@ -41,6 +41,35 @@ pub fn get_details_and_docs_for_variable(
     Some((detail, documentation))
 }
 
+pub fn get_details_and_docs_for_macro(
+    node: &Node,
+    text: &str,
+    file_name: &str,
+) -> Option<(String, String)> {
+    if node.kind() != "macro_definition" {
+        return None;
+    }
+
+    let name = node
+        .child_by_field_name("name")?
+        .utf8_text(text.as_bytes())
+        .ok()?;
+    let parameters = node.child_by_field_name("parameters")?;
+    let mut cursor = parameters.walk();
+    let parameters = parameters
+        .named_children(&mut cursor)
+        .filter(|parameter| !parameter.is_extra())
+        .map(|parameter| parameter.utf8_text(text.as_bytes()))
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?
+        .join(", ");
+    let detail = format!("{name} - bpftrace macro");
+    let line = node.start_position().row + 1;
+    let documentation =
+        format!("Definition at {file_name}:{line}\n```\nmacro {name}({parameters})\n```");
+    Some((detail, documentation))
+}
+
 fn is_anonymous_type(res_type: &BtfResolvedType) -> bool {
     res_type.type_prefix == "struct " || res_type.type_prefix == "union "
 }
