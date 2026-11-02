@@ -643,9 +643,11 @@ fn probes_list_to_vec(probes_list: &Node, text: &str) -> Vec<String> {
             continue;
         }
 
-        let probe_text = probe.utf8_text(text.as_bytes());
+        let Ok(probe_text) = probe.utf8_text(text.as_bytes()) else {
+            continue;
+        };
 
-        probes_vec.push(probe_text.unwrap().to_string());
+        probes_vec.push(probe_text.to_string());
     }
 
     probes_vec
@@ -939,9 +941,11 @@ pub fn find_probes_vec_for_error(error_node: &Node, text: &str) -> Vec<String> {
             continue;
         }
 
-        let probe_text = probe.utf8_text(text.as_bytes());
-        let probe_str = probe_text.unwrap().to_string();
-        probes_vec.push(probe_str);
+        let Ok(probe_text) = probe.utf8_text(text.as_bytes()) else {
+            continue;
+        };
+
+        probes_vec.push(probe_text.to_string());
     }
 
     probes_vec
