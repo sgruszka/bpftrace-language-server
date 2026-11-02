@@ -51,26 +51,6 @@ fn encode_hover_for_function(node: &Node, text: &str) -> JsonValue {
     hover
 }
 
-fn encode_hover_for_config_variable(node: &Node, text: &str) -> JsonValue {
-    let empty_data = object! { "result": JsonValue::Null };
-
-    let Ok(variable) = node.utf8_text(text.as_bytes()) else {
-        return empty_data;
-    };
-
-    let variable = variable.to_ascii_lowercase();
-    let variable = variable.strip_prefix("bpftrace_").unwrap_or(&variable);
-
-    let mut items = JsonValue::new_array();
-    bpftrace_config_variables(&mut items, bpftrace_major_minor_version());
-
-    let Some(hover) = hover_from_completion_items(&items, variable) else {
-        return empty_data;
-    };
-
-    hover
-}
-
 fn encode_hover_for_syntax(node: &Node, text: &str) -> JsonValue {
     let Ok(source) = node.utf8_text(text.as_bytes()) else {
         return object! { "result": JsonValue::Null };
@@ -181,6 +161,188 @@ fn encode_hover_for_field_expression(
     }
 }
 
+fn encode_hover_for_probe_list(
+    node: &Node,
+    text: &str,
+    line_nr: usize,
+    char_nr: usize,
+) -> JsonValue {
+    let mut data = object! { "result": JsonValue::Null };
+
+    assert_eq!(node.kind(), "probes_list");
+
+    if node.child_count() < 1 {
+        return data;
+    }
+
+    let Some(probe_node) = parser::find_probe_in_probes_list(node, line_nr, char_nr) else {
+        return data;
+    };
+    let probe = probe_node.utf8_text(text.as_bytes()).unwrap_or_default();
+    log_dbg!(HOVER, "Hover for probe {}", probe);
+
+    if let Some(provider) = parser::is_location_probe_provider(&probe_node, line_nr, char_nr) {
+        return encode_hover_for_probe_provider(&provider, text);
+    }
+
+    if probe.contains("*") {
+        log_dbg!(HOVER, "Probe is wildcard");
+        // Wildcard probe might expand to thousands of individual probes
+        // Just print them, do not try to calculate common arguments
+        let all_probes = expand_probes(vec![probe.to_string()]);
+
+        let mut all_probes_str = String::new();
+        for p in &all_probes {
+            all_probes_str.push_str(&format!("{}\n", p));
+        }
+
+        let hover = format!(
+            "Wildcard probe {}\nExpands into {} individual probes\n\n{}",
+            probe,
+            all_probes.len(),
+            all_probes_str
+        );
+
+        data = object! {
+              "result": {
+                  "contents": hover,
+            },
+        };
+    } else if probe_use_btf(probe) || probe_sim_btf(probe) {
+        log_dbg!(HOVER, "Probe is BTF");
+        let args_by_btf = if probe_sim_btf(probe) {
+            args::find_kfunc_args_by_btf(&kprobe_to_kfunc(probe))
+        } else {
+            args::find_kfunc_args_by_btf(probe)
+        };
+        if let Some((_btf, resolved_func)) = args_by_btf {
+            data = object! {
+                  "result": {
+                      "contents": format!("{}\n```c\n{}", probe, &resolved_func.full_name),
+                  },
+            };
+        }
+    } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
+        log_dbg!(HOVER, "Probe is tracepoint");
+        let args = args::find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
+        let docs = docs::args_to_block(&args, true);
+
+        data = object! {
+              "result": {
+                  "contents": format!("{}\n{}", probe, docs),
+              },
+        };
+    } else if is_uprobe(probe)
+    /* TODO || is_uretprobe(probe) */
+    {
+        if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
+            let (_, func_name) = probe.rsplit_once(":").unwrap_or_default();
+            let proto = docs::args_to_func_proto(func_name, &args);
+
+            data = object! {
+                  "result": {
+                      "contents": format!("{}\n```c\n{}", probe, proto),
+                  },
+            };
+        }
+    }
+
+    data
+}
+
+fn encode_hover_for_action_block(
+    node: &Node,
+    text: &str,
+    line_nr: usize,
+    char_nr: usize,
+) -> JsonValue {
+    let mut data = object! { "result": JsonValue::Null };
+
+    // TODO handle probes with wildcard
+    if let Some(type_node) = parser::is_location_type(node, line_nr, char_nr) {
+        // TODO
+        data = encode_hover_for_syntax(&type_node, text);
+    } else if let Some(record) = parser::is_location_record_field(node, line_nr, char_nr) {
+        // TOOD
+        data = encode_hover_for_syntax(&record, text);
+    } else if let Some((var_kind, var_node)) =
+        parser::is_location_variable(text, node, line_nr, char_nr)
+    {
+        data = encode_hover_for_variable(&var_node, text, line_nr, char_nr, var_kind);
+    } else if let Some(func) = parser::is_location_function_call(text, node, line_nr, char_nr) {
+        data = encode_hover_for_function(&func, text);
+    } else if let Some(args) = parser::is_location_args_keyword(node, line_nr, char_nr)
+        .and_then(|node| node.utf8_text(text.as_bytes()).ok())
+    {
+        data = encode_hover_for_field_expression(node, text, vec![args]);
+    } else if let Some(retval) = parser::is_location_retval_identifier(node, line_nr, char_nr)
+        .and_then(|node| node.utf8_text(text.as_bytes()).ok())
+    {
+        data = encode_hover_for_field_expression(node, text, vec![retval]);
+    } else if let Some(hover) = parser::is_location_expression_identifier(node, line_nr, char_nr)
+        .map(|ident| encode_hover_for_function(&ident, text))
+        .filter(|hover| !hover["result"].is_null())
+    {
+        // TODO: identifier can also be a #define name.
+        data = hover;
+    } else if let Some((field_expr, last_field)) =
+        parser::is_location_field_expression(node, line_nr, char_nr)
+    {
+        let vec = parser::field_expr_to_vec(text, &field_expr, &last_field);
+        if !vec.is_empty() {
+            data = encode_hover_for_field_expression(node, text, vec);
+        }
+    }
+
+    data
+}
+
+fn encode_hover_for_macro(node: &Node, text: &str, line_nr: usize, char_nr: usize) -> JsonValue {
+    let mut data = object! { "result": JsonValue::Null };
+
+    // TODO handle probes with wildcard
+    if let Some(type_node) = parser::is_location_type(node, line_nr, char_nr) {
+        // TODO
+        data = encode_hover_for_syntax(&type_node, text);
+    } else if let Some(record) = parser::is_location_record_field(node, line_nr, char_nr) {
+        // TOOD
+        data = encode_hover_for_syntax(&record, text);
+    } else if let Some((var_kind, var_node)) =
+        parser::is_location_variable(text, node, line_nr, char_nr)
+    {
+        data = encode_hover_for_variable(&var_node, text, line_nr, char_nr, var_kind);
+    } else if let Some(func) = parser::is_location_function_call(text, node, line_nr, char_nr) {
+        data = encode_hover_for_function(&func, text);
+    } else if let Some(hover) = parser::is_location_expression_identifier(node, line_nr, char_nr)
+        .map(|ident| encode_hover_for_function(&ident, text))
+        .filter(|hover| !hover["result"].is_null())
+    {
+        // TODO: identifier can also be a #define name.
+        data = hover;
+    }
+    data
+}
+
+fn encode_hover_for_config_variable(node: &Node, text: &str) -> JsonValue {
+    let empty_data = object! { "result": JsonValue::Null };
+
+    let Ok(variable) = node.utf8_text(text.as_bytes()) else {
+        return empty_data;
+    };
+
+    let variable = variable.to_ascii_lowercase();
+    let variable = variable.strip_prefix("bpftrace_").unwrap_or(&variable);
+
+    let mut items = JsonValue::new_array();
+    bpftrace_config_variables(&mut items, bpftrace_major_minor_version());
+
+    let Some(hover) = hover_from_completion_items(&items, variable) else {
+        return empty_data;
+    };
+
+    hover
+}
+
 pub fn encode_hover(content: JsonValue) -> JsonValue {
     log_dbg!(HOVER, "Received hover with data {}", content);
     let (uri, line_nr, char_nr) = unpack_text_document_info(content);
@@ -196,124 +358,11 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
     let (text, loc, node, _line_str) = get_document_state!(text_doc, line_nr, char_nr, data, HOVER);
 
     if loc == SyntaxLocation::ProbesList {
-        assert_eq!(node.kind(), "probes_list");
-
-        if node.child_count() < 1 {
-            return data;
-        }
-
-        let Some(probe_node) = parser::find_probe_in_probes_list(&node, line_nr, char_nr) else {
-            return data;
-        };
-        let probe = probe_node.utf8_text(text.as_bytes()).unwrap_or_default();
-        log_dbg!(HOVER, "Hover for probe {}", probe);
-
-        if let Some(provider) = parser::is_location_probe_provider(&probe_node, line_nr, char_nr) {
-            return encode_hover_for_probe_provider(&provider, text);
-        }
-
-        if probe.contains("*") {
-            log_dbg!(HOVER, "Probe is wildcard");
-            // Wildcard probe might expand to thousands of individual probes
-            // Just print them, do not try to calculate common arguments
-            let all_probes = expand_probes(vec![probe.to_string()]);
-
-            let mut all_probes_str = String::new();
-            for p in &all_probes {
-                all_probes_str.push_str(&format!("{}\n", p));
-            }
-
-            let hover = format!(
-                "Wildcard probe {}\nExpands into {} individual probes\n\n{}",
-                probe,
-                all_probes.len(),
-                all_probes_str
-            );
-
-            data = object! {
-                  "result": {
-                      "contents": hover,
-                },
-            };
-        } else if probe_use_btf(probe) || probe_sim_btf(probe) {
-            log_dbg!(HOVER, "Probe is BTF");
-            let args_by_btf = if probe_sim_btf(probe) {
-                args::find_kfunc_args_by_btf(&kprobe_to_kfunc(probe))
-            } else {
-                args::find_kfunc_args_by_btf(probe)
-            };
-            if let Some((_btf, resolved_func)) = args_by_btf {
-                data = object! {
-                      "result": {
-                          "contents": format!("{}\n```c\n{}", probe, &resolved_func.full_name),
-                      },
-                };
-            }
-        } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) {
-            log_dbg!(HOVER, "Probe is tracepoint");
-            let args = args::find_common_args_by_cmd(&[probe.to_string()]).unwrap_or_default();
-            let docs = docs::args_to_block(&args, true);
-
-            data = object! {
-                  "result": {
-                      "contents": format!("{}\n{}", probe, docs),
-                  },
-            };
-        } else if is_uprobe(probe)
-        /* TODO || is_uretprobe(probe) */
-        {
-            if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
-                let (_, func_name) = probe.rsplit_once(":").unwrap_or_default();
-                let proto = docs::args_to_func_proto(func_name, &args);
-
-                data = object! {
-                      "result": {
-                          "contents": format!("{}\n```c\n{}", probe, proto),
-                      },
-                };
-            }
-        }
-    } else if loc == SyntaxLocation::Action
-        || loc == SyntaxLocation::Predicate
-        || loc == SyntaxLocation::MacroDefinition
-    {
-        // TODO handle probes with wildcard
-        if let Some(type_node) = parser::is_location_type(&node, line_nr, char_nr) {
-            // TODO
-            data = encode_hover_for_syntax(&type_node, text);
-        } else if let Some(record) = parser::is_location_record_field(&node, line_nr, char_nr) {
-            // TOOD
-            data = encode_hover_for_syntax(&record, text);
-        } else if let Some((var_kind, var_node)) =
-            parser::is_location_variable(text, &node, line_nr, char_nr)
-        {
-            data = encode_hover_for_variable(&var_node, text, line_nr, char_nr, var_kind);
-        } else if let Some(func) = parser::is_location_function_call(text, &node, line_nr, char_nr)
-        {
-            data = encode_hover_for_function(&func, text);
-        } else if let Some(args) = parser::is_location_args_keyword(&node, line_nr, char_nr)
-            .and_then(|node| node.utf8_text(text.as_bytes()).ok())
-        {
-            data = encode_hover_for_field_expression(&node, text, vec![args]);
-        } else if let Some(retval) = parser::is_location_retval_identifier(&node, line_nr, char_nr)
-            .and_then(|node| node.utf8_text(text.as_bytes()).ok())
-        {
-            data = encode_hover_for_field_expression(&node, text, vec![retval]);
-        } else if let Some(hover) =
-            parser::is_location_expression_identifier(&node, line_nr, char_nr)
-                .map(|ident| encode_hover_for_function(&ident, text))
-                .filter(|hover| !hover["result"].is_null())
-        {
-            // TODO: identifier can also be a #define name.
-            data = hover;
-        } else if let Some((field_expr, last_field)) =
-            parser::is_location_field_expression(&node, line_nr, char_nr)
-        {
-            let vec = parser::field_expr_to_vec(text, &field_expr, &last_field);
-            if !vec.is_empty() {
-                data = encode_hover_for_field_expression(&node, text, vec);
-            }
-        }
+        data = encode_hover_for_probe_list(&node, text, line_nr, char_nr)
+    } else if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
+        data = encode_hover_for_action_block(&node, text, line_nr, char_nr)
+    } else if loc == SyntaxLocation::MacroDefinition {
+        data = encode_hover_for_macro(&node, text, line_nr, char_nr);
     } else if loc == SyntaxLocation::ConfigBlock {
         if let Some(variable) = parser::is_location_expression_identifier(&node, line_nr, char_nr) {
             data = encode_hover_for_config_variable(&variable, text);
