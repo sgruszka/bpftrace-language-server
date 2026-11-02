@@ -1,3 +1,4 @@
+use std::path::Path;
 use tree_sitter::Node;
 
 use crate::args::find_common_args_by_cmd;
@@ -10,16 +11,33 @@ use crate::parser;
 use crate::probes::Probes;
 use crate::{log_dbg, log_err};
 
-pub fn get_details_and_docs_for_variable(node: &Node, text: &str) -> Option<(String, String)> {
+pub fn source_file_name(uri: &str) -> &str {
+    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+}
+
+pub fn get_details_and_docs_for_variable(
+    var_name: &str,
+    node: &Node,
+    text: &str,
+    file_name: &str,
+) -> Option<(String, String)> {
     let kind = match node.kind() {
         "map_variable" => "map",
         "scratch_variable" => "scratch",
         _ => return None,
     };
-    let detail = format!("{kind} variable");
+    let detail = format!("{var_name} - {kind} variable");
+    let location = format!(
+        "Definition at {file_name}:{}",
+        node.start_position().row + 1
+    );
     let documentation = parser::node_to_variable_definition(node, text)
-        .map(|definition| format!("```\n{definition}\n```"))
-        .unwrap_or_default();
+        .map(|definition| format!("{location}\n```\n{definition}\n```"))
+        .unwrap_or(location);
     Some((detail, documentation))
 }
 

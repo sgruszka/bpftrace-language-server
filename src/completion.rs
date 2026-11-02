@@ -212,6 +212,7 @@ fn add_block_keywords(items: &mut JsonValue) {
 fn add_block_variables(
     var_node: &Node,
     text: &str,
+    file_name: &str,
     line_nr: usize,
     char_nr: usize,
     items: &mut JsonValue,
@@ -220,14 +221,15 @@ fn add_block_variables(
     let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_kind);
     log_dbg!(COMPL, "Completion: found variables {variables:?}");
 
-    for (var, node) in variables {
-        let Some((detail, documentation)) = docs::get_details_and_docs_for_variable(&node, text)
+    for (name, node) in variables {
+        let Some((detail, documentation)) =
+            docs::get_details_and_docs_for_variable(&name, &node, text, file_name)
         else {
             continue;
         };
 
         let mut item = object! {
-            "label": var.to_owned(),
+            "label": name.to_owned(),
             "kind": CompletionItemKind::Variable,
             "detail": detail,
         };
@@ -369,13 +371,16 @@ fn add_args_and_retval_keywords(probes: &Probes, items: &mut JsonValue) {
 fn add_completion_items_for_block(
     text: &str,
     node: &Node,
+    file_name: &str,
     line_nr: usize,
     char_nr: usize,
     probes_opt: Option<Probes>,
     items: &mut JsonValue,
 ) {
     if let Some((var_type, var_node)) = parser::is_location_variable(text, node, line_nr, char_nr) {
-        add_block_variables(&var_node, text, line_nr, char_nr, items, var_type)
+        add_block_variables(
+            &var_node, text, file_name, line_nr, char_nr, items, var_type,
+        )
     } else {
         if let Some(probes) = probes_opt {
             add_args_and_retval_keywords(&probes, items);
@@ -389,6 +394,7 @@ fn add_completion_items_for_block(
 fn encode_completion_for_action(
     text: &str,
     node: &Node,
+    file_name: &str,
     line_nr: usize,
     char_nr: usize,
     probes: Probes,
@@ -398,7 +404,15 @@ fn encode_completion_for_action(
     // TODO preload btf module
     let mut items = JsonValue::new_array();
 
-    add_completion_items_for_block(text, node, line_nr, char_nr, Some(probes), &mut items);
+    add_completion_items_for_block(
+        text,
+        node,
+        file_name,
+        line_nr,
+        char_nr,
+        Some(probes),
+        &mut items,
+    );
 
     let data = object! {
         "result": {
@@ -413,6 +427,7 @@ fn encode_completion_for_action(
 fn encode_completion_for_macro(
     text: &str,
     node: &Node,
+    file_name: &str,
     line_nr: usize,
     char_nr: usize,
 ) -> Option<JsonValue> {
@@ -420,7 +435,7 @@ fn encode_completion_for_macro(
 
     let mut items = JsonValue::new_array();
 
-    add_completion_items_for_block(text, node, line_nr, char_nr, None, &mut items);
+    add_completion_items_for_block(text, node, file_name, line_nr, char_nr, None, &mut items);
 
     let data = object! {
         "result": {
@@ -944,6 +959,7 @@ pub fn encode_completion(content: JsonValue) -> JsonValue {
 
     let (text, loc, node, line_str) =
         get_document_state!(text_doc, line_nr, char_nr, encode_no_completion(), COMPL);
+    let file_name = docs::source_file_name(&uri);
 
     if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
         let probes_vec = parser::find_probes_for_node(&node, text);
@@ -982,7 +998,8 @@ pub fn encode_completion(content: JsonValue) -> JsonValue {
                 return data;
             }
         } else {
-            if let Some(data) = encode_completion_for_action(text, &node, line_nr, char_nr, probes)
+            if let Some(data) =
+                encode_completion_for_action(text, &node, file_name, line_nr, char_nr, probes)
             {
                 return data;
             }
@@ -1013,8 +1030,10 @@ pub fn encode_completion(content: JsonValue) -> JsonValue {
     }
 
     if loc == SyntaxLocation::MacroDefinition {
-        if let Some(data) = parser::is_location_macro_body(&node, line_nr, char_nr)
-            .and_then(|block_node| encode_completion_for_macro(text, &block_node, line_nr, char_nr))
+        if let Some(data) =
+            parser::is_location_macro_body(&node, line_nr, char_nr).and_then(|block_node| {
+                encode_completion_for_macro(text, &block_node, file_name, line_nr, char_nr)
+            })
         {
             return data;
         }
@@ -1294,12 +1313,15 @@ mod tests {
 
         let text = "begin { for $i : 0..10 { $cursor; } }";
         let content = document_content_setup(text, 0, text.find("$cursor").unwrap() + 1);
+        let uri = content["params"]["textDocument"]["uri"].as_str().unwrap();
+        let file_name = uri.rsplit('/').next().unwrap();
+        let expected = format!("Defined at {file_name}:1:");
         let result = encode_completion(content);
         let item = result["result"]["items"]
             .members()
             .find(|item| item["label"] == "$i")
             .unwrap();
-        assert!(item["documentation"].is_null());
+        assert_eq!(item["documentation"].as_str(), Some(expected.as_str()));
     }
 
     #[test]

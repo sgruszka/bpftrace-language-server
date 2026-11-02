@@ -85,6 +85,7 @@ fn encode_hover_for_probe_provider(node: &Node, text: &str) -> JsonValue {
 fn encode_hover_for_variable(
     var_node: &Node,
     text: &str,
+    file_name: &str,
     line_nr: usize,
     char_nr: usize,
     var_kind: parser::VariableKind,
@@ -93,23 +94,20 @@ fn encode_hover_for_variable(
     let Ok(name) = var_node.utf8_text(text.as_bytes()) else {
         return empty_data;
     };
-    let name = name.split('[').next().unwrap_or_default().trim();
+    let var_name = name.split('[').next().unwrap_or_default().trim();
     let variables = parser::find_variables(var_node, text, line_nr, char_nr, var_kind);
-    let Some((_, definition)) = variables
+    let Some((_, var_node)) = variables
         .into_iter()
         .find(|(label, _)| label.split('[').next().unwrap_or_default().trim() == name)
     else {
         return empty_data;
     };
-    let Some((detail, documentation)) = docs::get_details_and_docs_for_variable(&definition, text)
+    let Some((detail, documentation)) =
+        docs::get_details_and_docs_for_variable(var_name, &var_node, text, file_name)
     else {
         return empty_data;
     };
-    let contents = if documentation.is_empty() {
-        detail
-    } else {
-        format!("{detail}\n{documentation}")
-    };
+    let contents = format!("{detail}\n{documentation}");
     object! {
         "result": {
             "contents": contents,
@@ -253,6 +251,7 @@ fn encode_hover_for_probe_list(
 fn encode_hover_for_action_block(
     node: &Node,
     text: &str,
+    file_name: &str,
     line_nr: usize,
     char_nr: usize,
 ) -> JsonValue {
@@ -268,7 +267,7 @@ fn encode_hover_for_action_block(
     } else if let Some((var_kind, var_node)) =
         parser::is_location_variable(text, node, line_nr, char_nr)
     {
-        data = encode_hover_for_variable(&var_node, text, line_nr, char_nr, var_kind);
+        data = encode_hover_for_variable(&var_node, text, file_name, line_nr, char_nr, var_kind);
     } else if let Some(func) = parser::is_location_function_call(text, node, line_nr, char_nr) {
         data = encode_hover_for_function(&func, text);
     } else if let Some(args) = parser::is_location_args_keyword(node, line_nr, char_nr)
@@ -297,7 +296,13 @@ fn encode_hover_for_action_block(
     data
 }
 
-fn encode_hover_for_macro(node: &Node, text: &str, line_nr: usize, char_nr: usize) -> JsonValue {
+fn encode_hover_for_macro(
+    node: &Node,
+    text: &str,
+    file_name: &str,
+    line_nr: usize,
+    char_nr: usize,
+) -> JsonValue {
     let mut data = object! { "result": JsonValue::Null };
 
     // TODO handle probes with wildcard
@@ -310,7 +315,7 @@ fn encode_hover_for_macro(node: &Node, text: &str, line_nr: usize, char_nr: usiz
     } else if let Some((var_kind, var_node)) =
         parser::is_location_variable(text, node, line_nr, char_nr)
     {
-        data = encode_hover_for_variable(&var_node, text, line_nr, char_nr, var_kind);
+        data = encode_hover_for_variable(&var_node, text, file_name, line_nr, char_nr, var_kind);
     } else if let Some(func) = parser::is_location_function_call(text, node, line_nr, char_nr) {
         data = encode_hover_for_function(&func, text);
     } else if let Some(hover) = parser::is_location_expression_identifier(node, line_nr, char_nr)
@@ -356,13 +361,14 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
     let char_nr = from_utf16_position(&text_doc.text, line_nr, char_nr);
 
     let (text, loc, node, _line_str) = get_document_state!(text_doc, line_nr, char_nr, data, HOVER);
+    let file_name = docs::source_file_name(&uri);
 
     if loc == SyntaxLocation::ProbesList {
         data = encode_hover_for_probe_list(&node, text, line_nr, char_nr)
     } else if loc == SyntaxLocation::Action || loc == SyntaxLocation::Predicate {
-        data = encode_hover_for_action_block(&node, text, line_nr, char_nr)
+        data = encode_hover_for_action_block(&node, text, file_name, line_nr, char_nr)
     } else if loc == SyntaxLocation::MacroDefinition {
-        data = encode_hover_for_macro(&node, text, line_nr, char_nr);
+        data = encode_hover_for_macro(&node, text, file_name, line_nr, char_nr);
     } else if loc == SyntaxLocation::ConfigBlock {
         if let Some(variable) = parser::is_location_expression_identifier(&node, line_nr, char_nr) {
             data = encode_hover_for_config_variable(&variable, text);
