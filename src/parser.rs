@@ -274,6 +274,15 @@ pub fn is_location_record_field<'t>(
     (field == Some(node)).then_some(record)
 }
 
+pub fn map_variable_name(source: &str) -> Option<&str> {
+    let suffix = source.strip_prefix('@')?;
+    let end = 1 + suffix
+        .bytes()
+        .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+        .count();
+    source.get(..end)
+}
+
 pub fn is_location_map_variable<'t>(
     text: &str,
     main_node: &'t Node,
@@ -297,7 +306,7 @@ pub fn is_location_map_variable<'t>(
 
     let found = location_within_query_match(text, main_node, &query, line_nr, char_nr)?;
     let full_name = found.utf8_text(text.as_bytes()).unwrap_or_default();
-    let (name, _) = full_name.split_once("[").unwrap_or((full_name, ""));
+    let name = map_variable_name(full_name)?;
     log_dbg!(
         PARSE,
         "Location for map_variable {name} full_name {full_name}"
@@ -305,10 +314,8 @@ pub fn is_location_map_variable<'t>(
 
     let refs = if with_refs {
         if let Some(source_file) = node_to_source_file(*main_node) {
-            let cmp = |map_full_name: &str, a: &str| {
-                let (b, _) = map_full_name.split_once("[").unwrap_or((map_full_name, ""));
-                b == a
-            };
+            let cmp =
+                |map_full_name: &str, name: &str| map_variable_name(map_full_name) == Some(name);
             find_name_in_query_matches(text, &source_file, &query, name, cmp)
         } else {
             Vec::new()

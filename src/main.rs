@@ -426,7 +426,9 @@ fn encode_definition(content: JsonValue) -> JsonValue {
         parser::is_location_map_variable(text, &main_node, line_nr, char_nr, false)
     {
         let full_name = map_var.utf8_text(text.as_bytes()).unwrap_or_default();
-        let (name, _) = full_name.split_once("[").unwrap_or((full_name, ""));
+        let Some(name) = parser::map_variable_name(full_name) else {
+            return encode_no_definition();
+        };
         log_dbg!(DEFIN, "Definition for map_variable: {}", name);
 
         let assignments = parser::find_all_map_variable_assignments(text, &main_node);
@@ -437,11 +439,7 @@ fn encode_definition(content: JsonValue) -> JsonValue {
                 continue;
             };
 
-            let (map_var_name, _) = map_var_full_name
-                .split_once("[")
-                .unwrap_or((map_var_full_name, ""));
-
-            if map_var_name == name {
+            if parser::map_variable_name(map_var_full_name) == Some(name) {
                 def_node = Some(map_node);
                 break;
             }
@@ -1663,6 +1661,72 @@ fexit:rt2x00lib:rt2x00lib_config {
         let end = &result["result"]["range"]["end"];
         assert_eq!(end["line"], 2);
         assert_eq!(end["character"], 13);
+    }
+
+    #[test]
+    fn test_goto_map_variable_with_space_before_index() {
+        let text = r#"
+begin {
+  @m [1] = 0;
+  print(@m[2]);
+}"#;
+        let json_content = document_content_setup(text, 3, 8);
+        let result = encode_definition(json_content);
+
+        let start = &result["result"]["range"]["start"];
+        assert_eq!(start["line"], 2);
+        assert_eq!(start["character"], 2);
+    }
+
+    #[test]
+    fn test_goto_map_variable_with_comment_before_index() {
+        let text = r#"
+begin {
+  @m /* ignored [index] */ [1] = 0;
+  print(@m[2]);
+}"#;
+        let json_content = document_content_setup(text, 3, 8);
+        let result = encode_definition(json_content);
+
+        let start = &result["result"]["range"]["start"];
+        assert_eq!(start["line"], 2);
+        assert_eq!(start["character"], 2);
+    }
+
+    #[test]
+    fn test_goto_anonymous_map_with_comment_before_index() {
+        let text = r#"
+begin {
+  @ /* ignored [index] */ [1] = 0;
+  print(@[2]);
+}"#;
+        let json_content = document_content_setup(text, 3, 8);
+        let result = encode_definition(json_content);
+
+        let start = &result["result"]["range"]["start"];
+        assert_eq!(start["line"], 2);
+        assert_eq!(start["character"], 2);
+    }
+
+    #[test]
+    fn test_reference_map_variable_with_spaces_and_comments() {
+        let text = r#"
+begin {
+  @m[1] = 0;
+  @m [2] = 1;
+  print(@m /* ignored [index] */ [3]);
+  print(@m
+    [4]);
+  @m2[1] = 0;
+}"#;
+        let json_content = document_content_setup(text, 4, 8);
+        let result = encode_references(json_content);
+
+        assert_eq!(result["result"].len(), 4);
+        assert_eq!(result["result"][0]["range"]["start"]["line"], 2);
+        assert_eq!(result["result"][1]["range"]["start"]["line"], 3);
+        assert_eq!(result["result"][2]["range"]["start"]["line"], 4);
+        assert_eq!(result["result"][3]["range"]["start"]["line"], 5);
     }
 
     #[test]
