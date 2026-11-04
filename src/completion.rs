@@ -1077,7 +1077,11 @@ pub fn encode_completion_resolve(content: JsonValue) -> JsonValue {
         if let Some(probe) = params["data"].as_str() {
             if probe_use_btf(probe) || probe_sim_btf(probe) {
                 if let Some((_btf, resolved_func)) = args::find_kfunc_args_by_btf(probe) {
-                    params["detail"] = resolved_func.full_name.into();
+                    params["detail"] = probe.into();
+                    params["documentation"] = object! {
+                        "kind": "markdown",
+                        "value": format!("```c\n{}\n```", resolved_func.full_name),
+                    };
                 }
             } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) || is_usdt(probe)
             {
@@ -1092,7 +1096,11 @@ pub fn encode_completion_resolve(content: JsonValue) -> JsonValue {
                 if let Some(func_name) = params["label"].as_str() {
                     if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
                         let proto = docs::args_to_func_proto(func_name, &args);
-                        params["detail"] = proto.into();
+                        params["detail"] = probe.into();
+                        params["documentation"] = object! {
+                            "kind": "markdown",
+                            "value": format!("```c\n{}\n```", proto),
+                        };
                     }
                 }
             }
