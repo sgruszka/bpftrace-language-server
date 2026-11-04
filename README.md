@@ -1,33 +1,52 @@
-# bpftrace-language-server
+# bpftrace LSP server (bpftrace-ls)
 
-[bpftrace](https://bpftrace.org) code completion, diagnostics and more, using [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
+Code completion, diagnostics, hover information, and navigation for
+[bpftrace](https://bpftrace.org), using the
+[Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/).
 
 # Configuration
 
 ## bpftrace command
-The server invokes `bpftrace` command directly when running with root privileges and via `sudo` otherwise.
 
-For a non-root user, there are several ways to grant the required privileges: configure capabilities on the bpftrace binary, configure passwordless `sudo`, or start the server with `run0`.
+The LSP server `bpftrace-ls` invokes `bpftrace` for compiler diagnostics and
+information about available probes. It uses:
+
+- `bpftrace --dry-run` for diagnostics (`bpftrace -d` for versions older than 0.22).
+- `bpftrace -l` to list available probes.
+- `bpftrace -l -v` to obtain probe argument information when needed.
+
+These operations may require elevated privileges. During startup, the server
+tries running `bpftrace` directly, then through non-interactive `sudo -n` if
+the initial direct invocation fails. It reuses the first successful method
+for subsequent commands.
+
+For a non-root user, there are several ways to grant the required privileges:
+configure capabilities on the `bpftrace` binary, configure passwordless
+`sudo`, or start the server with `run0`, as described below.
 
 ### Option 1: Capabilities
 
-Capabilities can be set on the system `bpftrace` binary or on a local copy. Using a separate, user-owned copy avoids granting privileges to the system-wide `bpftrace` binary.
+Capabilities can be set on the system `bpftrace` binary or on a local copy.
+Using a separate, user-owned copy avoids granting privileges to the
+system-wide `bpftrace` binary.
 
-``` bash
-cp $(which bpftrace) $HOME/my_bpftrace
-sudo setcap cap_bpf,cap_perfmon,cap_dac_read_search,cap_dac_override,cap_sys_admin+ep $HOME/my_bpftrace
-```
-
-Verify by checking if you can invoke below commands without error:
 ```bash
-cd
-my_bpftrace --info
-my_bpftrace -l | head
-
+cp "$(command -v bpftrace)" "$HOME/my_bpftrace"
+sudo setcap cap_bpf,cap_perfmon,cap_dac_read_search,cap_dac_override,cap_sys_admin+ep "$HOME/my_bpftrace"
 ```
-bpftrace >= 0.25 is known to work with the capabilities.
 
-See client configuration how to use `bpftrace-language-server` with local copy.
+Verify that the local copy runs without errors:
+
+```bash
+cd $HOME
+./my_bpftrace --info
+./my_bpftrace -l | head
+```
+
+This capability setup is known to work with bpftrace 0.25 and later.
+
+See the [client configuration](#using-custom-command) section to configure
+`bpftrace-ls` to use the local copy.
 
 ### Option 2: sudo
 
@@ -50,10 +69,10 @@ Add the following entry, substituting the values obtained above:
 thisuser ALL=(root) NOPASSWD: /usr/bin/bpftrace
 ```
 
-Verify that `bpftrace` can be invoked through `sudo` without a password:
+Verify that `bpftrace` can be invoked through non-interactive `sudo`:
 ```bash
-sudo bpftrace --info
-sudo bpftrace -l | head
+sudo -n bpftrace --info
+sudo -n bpftrace -l | head
 ```
 
 ### Option 3: run0
