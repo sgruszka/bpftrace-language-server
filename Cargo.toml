@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+default = ["parser_diagnostics"]
 parser_diagnostics = []
 live_system_tests = []
 debug_command = []
