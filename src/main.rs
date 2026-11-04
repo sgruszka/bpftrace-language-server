@@ -624,6 +624,34 @@ fn encode_references(content: JsonValue) -> JsonValue {
 //     data
 // }
 
+fn parser_diagnostic_message(text: &str, node: &tree_sitter::Node) -> String {
+    if node.is_missing() {
+        return if node.is_named() {
+            format!("PARSE ERROR: Expected {}", node.kind().replace('_', " "))
+        } else {
+            format!("PARSE ERROR: Expected '{}'", node.kind())
+        };
+    }
+
+    // Keep excerpts on one line and bound their size by characters, including Unicode input.
+    let mut chars = node
+        .utf8_text(text.as_bytes())
+        .unwrap_or_default()
+        .split_whitespace()
+        .flat_map(|word| std::iter::once(' ').chain(word.chars()))
+        .skip(1);
+    let mut excerpt: String = chars.by_ref().take(60).collect();
+    if chars.next().is_some() {
+        excerpt.push_str("...");
+    }
+
+    if excerpt.is_empty() {
+        "PARSE ERROR: Syntax error".to_string()
+    } else {
+        format!("PARSE ERROR: Syntax error near '{}'", excerpt.escape_debug())
+    }
+}
+
 fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue {
     let error_nodes = parser::find_errors(text, root_node);
 
@@ -638,21 +666,16 @@ fn do_parser_diagnostics(text: &str, root_node: &tree_sitter::Node) -> JsonValue
         let end_line_nr = end.row;
         let end_char_nr = end.column;
 
-        let mut diag = object! {
+        let diag = object! {
             "range": {
                 "start": { "line": line_nr, "character": char_nr },
                 "end": { "line": end_line_nr, "character": end_char_nr },
             },
             "severity": 1,
             "source": "parser",
-            "message": format!("Parse error"),
+            "message": parser_diagnostic_message(text, &node),
         };
 
-        if node.is_missing() && node.kind().len() == 1 {
-            diag["message"] = format!("Missing '{}'", node.kind()).into();
-        } else {
-            diag["message"] = "Parse error".into();
-        }
         let _ = diagnostics.push(diag);
     }
     diagnostics
@@ -1437,6 +1460,42 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_parser_diagnostic_describes_missing_token() {
+        let text = r#"BEGIN {
+  @x = 1;
+"#;
+        let content = document_content_setup(text, 0, 0);
+        let uri = content["params"]["textDocument"]["uri"].as_str().unwrap();
+        let document = DOCUMENTS_STATE.get(uri).unwrap();
+        let tree = document.syntax_tree.as_ref().unwrap();
+        let diagnostics = do_parser_diagnostics(text, &tree.root_node());
+
+        assert!(diagnostics.members().any(|diagnostic| {
+            diagnostic["message"]
+                .as_str()
+                .unwrap()
+                .contains("PARSE ERROR: Expected '}'")
+        }));
+    }
+
+    #[test]
+    fn test_parser_diagnostic_includes_invalid_input() {
+        let text = r#"BEGIN {
+  🐝
+}"#;
+        let content = document_content_setup(text, 0, 0);
+        let uri = content["params"]["textDocument"]["uri"].as_str().unwrap();
+        let document = DOCUMENTS_STATE.get(uri).unwrap();
+        let tree = document.syntax_tree.as_ref().unwrap();
+        let diagnostics = do_parser_diagnostics(text, &tree.root_node());
+
+        assert!(diagnostics.members().any(|diagnostic| {
+            let message = diagnostic["message"].as_str().unwrap();
+            message.contains("PARSE ERROR: Syntax error near") && message.contains('🐝')
+        }));
     }
 
     #[test]
