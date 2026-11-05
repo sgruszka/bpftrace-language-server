@@ -175,3 +175,45 @@ It should report:
 ```
 filetype=bpftrace
 ```
+
+### VS Code LSP configuration
+
+Install the following extensions:
+
+- [vscode-lspconfig](https://marketplace.visualstudio.com/items?itemName=whtsht.vscode-lspconfig)
+  to connect VS Code to `bpftrace-ls`.
+- [bpftrace](https://marketplace.visualstudio.com/items?itemName=bpfdeploy.bpftrace)
+  by bpfdeploy-io for `.bt` filetype detection and syntax highlighting.
+
+Add the following to your workspace's `.vscode/settings.json`. Ensure
+`bpftrace-ls` is in `PATH`, or replace it with the full path to the executable.
+
+```json
+{
+  "vscode-lspconfig.serverConfigurations": [
+    {
+      "name": "bpftrace-ls",
+      "document_selector": [
+        { "language": "bpftrace" }
+      ],
+      "command": ["bpftrace-ls"]
+    }
+  ]
+}
+```
+
+For a custom `bpftrace` executable, append `"--cmd", "/path/to/bpftrace"` to
+the `command` array.
+
+Run **Developer: Reload Window** from the Command Palette, then open a `.bt`
+file. The language mode in the status bar should be **bpftrace**.
+
+#### Troubleshooting
+
+If the server does not start or `.bt` files are not recognized, open the
+Extensions view (`Ctrl+Shift+X`) and check that both **vscode-lspconfig** and
+**bpftrace** are installed and enabled for the current workspace. Extensions
+can be disabled globally or for an individual workspace. Use each extension's
+gear menu to select **Enable** or **Enable (Workspace)** as appropriate, then
+reload the window. See [VS Code's extension management documentation](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#enable-an-extension)
+for details.
