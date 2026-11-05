@@ -1,24 +1,29 @@
-# bpftrace LSP server (bpftrace-ls)
+# bpftrace language server (bpftrace-ls)
 
-Code completion, diagnostics, hover information, and navigation for
+Code completion, diagnostics, hover information, navigation, and formatting for
 [bpftrace](https://bpftrace.org), using the
 [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/).
 
 # Configuration
 
+Without additional system setup, the LSP server provides parser diagnostics,
+basic navigation, and completion. For detailed compiler diagnostics and richer
+completion of available probes, probe arguments, and structure fields, configure
+access to `bpftrace` and kernel BTF data as described below.
+
 ## bpftrace command
 
-The LSP server `bpftrace-ls` invokes `bpftrace` for compiler diagnostics and
-information about available probes. It uses:
+The `bpftrace-ls` LSP server invokes `bpftrace` to obtain compiler diagnostics
+and information about available probes and their arguments. It uses:
 
 - `bpftrace --dry-run` for diagnostics (`bpftrace -d` for versions older than 0.22).
 - `bpftrace -l` to list available probes.
-- `bpftrace -l -v` to obtain probe argument information when needed.
+- `bpftrace -l -v` to obtain probe argument information (for `tracepoint`, `rawtracepoint` and `uprobe`).
 
-These operations may require elevated privileges. During startup, the server
-tries running `bpftrace` directly, then through non-interactive `sudo -n` if
-the initial direct invocation fails. It reuses the first successful method
-for subsequent commands.
+Depending on the operation, `bpftrace` may require additional Linux capabilities
+or root privileges. During startup, the server tries running `bpftrace`
+directly, then through non-interactive `sudo -n` if the initial direct
+invocation fails. It reuses the first successful method for subsequent commands.
 
 For a non-root user, there are several ways to grant the required privileges:
 configure capabilities on the `bpftrace` binary, configure passwordless
@@ -76,7 +81,9 @@ sudo -n bpftrace -l | head
 ```
 
 ### Option 3: run0
-If `systemd` and `polkit` are available, the server can be invoked through `run0`. Authentication is performed before server starts (you will be prompted for password).
+If `systemd` and `polkit` are available, the server can be invoked through
+`run0`. Authentication is performed before server starts (you will be prompted
+for password).
 
 Configuring `run0` in Neovim (see below for full config):
 ```lua
@@ -88,7 +95,12 @@ vim.lsp.config['bpftrace-ls'] = {
 
 
 ## Kernel
-`bpftrace-language-server` makes extensive use of [BTF](https://docs.kernel.org/bpf/btf.html) (BPF Type Format).
+
+`bpftrace-ls` uses [BTF](https://docs.kernel.org/bpf/btf.html) (BPF Type Format)
+for argument and return types in kernel probes (`fentry`, `fexit`, `kprobe`,
+and `kretprobe`). BTF also enables completion and hover information for
+structure and union fields.
+
 Most Linux distributions enable BTF support by default. Check whether BTF is available:
 ```bash
 ls /sys/kernel/btf/
