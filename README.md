@@ -37,7 +37,7 @@ system-wide `bpftrace` binary.
 
 ```bash
 cp "$(command -v bpftrace)" "$HOME/my_bpftrace"
-sudo setcap cap_bpf,cap_perfmon,cap_dac_read_search,cap_dac_override,cap_sys_admin+ep "$HOME/my_bpftrace"
+sudo setcap cap_dac_read_search,cap_dac_override,cap_sys_admin+ep "$HOME/my_bpftrace"
 ```
 
 Verify that the local copy runs without errors:
