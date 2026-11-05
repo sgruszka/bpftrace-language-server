@@ -4,6 +4,19 @@ Code completion, diagnostics, hover information, navigation, and formatting for
 [bpftrace](https://bpftrace.org), using the
 [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/).
 
+# Installation
+
+Build and install from source on Linux. You need Git, a C compiler and linker,
+and a recent stable [Rust toolchain](https://rustup.rs/) with Cargo.
+
+```bash
+git clone https://github.com/sgruszka/bpftrace-language-server.git
+cd bpftrace-language-server
+cargo install --path .
+```
+
+By default, Cargo installs `bpftrace-ls` in `$HOME/.cargo/bin`.
+
 # Configuration
 
 Without additional system setup, the LSP server provides parser diagnostics,
