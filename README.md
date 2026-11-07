@@ -1,4 +1,4 @@
-# bpftrace language server (bpftrace-ls)
+# bpftrace language server
 
 Code completion, diagnostics, hover information, navigation, and formatting for
 [bpftrace](https://bpftrace.org), using the
@@ -15,7 +15,7 @@ cd bpftrace-language-server
 cargo install --path .
 ```
 
-By default, Cargo installs `bpftrace-ls` in `$HOME/.cargo/bin`.
+By default, Cargo installs `bpftrace-language-server` in `$HOME/.cargo/bin`.
 
 # Configuration
 
@@ -26,7 +26,7 @@ access to `bpftrace` and kernel BTF data as described below.
 
 ## bpftrace command
 
-The `bpftrace-ls` LSP server invokes `bpftrace` to obtain compiler diagnostics
+The `bpftrace-language-server` invokes `bpftrace` to obtain compiler diagnostics
 and information about available probes and their arguments. It uses:
 
 - `bpftrace --dry-run` for diagnostics (`bpftrace -d` for versions older than 0.22).
@@ -64,7 +64,7 @@ cd $HOME
 This capability setup is known to work with bpftrace 0.25 and later.
 
 See the [client configuration](#using-custom-command) section to configure
-`bpftrace-ls` to use the local copy.
+`bpftrace-language-server` to use the local copy.
 
 ### Option 2: sudo
 
@@ -100,8 +100,8 @@ for password).
 
 Configuring `run0` in Neovim (see below for full config):
 ```lua
-vim.lsp.config['bpftrace-ls'] = {
-  cmd = { 'run0', 'bpftrace-ls' },
+vim.lsp.config['bpftrace-language-server'] = {
+  cmd = { 'run0', 'bpftrace-language-server' },
   ...
 }
 ```
@@ -109,7 +109,7 @@ vim.lsp.config['bpftrace-ls'] = {
 
 ## Kernel
 
-`bpftrace-ls` uses [BTF](https://docs.kernel.org/bpf/btf.html) (BPF Type Format)
+`bpftrace-language-server` uses [BTF](https://docs.kernel.org/bpf/btf.html) (BPF Type Format)
 for argument and return types in kernel probes (`fentry`, `fexit`, `kprobe`,
 and `kretprobe`). BTF also enables completion and hover information for
 structure and union fields.
@@ -126,18 +126,18 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y
 ## Client
 
 ### Neovim LSP configuration
-If the bpftrace filetype is recognized (if not, see blow), register the language server in Neovim `init.lua`. Ensure `bpftrace-ls` is in `PATH`, or specify its full path. See [documentation]( https://neovim.io/doc/user/lsp.html) for details.
+If the bpftrace filetype is recognized (if not, see blow), register the language server in Neovim `init.lua`. Ensure `bpftrace-language-server` is in `PATH`, or specify its full path. See [documentation]( https://neovim.io/doc/user/lsp.html) for details.
 ```lua
--- LSP config for bpftrace-ls
-vim.lsp.config['bpftrace-ls'] = {
+-- LSP config for bpftrace-language-server
+vim.lsp.config['bpftrace-language-server'] = {
   -- Command and arguments to start the server.
-  cmd = { '/PATH/TO/bpftrace-language-server/target/debug/bpftrace-ls' },
+  cmd = { '/PATH/TO/bpftrace-language-server/target/debug/bpftrace-language-server' },
 
  -- Filetypes to automatically attach to
   filetypes = { 'bpftrace' },
 }
 -- Enable the server
-vim.lsp.enable("bpftrace-ls")
+vim.lsp.enable("bpftrace-language-server")
 ```
 #### Using custom command
 If `bpftrace` is not available in `PATH`, or a custom build is required, specify its path with the
@@ -147,14 +147,14 @@ For example:
 ```lua
 local home = vim.env.HOME
 
-vim.lsp.config['bpftrace-ls'] = {
-  cmd = { home .. '/Github/bpftrace-language-server/target/debug/bpftrace-ls',
+vim.lsp.config['bpftrace-language-server'] = {
+  cmd = { home .. '/Github/bpftrace-language-server/target/debug/bpftrace-language-server',
           '--cmd',
           home .. '/Github/bpftrace/build/src/bpftrace'
   },
   filetypes = { 'bpftrace' },
 }
-vim.lsp.enable("bpftrace-ls")
+vim.lsp.enable("bpftrace-language-server")
 ```
 
 #### Neovim filetype detection
@@ -194,22 +194,22 @@ filetype=bpftrace
 Install the following extensions:
 
 - [vscode-lspconfig](https://marketplace.visualstudio.com/items?itemName=whtsht.vscode-lspconfig)
-  to connect VS Code to `bpftrace-ls`.
+  to connect VS Code to `bpftrace-language-server`.
 - [bpftrace](https://marketplace.visualstudio.com/items?itemName=bpfdeploy.bpftrace)
   by bpfdeploy-io for `.bt` filetype detection and syntax highlighting.
 
 Add the following to your workspace's `.vscode/settings.json`. Ensure
-`bpftrace-ls` is in `PATH`, or replace it with the full path to the executable.
+`bpftrace-language-server` is in `PATH`, or replace it with the full path to the executable.
 
 ```json
 {
   "vscode-lspconfig.serverConfigurations": [
     {
-      "name": "bpftrace-ls",
+      "name": "bpftrace-language-server",
       "document_selector": [
         { "language": "bpftrace" }
       ],
-      "command": ["bpftrace-ls"]
+      "command": ["bpftrace-language-server"]
     }
   ]
 }

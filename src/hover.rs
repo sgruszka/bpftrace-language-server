@@ -866,7 +866,7 @@ fentry:vmlinux:find_ge_pid {
     #[test]
     fn test_hover_for_uprobe_args() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
-        let text = "u:target/debug/bpftrace-ls:ts_query_new { print(args) }";
+        let text = "u:target/debug/bpftrace-language-server:ts_query_new { print(args) }";
 
         let json_content = document_content_setup(text, 0, text.len() - 6);
         let result = encode_hover(json_content);

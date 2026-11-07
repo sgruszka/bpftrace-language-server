@@ -1493,7 +1493,7 @@ begin {
         let result = encode_completion(json_content);
         assert!(result["result"]["items"].len() > 0);
 
-        let functions = vec!["build/", "deps/", "examples/", "bpftrace-ls"];
+        let functions = vec!["build/", "deps/", "examples/", "bpftrace-language-server"];
         check_completion_resutls(result, functions);
     }
 
@@ -1501,7 +1501,7 @@ begin {
     #[test]
     fn test_completion_for_uprobe_functions() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
-        let text = "uprobe:target/debug/bpftrace-ls: ";
+        let text = "uprobe:target/debug/bpftrace-language-server: ";
 
         let json_content = document_content_setup(text, 0, text.len() - 1);
 
@@ -1521,7 +1521,7 @@ begin {
     #[test]
     fn test_completion_for_uprobe_args() {
         assert_eq!(setup_bpftrace_root_permissions(), Ok(()));
-        let text = "u:target/debug/bpftrace-ls:ts_query_new { args. ";
+        let text = "u:target/debug/bpftrace-language-server:ts_query_new { args. ";
 
         let json_content = document_content_setup(text, 0, text.len() - 1);
 

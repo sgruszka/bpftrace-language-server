@@ -11,7 +11,7 @@ fn add_server_input(input: &mut Vec<u8>, body: &[u8]) {
 }
 
 fn run_server(input: &[u8]) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bpftrace-ls"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bpftrace-language-server"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -107,7 +107,7 @@ fn server_shutdown_exit() {
     );
     add_server_input(&mut input, br#"{"jsonrpc":"2.0","method":"exit"}"#);
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bpftrace-ls"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bpftrace-language-server"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
