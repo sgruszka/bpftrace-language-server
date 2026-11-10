@@ -319,11 +319,7 @@ to /sys/fs/bpf.
 
 ```
 iter:task:list { printf("%s:%d\n", ctx.task.comm, ctx.task.pid); }
-
-/*
- * Sample output:
- * Program pinned to /sys/fs/bpf/list
- */
+// Prints: Program pinned to /sys/fs/bpf/list
 ```
 
 **absolute pin**
@@ -332,11 +328,7 @@ iter:task:list { printf("%s:%d\n", ctx.task.comm, ctx.task.pid); }
 iter:task_file:/sys/fs/bpf/files {
   printf("%s:%d %s\n", ctx.task.comm, ctx.task.pid, path(ctx.file.f_path));
 }
-
-/*
- * Sample output:
- * Program pinned to /sys/fs/bpf/files
- */
+// Prints: Program pinned to /sys/fs/bpf/files
 ```
 
 ### fentry [0.20..]
