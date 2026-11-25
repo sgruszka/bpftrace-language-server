@@ -1515,7 +1515,10 @@ pub fn btf_resolve_type(btf: &Btf, type_id: u32) -> Option<BtfResolvedType> {
         };
 
         let (prefix, suffix) = comp_type.string_format(comp_btf);
-        assert_eq!(suffix, "");
+        if !suffix.is_empty() {
+            log_err!("BTF composite {prefix:?} (type ID {id}) with unexpected suffix {suffix:?}");
+            return None;
+        }
 
         let members = match comp_type {
             BtfType::Struct(s) => s.members(comp_btf),
