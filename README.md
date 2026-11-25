@@ -6,6 +6,16 @@ Code completion, diagnostics, hover information, navigation, and formatting for
 
 # Installation
 
+## Install from a GitHub release
+
+Prebuilt static binaries for x86_64 and aarch64 Linux are available on the
+[release page](https://github.com/sgruszka/bpftrace-language-server/releases).
+Download and unpack the archive for your architecture, then place
+`bpftrace-language-server` in your `PATH` or configure your editor to run it
+by its full path.
+
+## Build from source
+
 Build and install from source on Linux. You need Git, a C compiler and linker,
 and a recent stable [Rust toolchain](https://rustup.rs/) with Cargo.
 
