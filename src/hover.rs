@@ -4,14 +4,14 @@ use tree_sitter::Node;
 use crate::args;
 use crate::cmd_mod::bpftrace_major_minor_version;
 use crate::docs;
-use crate::gen::completion::{
-    bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
-};
 use crate::log_mod::{self, HOVER};
 use crate::parser::{self, SyntaxLocation};
 use crate::probes::{
     expand_probes, is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, kprobe_to_kfunc,
     probe_sim_btf, probe_use_btf, provider_doc_name, Probes,
+};
+use crate::r#gen::completion::{
+    bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
 };
 use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_vdbg};

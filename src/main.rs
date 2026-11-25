@@ -17,7 +17,7 @@ mod cmd_mod;
 mod completion;
 mod docs;
 mod formatting;
-pub mod gen;
+pub mod r#gen;
 mod hover;
 pub mod modules;
 pub mod parser;
@@ -648,7 +648,10 @@ fn parser_diagnostic_message(text: &str, node: &tree_sitter::Node) -> String {
     if excerpt.is_empty() {
         "PARSE ERROR: Syntax error".to_string()
     } else {
-        format!("PARSE ERROR: Syntax error near '{}'", excerpt.escape_debug())
+        format!(
+            "PARSE ERROR: Syntax error near '{}'",
+            excerpt.escape_debug()
+        )
     }
 }
 

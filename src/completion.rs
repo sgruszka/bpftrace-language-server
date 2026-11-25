@@ -13,14 +13,14 @@ use crate::cmd_mod::{
     bpftrace_has_property, bpftrace_list_probes, bpftrace_major_minor_version, BpftraceProperty,
 };
 use crate::docs;
-use crate::gen::completion::{
-    bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
-};
 use crate::log_mod::{self, COMPL};
 use crate::parser::{self, SyntaxLocation};
 use crate::probes::{
     available_traces, is_rawtracepoint_probe, is_tracepoint_probe, is_uprobe, is_usdt,
     probe_sim_btf, probe_use_btf, Probes,
+};
+use crate::r#gen::completion::{
+    bpftrace_config_variables, bpftrace_probe_providers, bpftrace_stdlib_helpers,
 };
 use crate::{from_utf16_position, get_document_state, unpack_text_document_info, DOCUMENTS_STATE};
 use crate::{log_dbg, log_err, log_vdbg};
