@@ -8,6 +8,15 @@ permissions:
   contents: read
 
 jobs:
+  feature_coverage:
+    name: Feature Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: rustup update stable && rustup default stable
+      - run: cargo test --verbose --no-default-features
+      - run: cargo test --verbose --all-features --no-run
+
   latest_deps:
     name: Latest Dependencies
     runs-on: ubuntu-latest
