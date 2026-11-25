@@ -1,0 +1,182 @@
+
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-version:
+    name: Validate release tag
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate tag against Cargo.toml
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION=$(cargo metadata \
+            --locked \
+            --no-deps \
+            --format-version 1 \
+            | jq -r '.packages[] | select(.name == "bpftrace-language-server") | .version')
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::Package bpftrace-language-server not found"
+            exit 1
+          fi
+
+          EXPECTED_TAG="v${VERSION}"
+
+          echo "Tag:      $TAG"
+          echo "Expected: $EXPECTED_TAG"
+
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "::error::Tag $TAG does not match Cargo.toml version $VERSION"
+            exit 1
+          fi
+
+          echo "Version validation passed"
+
+      - name: Validate release branch
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          RELEASE_BRANCH="release-${VERSION%.*}.x"
+          BRANCH_REF="refs/remotes/origin/${RELEASE_BRANCH}"
+
+          if ! git show-ref --verify --quiet "$BRANCH_REF"; then
+            echo "::error::Release branch $RELEASE_BRANCH does not exist on origin"
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor HEAD "$BRANCH_REF"; then
+            echo "::error::Tag $TAG is not on $RELEASE_BRANCH"
+            exit 1
+          fi
+
+          echo "Tag $TAG belongs to $RELEASE_BRANCH"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: validate-version
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Build release binary
+        run: |
+          cargo build \
+            --locked \
+            --release \
+            --target ${{ matrix.target }}
+
+      - name: Verify static linking
+        run: |
+          BINARY="target/${{ matrix.target }}/release/bpftrace-language-server"
+
+          file "$BINARY"
+
+          PROGRAM_HEADERS=$(readelf -l "$BINARY")
+          if grep -q INTERP <<< "$PROGRAM_HEADERS"; then
+            echo "::error::Binary requires a dynamic loader"
+            exit 1
+          fi
+
+          DYNAMIC_SECTION=$(readelf -d "$BINARY")
+          if grep -q NEEDED <<< "$DYNAMIC_SECTION"; then
+            echo "::error::Binary depends on shared libraries"
+            exit 1
+          fi
+
+          echo "Static linking verified"
+
+      - name: Package binary
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          ARCHIVE="bpftrace-language-server-${TAG}-${TARGET}.tar.gz"
+
+          tar -czf "$ARCHIVE" \
+            -C "target/${TARGET}/release" \
+            bpftrace-language-server
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bpftrace-language-server-${{ matrix.target }}
+          path: bpftrace-language-server-*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bpftrace-language-server-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          sha256sum ./*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            dist/*.tar.gz \
+            dist/SHA256SUMS \
+            --verify-tag \
+            --generate-notes \
+            --title "$TAG"
+
