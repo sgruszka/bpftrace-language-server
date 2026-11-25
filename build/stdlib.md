@@ -568,8 +568,6 @@ Reads a named command-line option.
 - `int getopt(string arg_name, int default_value)`
 - `bool getopt(string arg_name, bool default_value)`
 
-Get the named command line argument/option e.g.
-
 `getopt` defines the type of the argument by the default value’s type. If no
 default type is provided, the option is treated like a boolean arg e.g.
 `getopt("hello")` would evaluate to `false` if `--hello` is not specified on the
@@ -598,8 +596,6 @@ Reads a named command-line option.
 - `bool getopt(string arg_name, bool default_value, [string description])`
 - `int getopt(string arg_name, int default_value, [string description])`
 - `string getopt(string arg_name, string default_value, [string description])`
-
-Get the named command line argument/option e.g.
 
 `getopt` defines the type of the argument by the default value’s type. If no
 default type is provided, the option is treated like a boolean arg e.g.
