@@ -44,10 +44,10 @@ fn postition_relative_to_node(node: &Node, line_nr: usize, char_nr: usize) -> Po
 }
 
 fn postion_before_next_sibling(node: &Node, line_nr: usize, char_nr: usize) -> bool {
-    if let Some(next_sibling) = node.next_sibling() {
-        if postition_relative_to_node(&next_sibling, line_nr, char_nr) == Position::Before {
-            return true;
-        }
+    if let Some(next_sibling) = node.next_sibling()
+        && postition_relative_to_node(&next_sibling, line_nr, char_nr) == Position::Before
+    {
+        return true;
     }
 
     false
@@ -128,10 +128,10 @@ pub fn find_syntax_location<'t>(
         && node.has_error()
     {
         let right_child_idx = node.child_count().saturating_sub(1);
-        if let Some(right_child) = node.child(right_child_idx) {
-            if right_child.is_missing() {
-                return (node_to_syntax_location(&node), node);
-            }
+        if let Some(right_child) = node.child(right_child_idx)
+            && right_child.is_missing()
+        {
+            return (node_to_syntax_location(&node), node);
         }
     }
 
@@ -388,11 +388,11 @@ pub fn field_expr_to_vec<'a>(
         if field_expr.child_count() > 3 {
             // TODO: introduce operator field_name in tree-sitter-bpftrace to avoid this
             for idx in 1..field_expr.child_count() {
-                if let Some(n) = field_expr.child(idx) {
-                    if n.kind() == "." || n.kind() == "->" {
-                        op_idx = idx;
-                        break;
-                    }
+                if let Some(n) = field_expr.child(idx)
+                    && (n.kind() == "." || n.kind() == "->")
+                {
+                    op_idx = idx;
+                    break;
                 }
             }
         }
@@ -451,25 +451,25 @@ pub fn is_location_field_expression<'t>(
     }
 
     // TODO: handle errors properly
-    if node.is_error() || node.kind() == "." || node.kind() == "->" {
-        if let Some(parent) = node.parent() {
-            let field_expr;
-            if parent.kind() == "field_expression" {
-                field_expr = parent;
-            } else if parent.is_error()
-                && parent
-                    .prev_sibling()
-                    .is_some_and(|n| n.kind() == "field_expression")
-            {
-                field_expr = parent.prev_sibling().unwrap();
-            } else {
-                return None;
-            }
-
-            // TODO: check if line_nr, char_nr, is in field_expr range
-            let last_field = field_expr.child_by_field_name("field")?;
-            return Some((field_expr, last_field));
+    if (node.is_error() || node.kind() == "." || node.kind() == "->")
+        && let Some(parent) = node.parent()
+    {
+        let field_expr;
+        if parent.kind() == "field_expression" {
+            field_expr = parent;
+        } else if parent.is_error()
+            && parent
+                .prev_sibling()
+                .is_some_and(|n| n.kind() == "field_expression")
+        {
+            field_expr = parent.prev_sibling().unwrap();
+        } else {
+            return None;
         }
+
+        // TODO: check if line_nr, char_nr, is in field_expr range
+        let last_field = field_expr.child_by_field_name("field")?;
+        return Some((field_expr, last_field));
     }
 
     None
@@ -542,13 +542,13 @@ pub fn is_location_variable<'t>(
         return Some((VariableKind::Scratch, node));
     }
 
-    if node.is_error() {
-        if let Ok(s) = node.utf8_text(text.as_bytes()) {
-            if s.starts_with('@') {
-                return Some((VariableKind::Map, node));
-            } else if s.starts_with('$') {
-                return Some((VariableKind::Scratch, node));
-            }
+    if node.is_error()
+        && let Ok(s) = node.utf8_text(text.as_bytes())
+    {
+        if s.starts_with('@') {
+            return Some((VariableKind::Map, node));
+        } else if s.starts_with('$') {
+            return Some((VariableKind::Scratch, node));
         }
     }
 
@@ -702,12 +702,10 @@ fn add_scratch_variables_for_node<'t>(
         } else {
             None
         }
-    }) {
-        if let Ok(variable_name) = var.utf8_text(text.as_bytes()) {
-            if !results.iter().any(|(name, _)| name == variable_name) {
-                results.push((variable_name.to_owned(), var));
-            }
-        }
+    }) && let Ok(variable_name) = var.utf8_text(text.as_bytes())
+        && !results.iter().any(|(name, _)| name == variable_name)
+    {
+        results.push((variable_name.to_owned(), var));
     }
 }
 
@@ -741,11 +739,11 @@ fn add_source_file_map_variables<'t>(
         };
 
         let mut map_var = map_str.to_owned();
-        if let Some((before, rest)) = map_str.split_once('[') {
-            if let Some((_inside, after)) = rest.rsplit_once(']') {
-                let replacement = ",".repeat(comma_count);
-                map_var = format!("{}[{}]{}", before, replacement, after);
-            }
+        if let Some((before, rest)) = map_str.split_once('[')
+            && let Some((_inside, after)) = rest.rsplit_once(']')
+        {
+            let replacement = ",".repeat(comma_count);
+            map_var = format!("{}[{}]{}", before, replacement, after);
         }
 
         if !results.iter().any(|(name, _)| name == &map_var) {
@@ -1017,15 +1015,14 @@ pub fn is_args_or_retval(line_str: &str, char_nr: usize) -> Option<String> {
     // retval->FIELDS and retval()->FIELDS
     if last_word.starts_with("retval.") || last_word.starts_with("retval->") {
         return Some(last_word.to_string());
-    } else if last_word.starts_with(").") || last_word.starts_with(")->") {
-        if let Some(word) = words.next() {
-            if word.starts_with("retval") {
-                let mut ret = "retval(".to_string();
-                ret.push_str(last_word);
+    } else if (last_word.starts_with(").") || last_word.starts_with(")->"))
+        && let Some(word) = words.next()
+        && word.starts_with("retval")
+    {
+        let mut ret = "retval(".to_string();
+        ret.push_str(last_word);
 
-                return Some(ret);
-            }
-        }
+        return Some(ret);
     }
     None
 }

@@ -169,10 +169,10 @@ fn encode_completion_for_field_expression(
         {
             items = items_from_resolved_btf(btf, &(res_var, res_type))
         }
-    } else if let Some((btf, resolved_func)) = probes.btf_probe_args {
-        if let Some(next_items) = btf_iterate_function_args(&btf, &resolved_func, field_expr) {
-            items = items_from_resolved_btf(btf, &next_items)
-        }
+    } else if let Some((btf, resolved_func)) = probes.btf_probe_args
+        && let Some(next_items) = btf_iterate_function_args(&btf, &resolved_func, field_expr)
+    {
+        items = items_from_resolved_btf(btf, &next_items)
     }
 
     let data = object! {
@@ -1011,37 +1011,37 @@ pub fn encode_completion(content: JsonValue) -> JsonValue {
         }
     }
 
-    if loc == SyntaxLocation::SourceFile && node.has_error() {
-        if let Some(args) = parser::is_args_or_retval(line_str, char_nr) {
+    if loc == SyntaxLocation::SourceFile
+        && node.has_error()
+        && let Some(args) = parser::is_args_or_retval(line_str, char_nr)
+    {
+        log_dbg!(
+            COMPL,
+            "Parse error completion for args_or_retval: '{:?}'",
+            args
+        );
+        if let Some(error_node) = parser::find_error_location(text, &node, line_nr, char_nr) {
+            let probes_vec = parser::find_probes_vec_for_error(&error_node, text);
             log_dbg!(
                 COMPL,
-                "Parse error completion for args_or_retval: '{:?}'",
-                args
+                "Parse error completion for probes vec {:?}",
+                probes_vec
             );
-            if let Some(error_node) = parser::find_error_location(text, &node, line_nr, char_nr) {
-                let probes_vec = parser::find_probes_vec_for_error(&error_node, text);
-                log_dbg!(
-                    COMPL,
-                    "Parse error completion for probes vec {:?}",
-                    probes_vec
-                );
-                let probes = Probes::new(probes_vec);
+            let probes = Probes::new(probes_vec);
 
-                if let Some(data) = encode_completion_for_args_or_retval(probes, &args) {
-                    return data;
-                }
+            if let Some(data) = encode_completion_for_args_or_retval(probes, &args) {
+                return data;
             }
         }
     }
 
-    if loc == SyntaxLocation::MacroDefinition {
-        if let Some(data) =
+    if loc == SyntaxLocation::MacroDefinition
+        && let Some(data) =
             parser::is_location_macro_body(&node, line_nr, char_nr).and_then(|block_node| {
                 encode_completion_for_macro(text, &block_node, file_name, line_nr, char_nr)
             })
-        {
-            return data;
-        }
+    {
+        return data;
     }
 
     if loc == SyntaxLocation::SourceFile || loc == SyntaxLocation::ProbesList {
@@ -1073,37 +1073,35 @@ pub fn encode_completion_resolve(content: JsonValue) -> JsonValue {
         params["data"]
     );
 
-    if !params.is_null() {
-        if let Some(probe) = params["data"].as_str() {
-            if probe_use_btf(probe) || probe_sim_btf(probe) {
-                if let Some((_btf, resolved_func)) = args::find_kfunc_args_by_btf(probe) {
-                    params["detail"] = probe.into();
-                    params["documentation"] = object! {
-                        "kind": "markdown",
-                        "value": format!("```c\n{}\n```", resolved_func.full_name),
-                    };
-                }
-            } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) || is_usdt(probe)
-            {
-                if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
-                    let docs = docs::args_to_block(&args, false);
-                    params["detail"] = probe.into();
-                    params["documentation"] = docs.into();
-                }
-            } else if is_uprobe(probe)
-            /* TODO || is_uretprobe(probe) */
-            {
-                if let Some(func_name) = params["label"].as_str() {
-                    if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
-                        let proto = docs::args_to_func_proto(func_name, &args);
-                        params["detail"] = probe.into();
-                        params["documentation"] = object! {
-                            "kind": "markdown",
-                            "value": format!("```c\n{}\n```", proto),
-                        };
-                    }
-                }
+    if !params.is_null()
+        && let Some(probe) = params["data"].as_str()
+    {
+        if probe_use_btf(probe) || probe_sim_btf(probe) {
+            if let Some((_btf, resolved_func)) = args::find_kfunc_args_by_btf(probe) {
+                params["detail"] = probe.into();
+                params["documentation"] = object! {
+                    "kind": "markdown",
+                    "value": format!("```c\n{}\n```", resolved_func.full_name),
+                };
             }
+        } else if is_tracepoint_probe(probe) || is_rawtracepoint_probe(probe) || is_usdt(probe)
+            {
+            if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
+                let docs = docs::args_to_block(&args, false);
+                params["detail"] = probe.into();
+                params["documentation"] = docs.into();
+            }
+        } else if is_uprobe(probe)
+            /* TODO || is_uretprobe(probe) */
+            && let Some(func_name) = params["label"].as_str()
+            && let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()])
+        {
+            let proto = docs::args_to_func_proto(func_name, &args);
+            params["detail"] = probe.into();
+            params["documentation"] = object! {
+                "kind": "markdown",
+                "value": format!("```c\n{}\n```", proto),
+            };
         }
     }
 

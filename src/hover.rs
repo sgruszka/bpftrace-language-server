@@ -260,17 +260,16 @@ fn encode_hover_for_probe_list(
         };
     } else if is_uprobe(probe)
     /* TODO || is_uretprobe(probe) */
+        && let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()])
     {
-        if let Some(args) = args::find_common_args_by_cmd(&[probe.to_string()]) {
-            let (_, func_name) = probe.rsplit_once(":").unwrap_or_default();
-            let proto = docs::args_to_func_proto(func_name, &args);
+        let (_, func_name) = probe.rsplit_once(":").unwrap_or_default();
+        let proto = docs::args_to_func_proto(func_name, &args);
 
-            data = object! {
-                  "result": {
-                      "contents": format!("{}\n```c\n{}", probe, proto),
-                  },
-            };
-        }
+        data = object! {
+              "result": {
+                  "contents": format!("{}\n```c\n{}", probe, proto),
+              },
+        };
     }
 
     data
@@ -401,10 +400,10 @@ pub fn encode_hover(content: JsonValue) -> JsonValue {
         data = encode_hover_for_action_block(&node, text, file_name, line_nr, char_nr)
     } else if loc == SyntaxLocation::MacroDefinition {
         data = encode_hover_for_macro(&node, text, file_name, line_nr, char_nr);
-    } else if loc == SyntaxLocation::ConfigBlock {
-        if let Some(variable) = parser::is_location_expression_identifier(&node, line_nr, char_nr) {
-            data = encode_hover_for_config_variable(&variable, text);
-        }
+    } else if loc == SyntaxLocation::ConfigBlock
+        && let Some(variable) = parser::is_location_expression_identifier(&node, line_nr, char_nr)
+    {
+        data = encode_hover_for_config_variable(&variable, text);
     }
 
     data

@@ -388,13 +388,12 @@ pub fn get_details_and_docs_by_cmd(
         docs.push_str(&format!("}} args;{}", c_close));
     } else if let Some((btf, res_var, res_type)) =
         btf_resolve_container_members(probe_args.into_iter(), field_expr)
+        && let Some(actual_type) = res_type.actual_type
     {
-        if let Some(actual_type) = res_type.actual_type {
-            let s = &format!("{}{}\n{{\n", c_open, actual_type.type_name);
-            docs.push_str(s);
-            docs.push_str(&members_to_string(&btf, &actual_type));
-            docs.push_str(&format!("}} {};{}", res_var.name, c_close));
-        }
+        let s = &format!("{}{}\n{{\n", c_open, actual_type.type_name);
+        docs.push_str(s);
+        docs.push_str(&members_to_string(&btf, &actual_type));
+        docs.push_str(&format!("}} {};{}", res_var.name, c_close));
     }
 
     Some((details, docs))

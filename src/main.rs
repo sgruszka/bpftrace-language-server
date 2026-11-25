@@ -532,20 +532,19 @@ fn get_references_for_macro<'t>(
 ) -> Option<Vec<tree_sitter::Node<'t>>> {
     let mut macro_name = "";
 
-    if loc == parser::SyntaxLocation::MacroDefinition {
-        if let Some(name_node) = parser::is_location_macro_name(main_node, line_nr, char_nr) {
-            macro_name = name_node.utf8_text(text.as_bytes()).unwrap_or_default();
-            log_dbg!(REFER, "References for macro defintion: {}", macro_name);
-        }
+    if loc == parser::SyntaxLocation::MacroDefinition
+        && let Some(name_node) = parser::is_location_macro_name(main_node, line_nr, char_nr)
+    {
+        macro_name = name_node.utf8_text(text.as_bytes()).unwrap_or_default();
+        log_dbg!(REFER, "References for macro defintion: {}", macro_name);
     }
 
-    if macro_name.is_empty() {
-        if let Some(func_call) =
+    if macro_name.is_empty()
+        && let Some(func_call) =
             parser::is_location_function_call(text, main_node, line_nr, char_nr)
-        {
-            macro_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
-            log_dbg!(REFER, "References for function call: {}", macro_name);
-        }
+    {
+        macro_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
+        log_dbg!(REFER, "References for function call: {}", macro_name);
     }
 
     if macro_name.is_empty() {
@@ -883,17 +882,18 @@ fn do_diagnostics(uri: String, diag_tx: &mpsc::Sender<DiagnosticsCommand>) -> Op
     let version = text_doc.version;
 
     // If there are parser errors publish those
-    if let Some(tree) = &text_doc.syntax_tree {
-        if cfg!(feature = "parser_diagnostics") && tree.root_node().has_error() {
-            let diagnostics = do_parser_diagnostics(&text_doc.text, &tree.root_node());
-            let diag_results = DiagnosticsResutls {
-                uri,
-                version,
-                diagnostics,
-            };
+    if let Some(tree) = &text_doc.syntax_tree
+        && cfg!(feature = "parser_diagnostics")
+        && tree.root_node().has_error()
+    {
+        let diagnostics = do_parser_diagnostics(&text_doc.text, &tree.root_node());
+        let diag_results = DiagnosticsResutls {
+            uri,
+            version,
+            diagnostics,
+        };
 
-            return publish_diagnostics(diag_results);
-        }
+        return publish_diagnostics(diag_results);
     }
 
     // Otherwise send command to diffrent thread to do bpftrace --dry-run for diagnostics
@@ -1375,14 +1375,15 @@ fn main() {
             LspMessageType::Response => (),
         }
 
-        if initialized && !after_shutdown {
-            if let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop() {
-                while let Some(msg) = warn_msgs.pop() {
-                    let content = show_message_notification(2, &msg);
-                    log_dbg!(PROTO, "Send show message: {}", content);
-                    // TODO: mark time when warning was created
-                    send_out_message(&output_tx, content, Instant::now());
-                }
+        if initialized
+            && !after_shutdown
+            && let Some(mut warn_msgs) = WARNINGS_TO_CLIENT.pop()
+        {
+            while let Some(msg) = warn_msgs.pop() {
+                let content = show_message_notification(2, &msg);
+                log_dbg!(PROTO, "Send show message: {}", content);
+                // TODO: mark time when warning was created
+                send_out_message(&output_tx, content, Instant::now());
             }
         }
     }
@@ -1392,10 +1393,10 @@ fn main() {
     }
 
     send_diag_exit(&diag_tx);
-    if let Some(handle) = diag_handle {
-        if let Err(err) = handle.join() {
-            log_err!("Diagnostics thread join error: {:?}", err);
-        }
+    if let Some(handle) = diag_handle
+        && let Err(err) = handle.join()
+    {
+        log_err!("Diagnostics thread join error: {:?}", err);
     }
 
     if let Err(err) = output_tx.send(OutputCommand::Exit) {

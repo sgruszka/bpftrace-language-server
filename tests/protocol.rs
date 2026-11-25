@@ -38,10 +38,10 @@ fn read_server_output(output: &[u8]) -> Vec<json::JsonValue> {
                 break;
             }
 
-            if let Some((name, value)) = line.split_once(':') {
-                if name.trim().eq_ignore_ascii_case("Content-Length") {
-                    content_length = Some(value.trim().parse::<usize>().unwrap());
-                }
+            if let Some((name, value)) = line.split_once(':')
+                && name.trim().eq_ignore_ascii_case("Content-Length")
+            {
+                content_length = Some(value.trim().parse::<usize>().unwrap());
             }
         }
 

@@ -155,10 +155,11 @@ pub fn find_common_args_by_cmd(probes_vec: &[String]) -> Option<Vec<String>> {
 
     // TODO: use for expanded multi probe
     // For single tracepoint, rawtracepoint, try preloaded hash map first
-    if probes_vec.len() == 1 && !probes_vec[0].contains('*') {
-        if let Some(args) = find_preloaded_cmd_args(&probes_vec[0]) {
-            return Some(args);
-        }
+    if probes_vec.len() == 1
+        && !probes_vec[0].contains('*')
+        && let Some(args) = find_preloaded_cmd_args(&probes_vec[0])
+    {
+        return Some(args);
     }
 
     let all_probes_args = bpftrace_list_probes_verbose(&all_probes)?;

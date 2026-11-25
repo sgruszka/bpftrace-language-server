@@ -120,10 +120,10 @@ pub fn bpftrace_list_probes_verbose(probes_str: &str) -> Option<String> {
     // TODO: this depends on setup_bpftrace_root_permissions() finish
     // Need to wait or do something similar like in bpftrace_command()
     let mut sudo = "";
-    if let Some(use_sudo) = USE_SUDO.get() {
-        if *use_sudo {
-            sudo = "sudo -n ";
-        }
+    if let Some(use_sudo) = USE_SUDO.get()
+        && *use_sudo
+    {
+        sudo = "sudo -n ";
     }
 
     let cmd = format!("{}{}", sudo, cmd_str);
@@ -148,18 +148,18 @@ pub fn bpftrace_command(args: &[&str]) -> io::Result<Output> {
         return sudo_bpftrace_command(*use_sudo, args);
     }
 
-    if let Ok(output) = sudo_bpftrace_command(false, args) {
-        if output.status.success() {
-            let _ = USE_SUDO.set(false);
-            return Ok(output);
-        }
+    if let Ok(output) = sudo_bpftrace_command(false, args)
+        && output.status.success()
+    {
+        let _ = USE_SUDO.set(false);
+        return Ok(output);
     }
 
-    if let Ok(output) = sudo_bpftrace_command(true, args) {
-        if output.status.success() {
-            let _ = USE_SUDO.set(true);
-            return Ok(output);
-        }
+    if let Ok(output) = sudo_bpftrace_command(true, args)
+        && output.status.success()
+    {
+        let _ = USE_SUDO.set(true);
+        return Ok(output);
     }
 
     Err(io::ErrorKind::PermissionDenied.into())
@@ -247,10 +247,10 @@ pub fn init_bpftrace(custom_cmd_opt: Option<String>) -> Result<(), String> {
         let _ = CUSTOM_COMMAND.set(custom_cmd);
     }
 
-    if cfg!(feature = "debug_command") {
-        if let Ok(custom_cmd) = env::var("BPFTRACE_LS_COMMAND") {
-            let _ = CUSTOM_COMMAND.set(custom_cmd);
-        }
+    if cfg!(feature = "debug_command")
+        && let Ok(custom_cmd) = env::var("BPFTRACE_LS_COMMAND")
+    {
+        let _ = CUSTOM_COMMAND.set(custom_cmd);
     }
 
     let bpftrace = match bpftrace_properties_from_version() {
