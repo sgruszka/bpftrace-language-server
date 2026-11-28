@@ -849,16 +849,24 @@ fn node_to_source_file(n: Node) -> Option<Node> {
     Some(source_file)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacroArgumentKind {
+    Scratch,
+    Map,
+    Expression,
+}
+
+#[derive(Debug, Clone)]
 pub struct MacroDefinition<'t> {
     pub name: String,
     pub node: Node<'t>,
+    pub parameters: Option<Vec<MacroArgumentKind>>,
 }
 
 #[derive(Debug)]
 pub struct MacroOverloads<'t> {
     pub name: String,
-    pub definitions: Vec<Node<'t>>,
+    pub definitions: Vec<MacroDefinition<'t>>,
 }
 
 #[derive(Debug)]
@@ -875,12 +883,31 @@ impl<'t> MacroEntry<'t> {
         }
     }
 
-    pub fn definitions(&self) -> &[Node<'t>] {
+    pub fn definitions(&self) -> &[MacroDefinition<'t>] {
         match self {
-            Self::Single(definition) => std::slice::from_ref(&definition.node),
+            Self::Single(definition) => std::slice::from_ref(definition),
             Self::Overloaded(overloads) => &overloads.definitions,
         }
     }
+}
+
+fn macro_parameter_kinds(node: &Node) -> Option<Vec<MacroArgumentKind>> {
+    let parameters = node.child_by_field_name("parameters")?;
+    if parameters.has_error() || parameters.is_missing() {
+        return None;
+    }
+
+    let mut cursor = parameters.walk();
+    parameters
+        .named_children(&mut cursor)
+        .filter(|parameter| !parameter.is_extra())
+        .map(|parameter| match parameter.kind() {
+            "scratch_variable" => Some(MacroArgumentKind::Scratch),
+            "map_variable" => Some(MacroArgumentKind::Map),
+            "identifier" => Some(MacroArgumentKind::Expression),
+            _ => None,
+        })
+        .collect()
 }
 
 pub fn find_source_file_macros<'t>(this_node: &Node<'t>, text: &str) -> Vec<MacroEntry<'t>> {
@@ -898,22 +925,24 @@ pub fn find_source_file_macros<'t>(this_node: &Node<'t>, text: &str) -> Vec<Macr
                 continue;
             };
             if let Ok(macro_name) = name_node.utf8_text(text.as_bytes()) {
+                let new_definition = MacroDefinition {
+                    name: macro_name.to_owned(),
+                    node,
+                    parameters: macro_parameter_kinds(&node),
+                };
                 match macros.iter_mut().find(|entry| entry.name() == macro_name) {
                     Some(entry) => match entry {
                         MacroEntry::Single(definition) => {
                             *entry = MacroEntry::Overloaded(MacroOverloads {
                                 name: definition.name.clone(),
-                                definitions: vec![definition.node, node],
+                                definitions: vec![definition.clone(), new_definition],
                             });
                         }
                         MacroEntry::Overloaded(overloads) => {
-                            overloads.definitions.push(node);
+                            overloads.definitions.push(new_definition);
                         }
                     },
-                    None => macros.push(MacroEntry::Single(MacroDefinition {
-                        name: macro_name.to_owned(),
-                        node,
-                    })),
+                    None => macros.push(MacroEntry::Single(new_definition)),
                 }
             }
         }
@@ -1710,17 +1739,74 @@ macro foo(x) { x }
         assert_eq!(overloads.name, "foo");
         assert_eq!(overloads.definitions.len(), 3);
         assert_eq!(
-            overloads.definitions[0].utf8_text(text.as_bytes()).unwrap(),
+            overloads.definitions[0]
+                .node
+                .utf8_text(text.as_bytes())
+                .unwrap(),
             "macro foo($x) { $x }"
         );
         assert_eq!(
-            overloads.definitions[1].utf8_text(text.as_bytes()).unwrap(),
+            overloads.definitions[1]
+                .node
+                .utf8_text(text.as_bytes())
+                .unwrap(),
             "macro foo(@x) { @x }"
         );
         assert_eq!(
-            overloads.definitions[2].utf8_text(text.as_bytes()).unwrap(),
+            overloads.definitions[2]
+                .node
+                .utf8_text(text.as_bytes())
+                .unwrap(),
             "macro foo(x) { x }"
         );
-        assert!(matches!(&macros[1], MacroEntry::Single(definition) if definition.name == "bar"));
+        assert_eq!(
+            overloads.definitions[0].parameters,
+            Some(vec![MacroArgumentKind::Scratch])
+        );
+        assert_eq!(
+            overloads.definitions[1].parameters,
+            Some(vec![MacroArgumentKind::Map])
+        );
+        assert_eq!(
+            overloads.definitions[2].parameters,
+            Some(vec![MacroArgumentKind::Expression])
+        );
+        assert!(matches!(&macros[1], MacroEntry::Single(definition)
+            if definition.name == "bar"
+                && definition.parameters == Some(vec![MacroArgumentKind::Expression])));
+    }
+
+    #[test]
+    fn test_find_file_macro_without_parameters() {
+        let text = "macro foo() { 1 }";
+        let tree = setup_syntax_tree(text);
+        let macros = find_source_file_macros(&tree.root_node(), text);
+
+        assert_eq!(macros.len(), 1);
+        let MacroEntry::Single(definition) = &macros[0] else {
+            panic!("Expected a single macro definition");
+        };
+        assert_eq!(definition.name, "foo");
+        assert_eq!(definition.parameters, Some(Vec::new()));
+    }
+
+    #[test]
+    fn test_macro_parameter_kinds_with_comments() {
+        let text = "macro foo($x, /* map */ @x, value) { value }";
+        let tree = setup_syntax_tree(text);
+        let macros = find_source_file_macros(&tree.root_node(), text);
+
+        assert_eq!(macros.len(), 1);
+        let MacroEntry::Single(definition) = &macros[0] else {
+            panic!("Expected a single macro definition");
+        };
+        assert_eq!(
+            definition.parameters,
+            Some(vec![
+                MacroArgumentKind::Scratch,
+                MacroArgumentKind::Map,
+                MacroArgumentKind::Expression,
+            ])
+        );
     }
 }

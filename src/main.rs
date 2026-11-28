@@ -416,7 +416,7 @@ fn encode_definition(content: JsonValue) -> JsonValue {
 
         for m in all_macros {
             if m.name() == call_name {
-                def_node = m.definitions().first().copied();
+                def_node = m.definitions().first().map(|definition| definition.node);
                 break;
             }
         }
