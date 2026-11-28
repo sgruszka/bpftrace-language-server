@@ -245,15 +245,18 @@ fn add_source_file_macros(node: &Node, text: &str, file_name: &str, items: &mut 
     let macros = parser::find_source_file_macros(node, text);
     log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
-    for (name, node) in macros {
+    for entry in macros {
+        let Some(node) = entry.definitions().first() else {
+            continue;
+        };
         let Some((detail, documentation)) =
-            docs::get_details_and_docs_for_macro(&node, text, file_name)
+            docs::get_details_and_docs_for_macro(node, text, file_name)
         else {
             continue;
         };
 
         let item = object! {
-            "label": name,
+            "label": entry.name(),
             "kind": CompletionItemKind::Function,
             "detail": detail,
             "documentation": documentation,

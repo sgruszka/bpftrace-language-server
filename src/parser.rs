@@ -849,8 +849,42 @@ fn node_to_source_file(n: Node) -> Option<Node> {
     Some(source_file)
 }
 
-pub fn find_source_file_macros<'t>(this_node: &Node<'t>, text: &str) -> Vec<(String, Node<'t>)> {
-    let mut macros = Vec::new();
+#[derive(Debug)]
+pub struct MacroDefinition<'t> {
+    pub name: String,
+    pub node: Node<'t>,
+}
+
+#[derive(Debug)]
+pub struct MacroOverloads<'t> {
+    pub name: String,
+    pub definitions: Vec<Node<'t>>,
+}
+
+#[derive(Debug)]
+pub enum MacroEntry<'t> {
+    Single(MacroDefinition<'t>),
+    Overloaded(MacroOverloads<'t>),
+}
+
+impl<'t> MacroEntry<'t> {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Single(definition) => &definition.name,
+            Self::Overloaded(overloads) => &overloads.name,
+        }
+    }
+
+    pub fn definitions(&self) -> &[Node<'t>] {
+        match self {
+            Self::Single(definition) => std::slice::from_ref(&definition.node),
+            Self::Overloaded(overloads) => &overloads.definitions,
+        }
+    }
+}
+
+pub fn find_source_file_macros<'t>(this_node: &Node<'t>, text: &str) -> Vec<MacroEntry<'t>> {
+    let mut macros: Vec<MacroEntry<'t>> = Vec::new();
 
     let Some(source_file) = node_to_source_file(*this_node) else {
         return macros;
@@ -864,7 +898,23 @@ pub fn find_source_file_macros<'t>(this_node: &Node<'t>, text: &str) -> Vec<(Str
                 continue;
             };
             if let Ok(macro_name) = name_node.utf8_text(text.as_bytes()) {
-                macros.push((macro_name.to_owned(), node));
+                match macros.iter_mut().find(|entry| entry.name() == macro_name) {
+                    Some(entry) => match entry {
+                        MacroEntry::Single(definition) => {
+                            *entry = MacroEntry::Overloaded(MacroOverloads {
+                                name: definition.name.clone(),
+                                definitions: vec![definition.node, node],
+                            });
+                        }
+                        MacroEntry::Overloaded(overloads) => {
+                            overloads.definitions.push(node);
+                        }
+                    },
+                    None => macros.push(MacroEntry::Single(MacroDefinition {
+                        name: macro_name.to_owned(),
+                        node,
+                    })),
+                }
             }
         }
     }
@@ -1634,7 +1684,43 @@ macro add_two(y) {
 
         let macros = find_source_file_macros(&action, text);
         assert_eq!(macros.len(), 2);
-        assert_eq!(macros[0].0, "add_one");
-        assert_eq!(macros[1].0, "add_two");
+        assert!(
+            matches!(&macros[0], MacroEntry::Single(definition) if definition.name == "add_one")
+        );
+        assert!(
+            matches!(&macros[1], MacroEntry::Single(definition) if definition.name == "add_two")
+        );
+    }
+
+    #[test]
+    fn test_find_file_macro_overloads() {
+        let text = r#"
+macro foo($x) { $x }
+macro bar(x) { x }
+macro foo(@x) { @x }
+macro foo(x) { x }
+"#;
+        let tree = setup_syntax_tree(text);
+        let macros = find_source_file_macros(&tree.root_node(), text);
+
+        assert_eq!(macros.len(), 2);
+        let MacroEntry::Overloaded(overloads) = &macros[0] else {
+            panic!("Expected overloaded foo");
+        };
+        assert_eq!(overloads.name, "foo");
+        assert_eq!(overloads.definitions.len(), 3);
+        assert_eq!(
+            overloads.definitions[0].utf8_text(text.as_bytes()).unwrap(),
+            "macro foo($x) { $x }"
+        );
+        assert_eq!(
+            overloads.definitions[1].utf8_text(text.as_bytes()).unwrap(),
+            "macro foo(@x) { @x }"
+        );
+        assert_eq!(
+            overloads.definitions[2].utf8_text(text.as_bytes()).unwrap(),
+            "macro foo(x) { x }"
+        );
+        assert!(matches!(&macros[1], MacroEntry::Single(definition) if definition.name == "bar"));
     }
 }

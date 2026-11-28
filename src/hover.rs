@@ -69,9 +69,10 @@ fn encode_hover_for_call(node: &Node, text: &str, file_name: &str) -> JsonValue 
         return object! { "result": JsonValue::Null };
     };
 
-    if let Some((_, definition)) = parser::find_source_file_macros(node, text)
+    if let Some(definition) = parser::find_source_file_macros(node, text)
         .into_iter()
-        .find(|(macro_name, _)| macro_name == name)
+        .find(|entry| entry.name() == name)
+        .and_then(|entry| entry.definitions().first().copied())
     {
         return encode_hover_for_macro_definition(&definition, text, file_name);
     }

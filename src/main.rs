@@ -415,8 +415,8 @@ fn encode_definition(content: JsonValue) -> JsonValue {
         log_vdbg!(DEFIN, "All macros definitions: {:?}", all_macros);
 
         for m in all_macros {
-            if m.0 == call_name {
-                def_node = Some(m.1);
+            if m.name() == call_name {
+                def_node = m.definitions().first().copied();
                 break;
             }
         }
