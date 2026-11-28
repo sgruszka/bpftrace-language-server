@@ -72,7 +72,12 @@ fn encode_hover_for_call(node: &Node, text: &str, file_name: &str) -> JsonValue 
     if let Some(definition) = parser::find_source_file_macros(node, text)
         .into_iter()
         .find(|entry| entry.name() == name)
-        .and_then(|entry| entry.definitions().first().map(|definition| definition.node))
+        .and_then(|entry| match entry {
+            parser::MacroEntry::Single(definition) => Some(definition.node),
+            parser::MacroEntry::Overloaded(overloads) => {
+                parser::find_macro_overload(&overloads, node)
+            }
+        })
     {
         return encode_hover_for_macro_definition(&definition, text, file_name);
     }
@@ -495,6 +500,68 @@ begin {
         assert!(hover.contains(r".bt:2"));
         assert!(hover.contains(r"macro foo(@x)"));
         assert!(!hover.contains(r"print(@x)"));
+    }
+
+    #[test]
+    fn test_hover_for_macro_overload() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+macro foo($x) {
+  $x
+}
+
+begin {
+  foo((/* scratch */ $value));
+}
+"#;
+        let result = encode_hover(document_content_setup(text, 10, 3));
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains("foo - bpftrace macro"));
+        assert!(hover.contains("macro foo($x)"));
+        assert!(hover.contains(".bt:6"));
+    }
+
+    #[test]
+    fn test_hover_for_single_macro_with_mismatched_argument() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+begin {
+  foo($value);
+}
+"#;
+        let result = encode_hover(document_content_setup(text, 6, 3));
+
+        let hover = result["result"]["contents"].as_str().unwrap();
+        assert!(hover.contains("foo - bpftrace macro"));
+        assert!(hover.contains("macro foo(@x)"));
+        assert!(hover.contains(".bt:2"));
+    }
+
+    #[test]
+    fn test_hover_without_matching_macro_overload() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+macro foo($x) {
+  $x
+}
+
+begin {
+  foo(1);
+}
+"#;
+        let result = encode_hover(document_content_setup(text, 10, 3));
+
+        assert!(result["result"].is_null());
     }
 
     #[test]

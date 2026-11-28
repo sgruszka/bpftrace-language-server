@@ -246,23 +246,22 @@ fn add_source_file_macros(node: &Node, text: &str, file_name: &str, items: &mut 
     log_dbg!(COMPL, "Completion: found macros {macros:?}");
 
     for entry in macros {
-        let Some(definition) = entry.definitions().first() else {
-            continue;
-        };
-        let Some((detail, documentation)) =
-            docs::get_details_and_docs_for_macro(&definition.node, text, file_name)
-        else {
-            continue;
-        };
+        for definition in entry.definitions() {
+            let Some((detail, documentation)) =
+                docs::get_details_and_docs_for_macro(&definition.node, text, file_name)
+            else {
+                continue;
+            };
 
-        let item = object! {
-            "label": entry.name(),
-            "kind": CompletionItemKind::Function,
-            "detail": detail,
-            "documentation": documentation,
-        };
+            let item = object! {
+                "label": entry.name(),
+                "kind": CompletionItemKind::Function,
+                "detail": detail,
+                "documentation": documentation,
+            };
 
-        let _ = items.push(item);
+            let _ = items.push(item);
+        }
     }
 }
 
@@ -1319,6 +1318,38 @@ begin {
         assert!(documentation.contains(r".bt:2"));
         assert!(documentation.contains(r"macro foo(@x)"));
         assert!(!documentation.contains(r"print(@x)"));
+    }
+
+    #[test]
+    fn test_macro_completion_overloads() {
+        let text = r#"
+macro foo(@x) {
+  print(@x);
+}
+
+macro foo($x) {
+  print($x);
+}
+
+begin {
+  fo;
+}
+"#;
+        let result = encode_completion(document_content_setup(text, 10, 3));
+        let items = result["result"]["items"]
+            .members()
+            .filter(|item| item["label"] == "foo")
+            .collect::<Vec<_>>();
+
+        assert_eq!(items.len(), 2);
+        assert!(items[0]["documentation"]
+            .as_str()
+            .unwrap()
+            .contains("macro foo(@x)"));
+        assert!(items[1]["documentation"]
+            .as_str()
+            .unwrap()
+            .contains("macro foo($x)"));
     }
 
     #[test]
