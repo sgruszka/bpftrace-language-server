@@ -1,6 +1,6 @@
 # bpftrace language server
 
-Code completion, diagnostics, hover information, navigation, and formatting for
+Code completion, diagnostics, hover, navigation and formatting for
 [bpftrace](https://bpftrace.org), using the
 [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/).
 
@@ -10,9 +10,8 @@ Code completion, diagnostics, hover information, navigation, and formatting for
 
 Prebuilt static binaries for x86_64 and aarch64 Linux are available on the
 [release page](https://github.com/sgruszka/bpftrace-language-server/releases).
-Download and unpack the archive for your architecture, then place
-`bpftrace-language-server` in your `PATH` or configure your editor to run it
-by its full path.
+Download and unpack the archive, then place `bpftrace-language-server` in
+`PATH` or configure your editor to run it by its full path.
 
 ## Build from source
 
