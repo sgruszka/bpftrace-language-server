@@ -535,30 +535,17 @@ fn get_references_for_macro<'t>(
     line_nr: usize,
     char_nr: usize,
 ) -> Option<Vec<tree_sitter::Node<'t>>> {
-    let mut macro_name = "";
-
-    if loc == parser::SyntaxLocation::MacroDefinition
-        && let Some(name_node) = parser::is_location_macro_name(main_node, line_nr, char_nr)
-    {
-        macro_name = name_node.utf8_text(text.as_bytes()).unwrap_or_default();
-        log_dbg!(REFER, "References for macro defintion: {}", macro_name);
+    let name_node = if loc == parser::SyntaxLocation::MacroDefinition {
+        parser::is_location_macro_name(main_node, line_nr, char_nr)
+    } else {
+        None
     }
+    .or_else(|| parser::is_location_function_call(text, main_node, line_nr, char_nr))?;
 
-    if macro_name.is_empty()
-        && let Some(func_call) =
-            parser::is_location_function_call(text, main_node, line_nr, char_nr)
-    {
-        macro_name = func_call.utf8_text(text.as_bytes()).unwrap_or_default();
-        log_dbg!(REFER, "References for function call: {}", macro_name);
-    }
+    let macro_name = name_node.utf8_text(text.as_bytes()).ok()?;
+    log_dbg!(REFER, "References for macro: {}", macro_name);
 
-    if macro_name.is_empty() {
-        return None;
-    }
-
-    Some(parser::find_source_file_func_calls(
-        main_node, text, macro_name,
-    ))
+    parser::find_macro_references(&name_node, text)
 }
 
 fn encode_references(content: JsonValue) -> JsonValue {
@@ -1909,6 +1896,121 @@ macro boo(x, y) {
         let end = &result["result"][3]["range"]["end"];
         assert_eq!(end["line"], 8);
         assert_eq!(end["character"], 5);
+    }
+
+    #[test]
+    fn test_reference_single_macro_with_mismatched_arguments() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+begin {
+  foo($value);
+  foo(1);
+}
+"#;
+        let result = encode_references(document_content_setup(text, 1, 7));
+
+        assert_eq!(result["result"].len(), 2);
+        assert_eq!(result["result"][0]["range"]["start"]["line"], 6);
+        assert_eq!(result["result"][1]["range"]["start"]["line"], 7);
+    }
+
+    #[test]
+    fn test_reference_macro_overload_from_definition() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+macro foo($x) {
+  $x
+}
+
+macro foo(x) {
+  x
+}
+
+begin {
+  foo(@values);
+  foo((/* scratch */ $value));
+  foo(1);
+  foo($value, 1);
+}
+"#;
+        let result = encode_references(document_content_setup(text, 5, 7));
+
+        assert_eq!(result["result"].len(), 1);
+        assert_eq!(result["result"][0]["range"]["start"]["line"], 15);
+        assert_eq!(result["result"][0]["range"]["start"]["character"], 2);
+    }
+
+    #[test]
+    fn test_reference_macro_overload_from_call() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+macro foo($x) {
+  $x
+}
+
+begin {
+  foo(@values);
+  foo($value);
+  foo(($other));
+}
+"#;
+        let result = encode_references(document_content_setup(text, 11, 3));
+
+        assert_eq!(result["result"].len(), 2);
+        assert_eq!(result["result"][0]["range"]["start"]["line"], 11);
+        assert_eq!(result["result"][1]["range"]["start"]["line"], 12);
+    }
+
+    #[test]
+    fn test_reference_macro_overload_by_argument_count() {
+        let text = r#"
+macro foo(x, y) {
+  x + y
+}
+
+macro foo(x) {
+  x
+}
+
+begin {
+  foo(1, 2);
+  foo(1);
+  foo(1, 2, 3);
+}
+"#;
+        let result = encode_references(document_content_setup(text, 1, 7));
+
+        assert_eq!(result["result"].len(), 1);
+        assert_eq!(result["result"][0]["range"]["start"]["line"], 10);
+    }
+
+    #[test]
+    fn test_reference_macro_without_matching_overload() {
+        let text = r#"
+macro foo($x) {
+  $x
+}
+
+macro foo(@x) {
+  @x
+}
+
+begin {
+  foo(1);
+}
+"#;
+        let result = encode_references(document_content_setup(text, 10, 3));
+
+        assert!(result["result"].is_null());
     }
 
     #[test]

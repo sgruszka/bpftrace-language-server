@@ -1032,7 +1032,7 @@ where
 }
 
 pub fn find_source_file_func_calls<'t>(
-    this_node: &'t Node,
+    this_node: &Node<'t>,
     text: &str,
     macro_name: &str,
 ) -> Vec<Node<'t>> {
@@ -1059,6 +1059,33 @@ pub fn find_source_file_func_calls<'t>(
 
     let cmp = |a: &str, b: &str| b == a;
     find_name_in_query_matches(text, &source_file, &query, macro_name, cmp)
+}
+
+pub fn find_macro_references<'t>(name_node: &Node<'t>, text: &str) -> Option<Vec<Node<'t>>> {
+    let name = name_node.utf8_text(text.as_bytes()).ok()?;
+    let macros = find_source_file_macros(name_node, text);
+    let references = find_source_file_func_calls(name_node, text, name);
+
+    let Some(MacroEntry::Overloaded(overloads)) = macros.iter().find(|entry| entry.name() == name)
+    else {
+        return Some(references);
+    };
+
+    let parent = name_node.parent()?;
+    let definition = if parent.kind() == "macro_definition"
+        && parent.child_by_field_name("name") == Some(*name_node)
+    {
+        parent
+    } else {
+        find_macro_overload(overloads, name_node)?
+    };
+
+    Some(
+        references
+            .into_iter()
+            .filter(|function| find_macro_overload(overloads, function) == Some(definition))
+            .collect(),
+    )
 }
 
 pub fn find_probes_vec_for_error(error_node: &Node, text: &str) -> Vec<String> {
