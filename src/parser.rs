@@ -910,6 +910,57 @@ fn macro_parameter_kinds(node: &Node) -> Option<Vec<MacroArgumentKind>> {
         .collect()
 }
 
+fn arg_to_kind(node: Node) -> Option<MacroArgumentKind> {
+    if node.kind() == "parenthesized_expression" {
+        let mut cursor = node.walk();
+        let child = node
+            .named_children(&mut cursor)
+            .find(|child| !child.is_extra())?;
+
+        return arg_to_kind(child);
+    }
+
+    Some(match node.kind() {
+        "scratch_variable" => MacroArgumentKind::Scratch,
+        "map_variable" => MacroArgumentKind::Map,
+        _ => MacroArgumentKind::Expression,
+    })
+}
+
+pub fn find_macro_overload<'t>(
+    overloads: &MacroOverloads<'t>,
+    function: &Node,
+) -> Option<Node<'t>> {
+    let call = function.parent()?;
+    let arguments = call.child_by_field_name("arguments")?;
+    if arguments.has_error() || arguments.is_missing() {
+        return None;
+    }
+
+    let mut cursor = arguments.walk();
+    let arguments = arguments
+        .named_children(&mut cursor)
+        .filter(|argument| !argument.is_extra())
+        .map(arg_to_kind)
+        .collect::<Option<Vec<_>>>()?;
+
+    overloads
+        .definitions
+        .iter()
+        .find(|definition| {
+            definition.parameters.as_ref().is_some_and(|parameters| {
+                parameters.len() == arguments.len()
+                    && parameters
+                        .iter()
+                        .zip(&arguments)
+                        .all(|(parameter, argument)| {
+                            *parameter == MacroArgumentKind::Expression || parameter == argument
+                        })
+            })
+        })
+        .map(|definition| definition.node)
+}
+
 pub fn find_source_file_macros<'t>(this_node: &Node<'t>, text: &str) -> Vec<MacroEntry<'t>> {
     let mut macros: Vec<MacroEntry<'t>> = Vec::new();
 

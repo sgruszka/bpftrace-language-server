@@ -414,11 +414,16 @@ fn encode_definition(content: JsonValue) -> JsonValue {
         let all_macros = parser::find_source_file_macros(&main_node, text);
         log_vdbg!(DEFIN, "All macros definitions: {:?}", all_macros);
 
-        for m in all_macros {
-            if m.name() == call_name {
-                def_node = m.definitions().first().map(|definition| definition.node);
-                break;
-            }
+        if let Some(entry) = all_macros
+            .into_iter()
+            .find(|entry| entry.name() == call_name)
+        {
+            def_node = match entry {
+                parser::MacroEntry::Single(definition) => Some(definition.node),
+                parser::MacroEntry::Overloaded(overloads) => {
+                    parser::find_macro_overload(&overloads, &func_call)
+                }
+            };
         }
     }
 
@@ -1699,6 +1704,85 @@ macro print2(x, y) {
         let end = &result["result"]["range"]["end"];
         assert_eq!(end["line"], 3);
         assert_eq!(end["character"], 1);
+    }
+
+    #[test]
+    fn test_goto_single_macro_with_mismatched_argument() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+begin {
+  foo($x);
+}
+"#;
+        let result = encode_definition(document_content_setup(text, 6, 3));
+
+        assert_eq!(result["result"]["range"]["start"]["line"], 1);
+        assert_eq!(result["result"]["range"]["start"]["character"], 0);
+    }
+
+    #[test]
+    fn test_goto_macro_scratch_overload() {
+        let text = r#"
+macro foo(@x) {
+  @x
+}
+
+macro foo($x) {
+  $x
+}
+
+begin {
+  foo((/* variable */ $x));
+}
+"#;
+        let result = encode_definition(document_content_setup(text, 10, 3));
+
+        assert_eq!(result["result"]["range"]["start"]["line"], 5);
+        assert_eq!(result["result"]["range"]["start"]["character"], 0);
+    }
+
+    #[test]
+    fn test_goto_macro_overload_by_argument_count() {
+        let text = r#"
+macro foo(x) {
+  x
+}
+
+macro foo() {
+  1
+}
+
+begin {
+  foo();
+}
+"#;
+        let result = encode_definition(document_content_setup(text, 10, 3));
+
+        assert_eq!(result["result"]["range"]["start"]["line"], 5);
+        assert_eq!(result["result"]["range"]["start"]["character"], 0);
+    }
+
+    #[test]
+    fn test_goto_macro_without_matching_overload() {
+        let text = r#"
+macro foo($x) {
+  $x
+}
+
+macro foo(@x) {
+  @x
+}
+
+begin {
+  foo(1);
+}
+"#;
+        let result = encode_definition(document_content_setup(text, 10, 3));
+
+        assert!(result["result"].is_null());
     }
 
     #[test]
