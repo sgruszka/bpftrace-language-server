@@ -138,7 +138,7 @@ pub fn find_syntax_location<'t>(
     (SyntaxLocation::SourceFile, tree.root_node())
 }
 
-fn position_to_node<'t>(main_node: &'t Node, line_nr: usize, char_nr: usize) -> Option<Node<'t>> {
+fn position_to_node<'t>(main_node: &Node<'t>, line_nr: usize, char_nr: usize) -> Option<Node<'t>> {
     let p = Point {
         column: char_nr,
         row: line_nr,
@@ -849,7 +849,7 @@ fn node_to_source_file(n: Node) -> Option<Node> {
     Some(source_file)
 }
 
-pub fn find_source_file_macros<'t>(this_node: &'t Node, text: &str) -> Vec<(String, Node<'t>)> {
+pub fn find_source_file_macros<'t>(this_node: &Node<'t>, text: &str) -> Vec<(String, Node<'t>)> {
     let mut macros = Vec::new();
 
     let Some(source_file) = node_to_source_file(*this_node) else {
